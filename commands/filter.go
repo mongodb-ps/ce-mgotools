@@ -1,9 +1,26 @@
 package commands
 
-import "fmt"
+import (
+	"fmt"
+	"mgotools/parser"
+	"time"
+)
 
 type logFilter struct {
-	baseOptions
+	BaseOptions
+
+	CommandFilter            string
+	ExecutionDurationMinimum int
+	FromFilter               time.Time
+	InvertMatch              bool
+	JsonOutput               bool
+	NamespaceFilter          string
+	OperationFilter          string
+	PatternFilter            string
+	Shorten                  bool
+	TableScanFilter          bool
+	TimestampModifier        int
+	ToFilter                 time.Time
 }
 
 func (f *logFilter) ParseLine(out chan<- string, in <-chan string, signal <-chan int) error {
@@ -20,9 +37,11 @@ func (f *logFilter) ParseLine(out chan<- string, in <-chan string, signal <-chan
 			return nil
 
 		default:
-			out <- logline
-			break
+			if ok := f.match(logline); ok {
+				out <- logline
+			}
 
+			break
 		}
 	}
 
@@ -33,7 +52,11 @@ func (f *logFilter) Finish(out chan<- string) error {
 	return nil
 }
 
-func (f *logFilter) Match(in string) bool {
+func (f *logFilter) match(line string) bool {
+	fmt.Println(fmt.Sprintf("Line: %s", line))
+	rawLogEntry := parser.NewRawLogEntry(line)
+	logEntry := parser.NewLogEntry(rawLogEntry)
 
-	return true
+	fmt.Println("Log entry: ", logEntry)
+	return false
 }

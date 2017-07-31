@@ -20,8 +20,10 @@ type baseCommandFileHandle struct {
 	FileHandle  *os.File
 }
 
-type baseOptions struct {
-	Verbose bool
+type BaseOptions struct {
+	LinearParse     bool
+	TimestampFormat string
+	Verbose         bool
 }
 
 type inputHandler struct {
@@ -33,14 +35,6 @@ type outputHandler struct {
 	out baseCommandFileHandle
 	err baseCommandFileHandle
 	log *log.Logger
-}
-
-func NewBaseOptions(verbose bool) *baseOptions {
-	g := baseOptions{
-		Verbose: verbose,
-	}
-
-	return &g
 }
 
 func NewInputHandler() *inputHandler {
@@ -93,15 +87,17 @@ func (b *baseCommandFileHandle) closeHandler(sync *synclib.WaitGroup) {
 	}
 }
 
-func (b *baseOptions) log(msg string) {
+func (b *BaseOptions) log(msg string) {
 
 }
 
 // A general purpose method to create different types of command structures.
-func CommandFactory(command string, options *baseOptions) Command {
+func CommandFactory(command string, options BaseOptions) Command {
 	switch command {
 	case "filter":
-		return &logFilter{}
+		return &logFilter{
+			BaseOptions: options,
+		}
 
 	default:
 		panic("unexpected command received")

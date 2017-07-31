@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+var options mgocommands.BaseOptions
+
 func main() {
 	app := cli.NewApp()
 
@@ -25,6 +27,7 @@ func main() {
 			Usage:   "filter a log file",
 
 			Flags: []cli.Flag{
+				cli.BoolFlag{Name: "linear, e", Usage: "parse input files linearly in order they are supplied (disable concurrency)"},
 				cli.StringFlag{Name: "pattern", Usage: "only output log lines with a query pattern"},
 			},
 		},
@@ -46,7 +49,11 @@ func command(c *cli.Context) error {
 	var start time.Time = time.Now()
 	fmt.Println(fmt.Sprintf("Command: %s, starting: %s", c.Command.Name, time.Now()))
 
-	options := mgocommands.NewBaseOptions(c.Bool("verbose"))
+	options := mgocommands.BaseOptions{
+		LinearParse: c.Bool("linear"),
+		Verbose:     c.Bool("verbose"),
+	}
+
 	command := mgocommands.CommandFactory(c.Command.Name, options)
 
 	// Get argument count.
