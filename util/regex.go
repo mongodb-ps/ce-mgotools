@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"regexp"
 	"sync"
 )
@@ -15,12 +16,14 @@ var mutex sync.Mutex
 var regexRegistryInstance *regexRegistry
 
 func GetRegexRegistry() *regexRegistry {
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	if regexRegistryInstance == nil {
-		regexRegistryInstance = &regexRegistry{
-			Compiled: make(map[string]*regexp.Regexp),
+		mutex.Lock()
+		defer mutex.Unlock()
+
+		if regexRegistryInstance == nil {
+			regexRegistryInstance = &regexRegistry{
+				Compiled: make(map[string]*regexp.Regexp),
+			}
 		}
 	}
 
@@ -53,5 +56,10 @@ func (r *regexRegistry) CompileAndMatch(pattern string, match string) ([]string,
 		return nil, err
 	}
 
-	return compiled.FindStringSubmatch(match), nil
+	results := compiled.FindStringSubmatch(match)
+	if results == nil {
+		return results, errors.New("empty match")
+	}
+
+	return results, nil
 }

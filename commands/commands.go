@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mgotools/parser"
 	"os"
 	synclib "sync"
 )
@@ -87,16 +88,15 @@ func (b *baseCommandFileHandle) closeHandler(sync *synclib.WaitGroup) {
 	}
 }
 
-func (b *BaseOptions) log(msg string) {
-
-}
-
 // A general purpose method to create different types of command structures.
 func CommandFactory(command string, options BaseOptions) Command {
+	context := &parser.LogContext{}
+
 	switch command {
 	case "filter":
 		return &logFilter{
 			BaseOptions: options,
+			LogContext:  context,
 		}
 
 	default:

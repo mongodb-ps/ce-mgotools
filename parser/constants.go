@@ -1,6 +1,6 @@
-package util
+package parser
 
-var COMPONENT = []string{
+var COMPONENTS = []string{
 	"ACCESS",        // 3.0 ?
 	"ACCESSCONTROL", // 3.2 ?
 	"ASIO",          // 3.4 ?
@@ -25,4 +25,4 @@ var COMPONENT = []string{
 	"WRITE",
 	"-",
 }
-var SEVERITY = []string{"D", "I", "W", "E", "F"}
+var SEVERITIES = []string{"D", "I", "W", "E", "F"}

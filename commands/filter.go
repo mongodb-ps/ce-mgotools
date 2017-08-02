@@ -9,6 +9,8 @@ import (
 type logFilter struct {
 	BaseOptions
 
+	LogContext *parser.LogContext
+
 	CommandFilter            string
 	ExecutionDurationMinimum int
 	FromFilter               time.Time
@@ -53,10 +55,11 @@ func (f *logFilter) Finish(out chan<- string) error {
 }
 
 func (f *logFilter) match(line string) bool {
-	fmt.Println(fmt.Sprintf("Line: %s", line))
-	rawLogEntry := parser.NewRawLogEntry(line)
-	logEntry := parser.NewLogEntry(rawLogEntry)
+	logEntry := f.LogContext.NewLogEntry(parser.NewRawLogEntry(line))
 
-	fmt.Println("Log entry: ", logEntry)
-	return false
+	if !logEntry.Valid {
+		return false
+	}
+
+	return true
 }
