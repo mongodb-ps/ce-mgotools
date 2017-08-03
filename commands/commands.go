@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"mgotools/parser"
 	"os"
 	synclib "sync"
+	"mgotools/parser"
 )
 
 type Command interface {
-	ParseLine(chan<- string, <-chan string, <-chan int) error
+	ParseLine(chan<- string, <-chan string, <-chan int, *parser.LogContext) error
 	Finish(chan<- string) error
 }
 
@@ -19,6 +19,7 @@ type baseCommandFileHandle struct {
 	Closed      bool
 	CloseSignal chan int
 	FileHandle  *os.File
+	LogContext  *parser.LogContext
 }
 
 type BaseOptions struct {
@@ -65,6 +66,7 @@ func (i *inputHandler) AddHandle(reader *os.File) {
 		CloseSignal: make(chan int),
 		Closed:      false,
 		FileHandle:  reader,
+		LogContext:  parser.NewLogContext(),
 	}
 
 	go commandFileHandle.closeHandler(&i.sync)
@@ -90,13 +92,10 @@ func (b *baseCommandFileHandle) closeHandler(sync *synclib.WaitGroup) {
 
 // A general purpose method to create different types of command structures.
 func CommandFactory(command string, options BaseOptions) Command {
-	context := &parser.LogContext{}
-
 	switch command {
 	case "filter":
 		return &logFilter{
 			BaseOptions: options,
-			LogContext:  context,
 		}
 
 	default:
@@ -126,6 +125,7 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 
 	// Create a helper to write to the output handle.
 	var writer *bufio.Writer = bufio.NewWriter(out.out.FileHandle)
+	defer writer.Flush()
 
 	if in == nil || out == nil {
 		return errors.New("An input and output handler are required")
@@ -179,7 +179,7 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 	// Create another goroutine for outputs. Start checking for output from the several input goroutines.
 	// Output all received values directly (this may need to change in the future, i.e. should sorting be needed).
 	for line := range outChannel {
-		writer.WriteString(fmt.Sprintf("%s\n", line))
+		writer.WriteString(line + "\n")
 	}
 
 	// Wait for all file handles to finish closing.
@@ -200,7 +200,7 @@ func parseFile(f Command, in *baseCommandFileHandle, out chan<- string, err chan
 
 	// Delegate line parsing to the individual commands.
 	go func() {
-		f.ParseLine(out, buffer, signal)
+		f.ParseLine(out, buffer, signal, in.LogContext)
 
 		// Alert the synchronization object that one of the goroutines is finished.
 		defer sync.Done()

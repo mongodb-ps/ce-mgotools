@@ -75,3 +75,4 @@ func IsNumeric(a string) bool {
 
 	return false
 }
+

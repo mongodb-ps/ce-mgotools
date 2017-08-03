@@ -9,8 +9,6 @@ import (
 type logFilter struct {
 	BaseOptions
 
-	LogContext *parser.LogContext
-
 	CommandFilter            string
 	ExecutionDurationMinimum int
 	FromFilter               time.Time
@@ -25,7 +23,7 @@ type logFilter struct {
 	ToFilter                 time.Time
 }
 
-func (f *logFilter) ParseLine(out chan<- string, in <-chan string, signal <-chan int) error {
+func (f *logFilter) ParseLine(out chan<- string, in <-chan string, signal <-chan int, context *parser.LogContext) error {
 	var exit int = 0
 	go func() {
 		exit = <-signal
@@ -39,7 +37,7 @@ func (f *logFilter) ParseLine(out chan<- string, in <-chan string, signal <-chan
 			return nil
 
 		default:
-			if ok := f.match(logline); ok {
+			if ok := f.match(logline, context); ok {
 				out <- logline
 			}
 
@@ -47,6 +45,8 @@ func (f *logFilter) ParseLine(out chan<- string, in <-chan string, signal <-chan
 		}
 	}
 
+	fmt.Println()
+	fmt.Println(fmt.Sprintf("%+v", context))
 	return nil
 }
 
@@ -54,8 +54,8 @@ func (f *logFilter) Finish(out chan<- string) error {
 	return nil
 }
 
-func (f *logFilter) match(line string) bool {
-	logEntry := f.LogContext.NewLogEntry(parser.NewRawLogEntry(line))
+func (f *logFilter) match(line string, context *parser.LogContext) bool {
+	logEntry := context.NewLogEntry(parser.NewRawLogEntry(line), true)
 
 	if !logEntry.Valid {
 		return false
