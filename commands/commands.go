@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"compress/gzip"
 	"log"
 	"os"
 	synclib "sync"
@@ -189,10 +190,12 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 }
 
 func parseFile(f Command, in *baseCommandFileHandle, out chan<- string, err chan<- error, signal chan int, sync *synclib.WaitGroup) {
-	var buffer chan string = make(chan string, 1024)
+	var (
+		inputChannel chan string = make(chan string, 1024)
+	)
 
 	// Close channels that will no longer be used after this method exists (and signal any pending goroutines).
-	defer close(buffer)
+	defer close(inputChannel)
 	defer close(signal)
 
 	// Close the input file handle.
@@ -200,17 +203,28 @@ func parseFile(f Command, in *baseCommandFileHandle, out chan<- string, err chan
 
 	// Delegate line parsing to the individual commands.
 	go func() {
-		f.ParseLine(out, buffer, signal, in.LogContext)
+		f.ParseLine(out, inputChannel, signal, in.LogContext)
 
 		// Alert the synchronization object that one of the goroutines is finished.
 		defer sync.Done()
 	}()
 
-	scanner := bufio.NewScanner(in.FileHandle)
+	reader := bufio.NewReader(in.FileHandle)
+	scanner := bufio.NewScanner(reader)
+
+	if peek, err := reader.Peek(2); err == nil {
+		if peek[0] == 0x1f && peek[1] == 0x8b {
+			if gzipReader, err := gzip.NewReader(reader); err == nil {
+				scanner = bufio.NewScanner(gzipReader)
+			} else {
+				fmt.Println(err)
+			}
+		}
+	}
 
 	for scanner.Scan() {
 		if text := scanner.Text(); text != "" {
-			buffer <- text
+			inputChannel <- text
 		}
 	}
 

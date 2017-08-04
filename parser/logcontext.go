@@ -156,6 +156,5 @@ func (c *LogContext) UpdateContext(logEntry *LogEntry) {
 	case "signalProcessingThread":
 		// Shutdown message.
 		break
-
 	}
 }
