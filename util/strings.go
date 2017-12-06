@@ -1,32 +1,34 @@
 package util
 
 import (
+	"sort"
+	//"golang.org/x/text/unicode/norm"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 )
 
-// String normalization is necessary for unicode processing of logs. Starting this project using basic UTF8 rune
-// counting, but this should eventually translate to normalization (http://godoc.org/golang.org/x/text/unicode/norm).
-// See also: https://blog.golang.org/normalization
-var StringLength = utf8.RuneCountInString
-
-var StringToLower = unicode.ToLower
-
-var StringToUpper = unicode.ToUpper
-
-var StringMatch = func(a string, b string) bool {
-	if strings.Compare(a, b) == 0 {
+func ArgumentSplit(r rune) bool {
+	switch r {
+	case ',', ';', ' ':
 		return true
 	}
-
 	return false
 }
 
-var StringInsensitiveMatch = strings.EqualFold
+func ArgumentMatchOptions(match []string, a string) bool {
+	for _, value := range strings.FieldsFunc(a, ArgumentSplit) {
+		if !ArrayInsensitiveMatchString(match, value) {
+			return false
+		}
+	}
+	return true
+}
 
-func ArrayFilter(a []string, match func(string) bool) []string {
+func ArrayBinarySearchString(a string, m []string) bool { return m[sort.SearchStrings(m, a)] == a }
+
+func ArrayFilterString(a []string, match func(string) bool) []string {
 	b := a[:0]
 	for _, x := range a {
 		if match(x) {
@@ -54,6 +56,34 @@ func ArrayMatchString(a []string, match string) bool {
 	return false
 }
 
+func StringDoubleSplit(s string, d rune) (string, string, bool) {
+	for i, c := range s {
+		if c == d {
+			return s[0:i], s[i+1:], true
+		}
+	}
+	return s, "", false
+}
+
+// String normalization is necessary for unicode processing of logs. Starting this project using basic UTF8 rune
+// counting, but this should eventually translate to normalization (http://godoc.org/golang.org/x/text/unicode/norm).
+// See also: https://blog.golang.org/normalization
+func StringLength(s string) (n int) { return utf8.RuneCountInString(s) }
+
+func StringToLower(r rune) rune { return unicode.ToLower(r) }
+
+func StringToUpper(r rune) rune { return unicode.ToUpper(r) }
+
+var StringMatch = func(a string, b string) bool {
+	if strings.Compare(a, b) == 0 {
+		return true
+	}
+
+	return false
+}
+
+var StringInsensitiveMatch = strings.EqualFold
+
 // Cuts an element from an array, modifying the original array and returning the value cut.
 func SliceCutString(a []string, index int) (string, []string) {
 	switch index {
@@ -75,4 +105,3 @@ func IsNumeric(a string) bool {
 
 	return false
 }
-

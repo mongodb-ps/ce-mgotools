@@ -1,7 +1,8 @@
 package util
 
 import (
-	"strings"
+	//"github.com/olebedev/when"
+
 	"sync"
 	"time"
 )
@@ -22,23 +23,20 @@ import (
 // month, and two number date as a minimum. The time could, theoretically, be included in the minimum but it will all
 // come out in the wash later.
 const (
-	DATE_LENGTH_MIN  = 10
-	DATE_UNIX_NOYEAR = 365*86400 - 1
-
 	DATE_FORMAT_CTIMENOMS     = "Mon Jan 02 15:04:05"
 	DATE_FORMAT_CTIME         = "Mon Jan 02 15:04:05.000"
 	DATE_FORMAT_CTIMEYEAR     = "Mon Jan 02 2006 15:04:05.000"
 	DATE_FORMAT_ISO8602_UTC   = "2006-01-02T15:04:05.000Z"
 	DATE_FORMAT_ISO8602_LOCAL = "2006-01-02T15:04:05.000-0700"
-	DATE_FORMAT_COUNT         = 5
 
 	// RFC3339 (which is stricter than ISO8601 and, incidentally, used by MongoDB)
 	DATE_REGEX_RFC3339 = `^(\d{4})-(?:(0[13578]|1[02])-([12]\d|0[1-9]|3[01])|(0[469]|11)-([12]\d|0[1-9]|3[0])|(02)-([12]\d|0[1-9]))(?:[Tt\s])([01]\d|2[0-3]):([0-5]\d):([0-5]\d|60)(\.\d{1,4})?(?:([-+](?:\d{2}|\d{4}|\d{2}:\d{2}?|Z)))?$`
-	DATE_REGEX_TIME    = `(?:[01][1-9]|2[0123]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\.[0-9]{2,8})?(?:Z|[-+][01]\d:?\d{2})?`
+	DATE_REGEX_TIME    = `(?:[01][0-9]|2[0123]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\.[0-9]{1,8})?(?:Z|[-+][01]\d:?\d{2})?`
 	DATE_REGEX_OFFSET  = `^[+-]?(0\d|1[012]):?(\d{2})$`
 )
 
-type logDate struct {
+type DateParser struct {
+	formatCount int
 	formatOrder []string
 	lock        sync.Mutex
 }
@@ -47,73 +45,52 @@ var DATE_DAYS = []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
 var DATE_MONTHS = []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
 var DATE_YEAR = time.Now().Year()
 
-var logDateSingleton *logDate = &logDate{[]string{DATE_FORMAT_ISO8602_UTC, DATE_FORMAT_ISO8602_LOCAL, DATE_FORMAT_CTIME, DATE_FORMAT_CTIMENOMS, DATE_FORMAT_CTIMEYEAR}, sync.Mutex{}}
-
-func DateParse(value string) (time.Time, bool) {
+func NewDateParser(formats []string) *DateParser {
+	return &DateParser{
+		formatCount: 5,
+		formatOrder: formats,
+	}
+}
+func (d *DateParser) ParseDate(value string) (time.Time, error) {
 	var (
-		date    time.Time
-		err     error
-		index   int
-		order   []string = logDateSingleton.formatOrder
-		success bool     = false
+		date  time.Time
+		err   error
+		index int
+		order []string = d.formatOrder
 	)
-
-	for index = 0; index < DATE_FORMAT_COUNT; index += 1 {
+	for index = 0; index < d.formatCount; index += 1 {
 		if date, err = time.Parse(order[index], value); err == nil {
 			if index == 0 {
-				return date, true
+				return date, err
 			}
-
-			success = true
 			break
 		}
 	}
+	if err != nil {
+		d.reorderFormat(index)
+	}
 
-	if success && index > 0 {
+	return date, err
+}
+
+func (d *DateParser) reorderFormat(index int) {
+	if index > 0 {
 		var (
 			format  string
-			reorder []string = make([]string, DATE_FORMAT_COUNT)
+			reorder []string = make([]string, d.formatCount)
 		)
-
-		logDateSingleton.lock.Lock()
-		copy(reorder, logDateSingleton.formatOrder)
-
-		if index == DATE_FORMAT_COUNT {
-			format, reorder = reorder[DATE_FORMAT_COUNT-1], reorder[:DATE_FORMAT_COUNT-1]
+		d.lock.Lock()
+		copy(reorder, d.formatOrder)
+		if index == d.formatCount {
+			format, reorder = reorder[d.formatCount-1], reorder[:d.formatCount-1]
 			reorder = append([]string{format}, reorder...)
 		} else {
 			format := reorder[index]
 			reorder = append([]string{format}, append(reorder[:index], reorder[index+1:]...)...)
 		}
-
-		logDateSingleton.formatOrder = reorder
-		logDateSingleton.lock.Unlock()
+		d.formatOrder = reorder
+		d.lock.Unlock()
 	}
-
-	return date, success
-}
-
-// Take a parts array ([]string { "Sun", "Jan", "02", "15:04:05" }) and combined into a single element
-// ([]string { "Sun Jan 02 15:04:05" }) with all trailing elements appended to the array.
-func DateStringFromArray(target []string) (bool, []string) {
-	switch {
-	case !IsDay(target[0]):
-	case !IsMonth(target[1]):
-	case !IsNumeric(target[2]):
-	case !IsTime(target[3]):
-		return false, target
-	}
-
-	if len(target) == 4 {
-		target = []string{strings.Join(target, " ")}
-	} else if len(target) > 4 {
-		target[0] = strings.Join(target[:4], " ")
-		target = append([]string{target[0]}, target[4:]...)
-	} else {
-		return false, target
-	}
-
-	return true, target
 }
 
 func IsDay(match string) bool {

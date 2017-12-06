@@ -1,0 +1,18 @@
+# mgotools
+
+This tool suite is the spiritual successor to [mtools](https://github.com/rueckstiess/mtools),
+a series of python libraries designed to quickly parse and summarize
+[MongoDB](https://www.mongodb.com/) log files.
+
+## Structure
+The structure of mgotools is designed around a hierarchical approach to
+simply adding new inputs, outputs, and commands.
+
+```
+main()
+   command factory
+      input interpreter
+         command exec
+            parser
+               object generation
+```

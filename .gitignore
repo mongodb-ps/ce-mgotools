@@ -1,3 +1,4 @@
 mgotools
 *.log
+*.js
 .idea
