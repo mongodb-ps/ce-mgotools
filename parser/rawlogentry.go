@@ -37,21 +37,20 @@ func NewRawLogEntry(line string) (RawLogEntry, error) {
 		fmt.Println("Could not parse date")
 		return entry, errors.New(fmt.Sprintf("could not parse date format: %s", line))
 	}
-
 	if entry.Peek(1) == "[" {
 		// the context is first so assume the line remainder is the message
-		if part, _ := entry.SlurpWord(); util.IsContext(part) {
+		if part, _ := entry.SlurpWord(); IsContext(part) {
 			entry.RawContext = part
 		}
 	} else {
 		// the context isn't first so there is likely more available to check
 		for i := 0; i < 4; i += 1 {
 			if part, ok := entry.SlurpWord(); ok {
-				if entry.RawSeverity == "" && util.IsSeverity(part) {
+				if entry.RawSeverity == "" && IsSeverity(part) {
 					entry.RawSeverity = part
-				} else if entry.RawComponent == "" && util.IsComponent(part) {
+				} else if entry.RawComponent == "" && IsComponent(part) {
 					entry.RawComponent = part
-				} else if entry.RawContext == "" && util.IsContext(part) {
+				} else if entry.RawContext == "" && IsContext(part) {
 					entry.RawContext = part
 				} else {
 					entry.RewindSlurpWord()

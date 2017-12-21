@@ -107,7 +107,7 @@ func (r *RuneReader) EnclosedString(which rune) (string, error) {
 					continue
 				}
 				r.start, r.next = start, end+1
-				return string(r.runes[r.start+1 : r.next-1]), nil
+				return string(r.runes[r.start+1: r.next-1]), nil
 			}
 		}
 		escaped = false
@@ -131,16 +131,12 @@ func (r *RuneReader) Expect(a ...interface{}) bool {
 }
 
 func (r *RuneReader) ExpectString(a string) bool {
-	length := StringLength(a)
-	if r.next+length > r.length {
-		return false
-	} else if length == 1 && r.runes[r.start] == rune(a[0]) {
+	if length := StringLength(a); length > 0 &&
+		r.next+length <= r.length &&
+		a == string(r.runes[r.next:r.next+length]) {
 		return true
-	} else if a == string(r.runes[r.next:r.next+length]) {
-		return true
-	} else {
-		return false
 	}
+	return false
 }
 
 // Length() returns the total number of runes in the rune set. This may
@@ -169,13 +165,13 @@ func (r *RuneReader) Peek(length int) string {
 		} else if r.next+length < 0 {
 			length = -r.next
 		}
-		return string(r.runes[r.next+length : r.next])
+		return string(r.runes[r.next+length: r.next])
 	} else if r.next == r.length {
 		return ""
 	} else if r.next+length > r.length {
 		length = r.length - r.next
 	}
-	return string(r.runes[r.next : r.next+length])
+	return string(r.runes[r.next: r.next+length])
 }
 
 // Pos() returns the current position of the _end_ pointer in the rune set.
@@ -252,7 +248,7 @@ func (r *RuneReader) Read(start int, length int) (string, bool) {
 	if start < 0 || start+length > r.length || length < 1 {
 		return "", false
 	}
-	return string(r.runes[start : start+length]), true
+	return string(r.runes[start: start+length]), true
 }
 
 // Remainder() returns a string of all runes from and including
@@ -373,18 +369,23 @@ func (r *RuneReader) SlurpWord() (string, bool) {
 		return "", false
 	}
 	r.start = r.next
-	for r.next += 1; r.next < r.length; r.next += 1 {
-		if unicode.Is(unicode.Space, r.runes[r.next]) {
+	for r.next += 1; r.next <= r.length; r.next += 1 {
+		if unicode.Is(unicode.Space, r.runes[r.next-1]) {
 			if r.start == r.next-1 {
-				r.start = r.next
+				if r.start < r.length && r.runes[r.start] == ' ' {
+					r.start += 1
+				}
 				continue
 			}
-			r.next += 1
 			break
 		}
 	}
 	trimLeftRunes(r, unicode.Space)
 	return runeRange(r, r.start, r.next-1), true
+}
+
+func (r *RuneReader) String() string {
+	return string(r.runes)
 }
 
 // Sync() brings the _start_ and _end_ pointers in sync by
@@ -461,7 +462,7 @@ func checkRune(r rune, a ...interface{}) bool {
 				return true
 			}
 		default:
-			panic(fmt.Sprintf("Unexpected match type: %T", v))
+			panic(fmt.Sprintf("unexpected match type: %T", v))
 		}
 	}
 	return false
@@ -474,12 +475,14 @@ func runeRange(r *RuneReader, start int, end int) string {
 		return string(r.runes[start])
 	} else if end > r.length {
 		return string(r.runes[start:r.length])
+	} else if start > end {
+		panic("start is more than end")
 	} else {
 		return string(r.runes[start:end])
 	}
 }
 
 func trimLeftRunes(r *RuneReader, table *unicode.RangeTable) {
-	for ; r.start < r.next && r.start < r.length && unicode.Is(table, r.runes[r.start]); r.start += 1 {
+	for ; r.start < r.length && unicode.Is(table, r.runes[r.start]); r.start += 1 {
 	}
 }

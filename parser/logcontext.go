@@ -2,7 +2,9 @@ package parser
 
 import (
 	"errors"
+	"fmt"
 	"mgotools/util"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ type LogContext struct {
 
 	factories       []LogVersionParser
 	factoryCount    int
+	factoryFilter   []LogVersionDefinition
 	factoryMaxCount int
 	preambleParsed  bool
 	startupIndex    int
@@ -35,7 +38,7 @@ type LogContext struct {
 	ReplicaVersion int
 
 	Startup  []logContextStartup
-	Versions []string
+	Versions []LogVersionDefinition
 }
 type logContextStartup struct {
 	LogMsgBuildInfo
@@ -73,29 +76,161 @@ func (c *LogContext) NewRawLogEntry(line string) (RawLogEntry, error) {
 }
 func (c *LogContext) NewLogEntry(raw RawLogEntry) (LogEntry, error) {
 	var (
-		err      error
-		logEntry LogEntry = LogEntry{RawLogEntry: raw, Valid: true}
+		err error
+		out LogEntry = LogEntry{RawLogEntry: raw, Valid: true}
 	)
-
 	// Try to parse the date/time of the line.
 	remaining := c.factoryCount
 	for ; remaining > 0; remaining -= 1 {
-		if logEntry.Date, err = c.factories[remaining-1].ParseDate(raw.RawDate); err != nil {
+		if out.Date, err = c.factories[remaining-1].ParseDate(raw.RawDate); err == nil {
 			break
 		}
 	}
 	// No dates matched so mark the date invalid and reset the count.
 	if remaining == 0 {
 		remaining = c.factoryCount
-		logEntry.DateValid = false
+		out.DateValid = false
 	} else {
-		logEntry.DateYearMissing = logEntry.Date.Year() == 0
-		logEntry.DateValid = true
+		out.DateYearMissing = out.Date.Year() == 0
+		out.DateValid = true
 	}
+	out, raw = updateDate(out, raw, c)
+	// Try to make some further version guesses based on easily checked information.
+	if remaining > 1 {
+		switch {
+		case raw.CString:
+			c.FilterVersions([]LogVersionDefinition{{2, 4, LOG_VERSION_ANY}})
+		case raw.RawContext == "[mongosMain]":
+			c.FilterVersions([]LogVersionDefinition{{0, 0, LOG_VERSION_MONGOS}})
+		case raw.RawComponent == "":
+			c.FilterVersions([]LogVersionDefinition{{2, 6, LOG_VERSION_ANY}})
+		}
+		if c.factoryCount == 1 {
+			remaining = 1
+		}
+	}
+	if util.StringLength(out.RawContext) > 2 && IsContext(out.RawContext) {
+		out = updateContext(out)
+	}
+	// Check for the raw message for validity and parse it.
+	if out.RawMessage == "" {
+		// No log message exists so it cannot be further analyzed.
+		out.Valid = false
+		if err == nil {
+			err = errors.New("no message portion exists")
+		}
+		c.Errors += 1
+		return out, err
+	}
+	version := false
+	// Try parsing the remaining factories for a log message until one succeeds.
+	for ; remaining > 0; remaining -= 1 {
+		if out.LogMessage, version, err = updateLogMessage(out, c.factories[remaining-1].NewLogMessage); err == nil {
+			break
+		}
+	}
+	if version {
+		s, _ := out.LogMessage.(LogMsgVersion)
+		var logVersion LogVersionDefinition
+		if s.Binary == "mongod" {
+			logVersion = LogVersionDefinition{s.Major, s.Minor, LOG_VERSION_MONGOD}
+		} else if s.Binary == "mongos" {
+			logVersion = LogVersionDefinition{s.Major, s.Minor, LOG_VERSION_MONGOS}
+		} else {
+			logVersion = LogVersionDefinition{s.Major, s.Minor, LOG_VERSION_ANY}
+		}
+		c.Versions = append(c.Versions, logVersion)
+		c.FilterVersions([]LogVersionDefinition{logVersion})
+	} else if remaining == 0 {
+		// Check for all factory removal and reset
+		if c.factoryMaxCount == c.factoryCount {
+			// All factories were attempted and all were removed so nothing more to do.
+			return out, nil
+		}
+		// All attempts failed but not all factories were attempted. Reset the factories and try again.
+		c.factories, c.factoryCount = makeAllContextFactories()
+		if len(c.Versions) > 0 {
+			// Occasionally, a version will be directly available from the log file, so we should likely
+			// heed that hint. If, for some reason, the log file is a mix of multiple versions then, well,
+			// oh well.
+			c.FilterVersions(c.Versions)
+		} else if c.factoryFilter != nil {
+			// Check for a previous version filter. A version filter is generally not called unless there is
+			// a specific reason to guess the version accurately.
+			c.FilterVersions(c.factoryFilter)
+		}
+	} else {
+		// A match succeeded so reset the factory list to the reduced set.
+		c.factories = c.factories[remaining-1:]
+		c.factoryCount = len(c.factories)
+		for i, t := range c.factories {
+			fmt.Fprintf(os.Stderr, " [%T %d]", t, i)
+		}
+		fmt.Fprint(os.Stderr, "\n")
+	}
+	updateYearRollover(out, c)
+	if !c.preambleParsed && out.LogMessage != nil {
+		updatePreamble(out, c)
+	}
+
+	c.Count += 1
+	c.Lines += 1
+	return out, err
+}
+func updateContext(entry LogEntry) (LogEntry) {
+	entry.Context = entry.RawContext[1: util.StringLength(entry.RawContext)-1]
+	length := util.StringLength(entry.Context)
+	if strings.HasPrefix(entry.Context, "conn") && length > 4 {
+		entry.Connection, _ = strconv.Atoi(entry.Context[4:])
+	} else if strings.HasPrefix(entry.Context, "thread") && length > 6 {
+		entry.Thread, _ = strconv.Atoi(entry.Context[6:])
+	}
+	return entry
+}
+func (c *LogContext) FilterVersions(a []LogVersionDefinition) {
+	y := c.factories[:0]
+FactoryCheck:
+	for _, f := range c.factories {
+		def := f.Version()
+		for _, b := range a {
+			if (b.Binary == 0 || b.Binary == def.Binary) &&
+				(b.Major == (1<<31-1) || b.Major == def.Major) &&
+				(b.Minor == (1<<31-1) || b.Minor == def.Minor) {
+				y = append(y, f)
+				util.Debug("*** Keeping factory %T (%d, %d, %d; %d %d %d)", f, def.Major, def.Minor, def.Binary, b.Major, b.Minor, b.Binary)
+				continue FactoryCheck
+			}
+		}
+	}
+	if len(y) > 0 {
+		c.factories = y
+		c.factoryCount = len(y)
+		c.factoryFilter = a
+	}
+	util.Debug("*** Filtered factories, %d left", len(c.factories))
+	for i, f := range c.factories {
+		fmt.Fprintf(os.Stderr, "[%T %d]", f, i)
+	}
+	fmt.Fprint(os.Stderr, "\n")
+}
+func makeAllContextFactories() ([]LogVersionParser, int) {
+	var dateParserNew = util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})
+	c := []LogVersionParser{
+		&LogVersionSCommon{LogVersionCommon{dateParserNew}},
+		&LogVersion24Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR})}},
+		&LogVersion26Parser{LogVersionCommon{dateParserNew}},
+		&LogVersion30Parser{LogVersionCommon{dateParserNew}},
+		&LogVersion32Parser{LogVersionCommon{dateParserNew}},
+		&LogVersion34Parser{LogVersionCommon{dateParserNew}},
+	}
+	util.Debug("*** Reset factories to %d", len(c))
+	return c, len(c)
+}
+func updateDate(entry LogEntry, raw RawLogEntry, c *LogContext) (LogEntry, RawLogEntry) {
 	// Handle situations where the date is missing (typically old versions).
-	if !c.DateYearMissing && (logEntry.DateYearMissing || logEntry.Date.Year() == 0) {
+	if !c.DateYearMissing && (entry.DateYearMissing || entry.Date.Year() == 0) {
 		c.DateYearMissing = true
-		logEntry.Date = time.Date(time.Now().Year(), logEntry.Date.Month(), logEntry.Date.Day(), logEntry.Date.Hour(), logEntry.Date.Minute(), logEntry.Date.Second(), logEntry.Date.Nanosecond(), logEntry.Date.Location())
+		entry.Date = time.Date(time.Now().Year(), entry.Date.Month(), entry.Date.Day(), entry.Date.Hour(), entry.Date.Minute(), entry.Date.Second(), entry.Date.Nanosecond(), entry.Date.Location())
 	}
 	if util.StringLength(raw.RawDate) > 11 {
 		// Compensate for dates that do not append a zero to the date.
@@ -105,110 +240,59 @@ func (c *LogContext) NewLogEntry(raw RawLogEntry) (LogEntry, error) {
 		// Take a date in ctime format and add the year.
 		raw.RawDate = raw.RawDate[:10] + " " + strconv.Itoa(util.DATE_YEAR+c.DateRollover) + raw.RawDate[10:]
 	}
-	// Try to make some further version guesses based on easily checked information.
-	if remaining > 1 {
-		switch {
-		case raw.CString:
-			c.factories = []LogVersionParser{&LogVersion24Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR})}}}
-		case raw.RawContext == "[mongosMain]":
-			c.factories = []LogVersionParser{&LogVersionSCommon{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}}
-		case raw.RawComponent == "":
-			c.factories = []LogVersionParser{&LogVersion26Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}}
-		}
-	}
-	if util.StringLength(logEntry.RawContext) > 2 && util.IsContext(logEntry.RawContext) {
-		logEntry.Context = logEntry.RawContext[1: util.StringLength(logEntry.RawContext)-1]
-		length := util.StringLength(logEntry.Context)
-		if strings.HasPrefix(logEntry.Context, "conn") && length > 4 {
-			logEntry.Connection, _ = strconv.Atoi(logEntry.Context[4:])
-		} else if strings.HasPrefix(logEntry.Context, "thread") && length > 6 {
-			logEntry.Thread, _ = strconv.Atoi(logEntry.Context[6:])
-		}
-	}
-	// Check for the raw message for validity and parse it.
-	if logEntry.RawMessage == "" {
-		// No log message exists so it cannot be further analyzed.
-		logEntry.Valid = false
-		if err == nil {
-			err = errors.New("no message portion exists")
-		}
-	} else {
-		// Try parsing the remaining factories for a log message until one succeeds.
-		for ; remaining > 0; remaining -= 1 {
-			if logEntry.LogMessage, err = c.factories[remaining-1].NewLogMessage(logEntry); err == nil {
-				util.Debug("%T %+v (%T %+v)", logEntry.LogMessage, logEntry.LogMessage, err, err)
-				break
-			}
-		}
-		// Check for all factory removal and reset
-		if remaining == 0 {
-			if c.factoryMaxCount == c.factoryCount {
-				// All factories were attempted and all were removed so nothing more to do.
-				logEntry.Valid = false
-			} else {
-				// All attempts failed but not all factories were attempted. Reset the factories and try again.
-				c.factories, c.factoryCount = makeAllContextFactories()
-			}
-		} else {
-			// A match succeeded so reset the factory list to the reduced set.
-			c.factories = c.factories[0:remaining-1]
-			c.factoryCount = remaining
-		}
-	}
-	switch logEntry.LogMessage.(type) {
-	case LogMsgConnection:
-		logEntry.Connection = logEntry.LogMessage.(LogMsgConnection).Conn
-	}
-	if logEntry.Valid {
-		c.Count += 1
-		currentMonth := logEntry.Date.Month()
-		if c.DatePreviousMonth != currentMonth {
-			if currentMonth == time.January {
-				c.DateRollover += 1
-			}
-
-			c.DatePreviousMonth = currentMonth
-		}
-		if !c.preambleParsed && logEntry.LogMessage != nil {
-			switch msg := logEntry.LogMessage.(type) {
-			case LogMsgStartupInfo:
-				c.Startup = append(c.Startup, logContextStartup{})
-				c.startupIndex += 1
-				c.Startup[c.startupIndex].LogMsgStartupInfo = msg
-			case LogMsgBuildInfo:
-				c.Startup[c.startupIndex].LogMsgBuildInfo = msg
-			case LogMsgStartupOptions:
-				c.Startup[c.startupIndex].LogMsgStartupOptions = msg
-			case LogMsgWiredTigerConfig:
-				c.Startup[c.startupIndex].LogMsgWiredTigerConfig = msg
-			case LogMsgVersion:
-				switch msg.Binary {
-				case "mongod":
-					c.Startup[c.startupIndex].DatabaseVersion = msg
-				case "mongos":
-					c.Startup[c.startupIndex].ShardVersion = msg
-				case "OpenSSL":
-					c.Startup[c.startupIndex].OpenSSLVersion = msg
-				}
-			case LogMsgListening:
-				c.preambleParsed = true
-			}
-		}
-	} else {
-		c.Errors += 1
-	}
-	c.Lines += 1
-	return logEntry, err
+	return entry, raw
 }
-func makeAllContextFactories() ([]LogVersionParser, int) {
-	var dateParserNew = util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})
-	c := []LogVersionParser{
-		&LogVersion24Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR})}},
-		&LogVersion26Parser{LogVersionCommon{dateParserNew}},
-		&LogVersion30Parser{LogVersionCommon{dateParserNew}},
-		&LogVersion32Parser{LogVersionCommon{dateParserNew}},
-		&LogVersion34Parser{LogVersionCommon{dateParserNew}},
-		&LogVersionSCommon{LogVersionCommon{dateParserNew}},
+func updateLogMessage(entry LogEntry, parser func(LogEntry) (LogMessage, error)) (LogMessage, bool, error) {
+	version := false
+	if logMessage, err := parser(entry); err != nil {
+		return nil, false, err
+	} else {
+		switch msg := logMessage.(type) {
+		case LogMsgConnection:
+			entry.Connection = msg.Conn
+		case LogMsgVersion:
+			version = true
+		}
+		return logMessage, version, err
 	}
-	return c, len(c)
+}
+func updatePreamble(logEntry LogEntry, c *LogContext) {
+	switch msg := logEntry.LogMessage.(type) {
+	case LogMsgStartupInfo:
+		c.Startup = append(c.Startup, logContextStartup{})
+		c.startupIndex += 1
+		c.Startup[c.startupIndex].LogMsgStartupInfo = msg
+	case LogMsgBuildInfo:
+		c.Startup[c.startupIndex].LogMsgBuildInfo = msg
+	case LogMsgStartupOptions:
+		c.Startup[c.startupIndex].LogMsgStartupOptions = msg
+	case LogMsgWiredTigerConfig:
+		c.Startup[c.startupIndex].LogMsgWiredTigerConfig = msg
+	case LogMsgVersion:
+		// Reset the superset of factories since a distinct version should be available.
+		c.factoryFilter = nil
+		// Apply a single
+		switch msg.Binary {
+		case "mongod":
+			c.Startup[c.startupIndex].DatabaseVersion = msg
+			c.FilterVersions([]LogVersionDefinition{{msg.Major, msg.Minor, LOG_VERSION_MONGOD}})
+		case "mongos":
+			c.Startup[c.startupIndex].ShardVersion = msg
+			c.FilterVersions([]LogVersionDefinition{{msg.Major, msg.Minor, LOG_VERSION_MONGOS}})
+		case "OpenSSL":
+			c.Startup[c.startupIndex].OpenSSLVersion = msg
+		}
+	case LogMsgListening:
+		c.preambleParsed = true
+	}
+}
+func updateYearRollover(logEntry LogEntry, c *LogContext) {
+	currentMonth := logEntry.Date.Month()
+	if c.DatePreviousMonth != currentMonth {
+		if currentMonth == time.January {
+			c.DateRollover += 1
+		}
+
+		c.DatePreviousMonth = currentMonth
+	}
 }

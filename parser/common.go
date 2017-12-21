@@ -2,19 +2,36 @@ package parser
 
 import (
 	"fmt"
+	"github.com/pkg/errors"
+	"mgotools/mongo"
 	"mgotools/util"
 	"net"
 	"strconv"
 	"strings"
-	"unicode"
 )
+
+// IsComponent checks a string value against the possible components array.
+func IsComponent(value string) bool {
+	return util.ArrayMatchString(mongo.COMPONENTS, value)
+}
+
+// IsContext checks for a bracketed string ([<string>])
+func IsContext(value string) bool {
+	length := util.StringLength(value)
+	return length > 2 && value[0] == '[' && value[length-1] == ']'
+}
+
+// IsSeverity checks a string value against the severities array.
+func IsSeverity(value string) bool {
+	return util.StringLength(value) == 1 && util.ArrayMatchString(mongo.SEVERITIES, value)
+}
 
 func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 	var (
 		addr   *util.RuneReader
 		buffer string
 		char   rune
-		conn   int = 0
+		conn   int    = 0
 		ip     net.IP = nil
 		ok     bool
 		port   int = 0
@@ -40,60 +57,70 @@ func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 	if part, ok := addr.Read(0, pos-1); ok {
 		ip = net.ParseIP(part)
 	}
-	if msgNumber, ok := msg.SlurpWord(); ok && msgNumber[0] == '#' {
-		conn, _ = strconv.Atoi(msgNumber[1:])
+	if msgNumber, ok := msg.SlurpWord(); ok {
+		if msgNumber[0] == '#' {
+			conn, _ = strconv.Atoi(msgNumber[1:])
+		} else if len(msgNumber) > 4 && strings.HasPrefix(msgNumber, "conn") {
+			if strings.HasSuffix(msgNumber, ":") {
+				msgNumber = msgNumber[:len(msgNumber)-1]
+			}
+			conn, _ = strconv.Atoi(msgNumber[4:])
+		}
 	}
 	return ip, uint16(port), conn, true
 }
 
-func parseCommandPrefix(r *util.RuneReader) ([]string, bool) {
-	if !r.ExpectString("command") {
-		return nil, false
-	} else if ns, ok := r.SlurpWord(); !ok {
-		return nil, false
-	} else if cmd, ok := r.SlurpWord(); !ok {
-		return nil, false
-	} else {
-		return []string{"command", ns, strings.TrimRight(cmd, ":")}, true
-	}
-}
-
 func parseIntegerKeyValue(source string, target map[string]int, limit map[string]string) bool {
-	if key, num, ok := util.StringDoubleSplit(source, ':'); ok {
+	if key, num, ok := util.StringDoubleSplit(source, ':'); ok && num != "" {
 		if _, ok := limit[key]; ok {
-			if count, err := strconv.ParseInt(num, 10, 32); err == nil {
+			if count, err := strconv.ParseInt(num, 10, 64); err == nil {
 				target[key] = int(count)
 				return true
+			} else {
+				panic(err)
 			}
-		} else {
-			panic("unexpected key " + key + " found")
 		}
 	}
 	return false
 }
 
-func parseOperationExtended(r *util.RuneReader) (string, error) {
-	for c, ok := r.Next(); ok; c, ok = r.Next() {
-		switch c {
-		case '"':
-			if _, err := r.QuotedString(); err != nil {
-				return "", err
+func parsePlanSummary(r *util.RuneReader) ([]LogMsgOpCommandPlanSummary, error) {
+	var out []LogMsgOpCommandPlanSummary
+	for {
+		if op, ok := r.SlurpWord(); !ok {
+			// There are no words, so exit.
+			break
+		} else if r.NextRune() == '{' {
+			if summary, err := util.ParseJsonRunes(r, false); err != nil {
+				// The plan summary did not parse as valid JSON so exit.
+				return nil, err
+			} else {
+				// The plan summary parsed as valid JSON, so record the operation and fall-through.
+				out = append(out, LogMsgOpCommandPlanSummary{op, summary})
 			}
-		case '{':
-			if _, err := util.ParseJsonRunes(r, false); err != nil {
-				return "", err
+			if r.NextRune() != ',' {
+				// There are no other plans so exit plan summary parsing.
+				break
+			} else {
+				// There are more plans, so continue to run by repeating the for loop.
+				r.Next()
+				continue
 			}
-		case ':':
-			if p, ok := r.Prev(); ok && unicode.IsLetter(p) {
-				for ; ok && !unicode.IsSpace(p); p, ok = r.Prev() {
-				}
-				return r.CurrentWord(), nil
-			}
-		case ',':
-			return r.CurrentWord(), nil
+		} else if length := len(op); length > 2 && op[length-1] == ',' {
+			// This is needed for repeated bare words (e.g. planSummary: COLLSCAN, COLLSCAN).
+			out = append(out, LogMsgOpCommandPlanSummary{op[:length-1], nil})
+			continue
+		} else {
+			// Finally, the plan summary is boring and only includes a single word (e.g. COLLSCAN).
+			out = append(out, LogMsgOpCommandPlanSummary{op, nil})
+			break
 		}
 	}
-	return r.CurrentWord(), nil
+	if len(out) == 0 {
+		// Return an error if no plans exist.
+		return nil, errors.New("no plan summary found")
+	}
+	return out, nil
 }
 
 func parseStartupInfo(msg string) (LogMsgStartupInfo, error) {
@@ -136,7 +163,7 @@ func parseVersion(msg string, binary string) (LogMsgVersion, error) {
 			version.Revision, _ = strconv.Atoi(parts[2])
 		}
 	}
-	if version.String == "" || version.Major == 0 {
+	if version.String == "" {
 		return version, fmt.Errorf("unexpected version format")
 	}
 	return version, nil

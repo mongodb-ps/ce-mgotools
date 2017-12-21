@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/util"
 	"strings"
@@ -38,7 +39,7 @@ type filterLog struct {
 
 type filterCommand struct {
 	BaseOptions
-	Log []filterLog
+	Log map[int]filterLog
 }
 
 func (f *filterCommand) Finish(out chan<- string) error {
@@ -95,6 +96,7 @@ func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan stri
 }
 
 func (f *filterCommand) Init() {
+	f.Log = make(map[int]filterLog)
 }
 
 func (f *filterCommand) Prepare(index int, factory parser.LogEntryFactory, booleans map[string]bool, integers map[string]int, strings map[string]string) error {
@@ -167,9 +169,9 @@ func (f *filterCommand) Prepare(index int, factory parser.LogEntryFactory, boole
 		})
 
 		switch {
-		case key == "component" && !util.ArgumentMatchOptions(util.COMPONENTS, value):
+		case key == "component" && !util.ArgumentMatchOptions(mongo.COMPONENTS, value):
 			return errors.New("--component is not a recognized component")
-		case key == "severity" && !util.ArgumentMatchOptions(util.SEVERITIES, value):
+		case key == "severity" && !util.ArgumentMatchOptions(mongo.SEVERITIES, value):
 			return errors.New("--severity is not a recognized severity")
 		case key == "from":
 			if dateParser, err := dateParser.ParseDate(value); err != nil {

@@ -47,7 +47,7 @@ var DATE_YEAR = time.Now().Year()
 
 func NewDateParser(formats []string) *DateParser {
 	return &DateParser{
-		formatCount: 5,
+		formatCount: len(formats),
 		formatOrder: formats,
 	}
 }

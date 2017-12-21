@@ -1,10 +1,13 @@
 package util
 
 import (
+	"encoding/hex"
 	"fmt"
+	"github.com/pkg/errors"
 	"math"
 	"mgotools/mongo"
 	"strconv"
+	"strings"
 	"time"
 	"unicode"
 )
@@ -20,11 +23,10 @@ func ParseJsonRunes(r *RuneReader, strict bool) (map[string]interface{}, error) 
 		return nil, fmt.Errorf("json must contain at least two characters")
 	}
 	v, e := parseJson(r.ChompWS(), strict)
-	r.Skip(1).ChompWS()
 	if strict && !r.EOL() {
 		return nil, fmt.Errorf("unexpected character '%c' at %d", r.NextRune(), r.Pos())
 	}
-	Debug("Original value: %s\nFinal value: %+v\nFinal error: %+v", string(r.runes), v, e)
+	//Debug("\nJSON: %+v\nJSON error: %+v [next '%s']\n", v, e, r.PreviewWord(1))
 	return v, e
 }
 
@@ -40,32 +42,32 @@ func parseJson(r *RuneReader, strict bool) (map[string]interface{}, error) {
 		if r.ChompWS().EOL() {
 			// End parsing when end of string reached.
 			return nil, fmt.Errorf("unexpected end of string")
+		}
+		current := r.NextRune()
+		if current == '}' {
+			// End parsing and return data when closing character found.
+			r.Skip(1)
+			return data, nil
+		} else if key, err := parseKey(r, strict); err != nil {
+			return nil, err
 		} else {
-			current := r.NextRune()
-			if current == '}' {
-				// End parsing and return data when closing character found.
-				return data, nil
-			} else if key, err := parseKey(r, strict); err != nil {
-				return nil, err
+			// Skip empty white spaces before the colon.
+			if r.ChompWS().NextRune() != ':' {
+				return nil, fmt.Errorf("unexpected character '%c' at %d", r.NextRune(), r.Pos())
 			} else {
-				// Skip empty white spaces before the colon.
-				if r.ChompWS().NextRune() != ':' {
-					return nil, fmt.Errorf("unexpected character '%c' at %d", r.NextRune(), r.Pos())
-				} else {
-					r.Next()
-					r.ChompWS()
-				}
-				if data[key], err = parseValue(r, strict); err != nil {
-					return nil, err
-				}
-				if r.ChompWS().NextRune() == ',' {
-					r.Next()
-				} else if r.NextRune() == '}' {
-					r.Next()
-					return data, nil
-				} else {
-					return nil, fmt.Errorf("unexpected character '%c' after value at %d", r.NextRune(), r.Pos())
-				}
+				r.Next()
+				r.ChompWS()
+			}
+			if data[key], err = parseValue(r, strict); err != nil {
+				return nil, err
+			}
+			if r.ChompWS().NextRune() == ',' {
+				r.Skip(1)
+			} else if r.NextRune() == '}' {
+				r.Skip(1)
+				return data, nil
+			} else {
+				return nil, fmt.Errorf("unexpected character '%c' after value at %d", r.NextRune(), r.Pos())
 			}
 		}
 	}
@@ -162,16 +164,20 @@ func parseValue(r *RuneReader, strict bool) (interface{}, error) {
 			value = mongo.Regex{value.(string), ""}
 		}
 	case unicode.IsLetter(c):
-		for ok := true; ok && !checkRune(c, unicode.Space, ',', '}'); c, ok = r.Next() {
+		for ok := true; ok && !checkRune(c, unicode.Space, []rune{',', '}'}); c, ok = r.Next() {
 		}
 		r.Prev()
-		switch r.CurrentWord() {
+		switch word := r.CurrentWord(); word {
 		case "true":
 			value = true
 		case "false":
 			value = false
 		default:
-			return nil, fmt.Errorf("unrecognized type beginning with '%c' at %d", r.NextRune(), r.Pos())
+			if StringLength(word) == 36 && strings.ToLower(word[:8]) == "objectid" {
+				value, err = parseObjectId(word, strict)
+			} else {
+				return nil, fmt.Errorf("unrecognized type beginning with '%c' at %d", r.NextRune(), r.Pos())
+			}
 		}
 	case checkReader(r, unicode.Digit, '-', '+', '.'):
 		if value, err = parseNumber(r); err != nil {
@@ -211,6 +217,22 @@ func parseNumber(r *RuneReader) (interface{}, error) {
 				return int(v), nil
 			}
 		}
+	}
+}
+
+func parseObjectId(oid string, strict bool) (mongo.ObjectId, error) {
+	// ObjectId('59e3fdf682f5ead28303a9cb')
+	if StringLength(oid) != 36 {
+		return nil, errors.New("unexpected length")
+	}
+	if (strict && !strings.HasPrefix(oid, "ObjectId(")) || (!strict && !StringInsensitiveMatch(oid[:9], "objectid(")) {
+		return nil, errors.New("unexpected string")
+	}
+	encoded := oid[10:34]
+	if decoded, err := hex.DecodeString(encoded); err != nil {
+		return nil, err
+	} else {
+		return decoded, nil
 	}
 }
 

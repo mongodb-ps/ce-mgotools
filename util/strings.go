@@ -1,6 +1,8 @@
 package util
 
 import (
+	"fmt"
+	"os"
 	"sort"
 	//"golang.org/x/text/unicode/norm"
 	"strconv"
@@ -9,6 +11,9 @@ import (
 	"unicode/utf8"
 )
 
+func Debug(format string, v ...interface{}) {
+	fmt.Fprintf(os.Stderr, format+"\n", v...)
+}
 func ArgumentSplit(r rune) bool {
 	switch r {
 	case ',', ';', ' ':
@@ -16,7 +21,6 @@ func ArgumentSplit(r rune) bool {
 	}
 	return false
 }
-
 func ArgumentMatchOptions(match []string, a string) bool {
 	for _, value := range strings.FieldsFunc(a, ArgumentSplit) {
 		if !ArrayInsensitiveMatchString(match, value) {
@@ -25,9 +29,13 @@ func ArgumentMatchOptions(match []string, a string) bool {
 	}
 	return true
 }
-
-func ArrayBinarySearchString(a string, m []string) bool { return m[sort.SearchStrings(m, a)] == a }
-
+func ArrayBinarySearchString(a string, m []string) bool {
+	p := sort.SearchStrings(m, a)
+	if p >= len(m) {
+		return false;
+	}
+	return m[p] == a
+}
 func ArrayFilterString(a []string, match func(string) bool) []string {
 	b := a[:0]
 	for _, x := range a {
@@ -37,7 +45,6 @@ func ArrayFilterString(a []string, match func(string) bool) []string {
 	}
 	return b
 }
-
 func ArrayInsensitiveMatchString(a []string, match string) bool {
 	for _, x := range a {
 		if StringInsensitiveMatch(x, match) {
@@ -46,7 +53,6 @@ func ArrayInsensitiveMatchString(a []string, match string) bool {
 	}
 	return false
 }
-
 func ArrayMatchString(a []string, match string) bool {
 	for _, x := range a {
 		if StringMatch(x, match) {
@@ -55,7 +61,6 @@ func ArrayMatchString(a []string, match string) bool {
 	}
 	return false
 }
-
 func StringDoubleSplit(s string, d rune) (string, string, bool) {
 	for i, c := range s {
 		if c == d {
@@ -69,20 +74,17 @@ func StringDoubleSplit(s string, d rune) (string, string, bool) {
 // counting, but this should eventually translate to normalization (http://godoc.org/golang.org/x/text/unicode/norm).
 // See also: https://blog.golang.org/normalization
 func StringLength(s string) (n int) { return utf8.RuneCountInString(s) }
+func StringToLower(r rune) rune     { return unicode.ToLower(r) }
+func StringToUpper(r rune) rune     { return unicode.ToUpper(r) }
 
-func StringToLower(r rune) rune { return unicode.ToLower(r) }
-
-func StringToUpper(r rune) rune { return unicode.ToUpper(r) }
-
-var StringMatch = func(a string, b string) bool {
+func StringMatch(a, b string) bool {
 	if strings.Compare(a, b) == 0 {
 		return true
 	}
-
 	return false
 }
 
-var StringInsensitiveMatch = strings.EqualFold
+func StringInsensitiveMatch(s, t string) bool { return strings.EqualFold(s, t) }
 
 // Cuts an element from an array, modifying the original array and returning the value cut.
 func SliceCutString(a []string, index int) (string, []string) {

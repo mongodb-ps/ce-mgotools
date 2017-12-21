@@ -4,7 +4,7 @@ import "time"
 
 type MaxKey struct{}
 type MinKey struct{}
-type ObjectId string
+type ObjectId []byte
 type Timestamp time.Time
 type Undefined struct{}
 

@@ -286,6 +286,32 @@ func TestRuneReaderSeek(t *testing.T) {
 		t.Errorf("expected 'fg', 'got '%s'", r.CurrentWord())
 	}
 }
+func TestRuneReaderSlurpWord(t *testing.T) {
+	msg := util.NewRuneReader("this is a series of words")
+	expect := []string{"this", "is", "a", "series", "of", "words"}
+	for i := 0; i < len(expect); i++ {
+		if word, ok := msg.SlurpWord(); word != expect[i] || !ok {
+			t.Errorf("Got '%s', expected '%s'", word, expect[i])
+		}
+	}
+	if word, ok := msg.SlurpWord(); word != "" && !ok {
+		t.Errorf("Got '%s', expected !ok", word)
+	}
+	msg = util.NewRuneReader("a { x: xyz }  word a   xyz ")
+	expect = []string{"a", "{", "x:", "xyz", "}", "word", "a", "xyz"}
+	for i := 0; i < len(expect); i++ {
+		if word, ok := msg.SlurpWord(); word != expect[i] || !ok {
+			t.Errorf("Got '%s', expected '%s'", word, expect[i])
+		}
+	}
+	if word, ok := msg.SlurpWord(); word != "" && !ok {
+		t.Errorf("Got '%s', expected !ok", word)
+	}
+	msg = util.NewRuneReader("word")
+	if word, ok := msg.SlurpWord(); word != "word" || !ok {
+		t.Errorf("Got '%s', expected 'word'", word)
+	}
+}
 
 func TestRuneReaderCurrentWord(t *testing.T) {
 	// a = 0, b = 1, c = 2, ' ' = 3, d = 4, e = 5, f = 6
