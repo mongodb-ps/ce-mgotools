@@ -13,7 +13,7 @@ import (
 )
 
 type Command interface {
-	Prepare(int, parser.LogEntryFactory, map[string]bool, map[string]int, map[string]string) error
+	Prepare(string, int, parser.LogEntryFactory, map[string]bool, map[string]int, map[string]string) error
 	ProcessLine(int, chan<- string, <-chan string, chan<- error, <-chan struct{}) error
 	Finish(chan<- string) error
 	Init()
@@ -22,11 +22,11 @@ type Command interface {
 type CommandFlag int
 
 const (
-	Bool        CommandFlag = iota
+	Bool CommandFlag = iota
 	Int
-	IntSlice
+	IntFileSlice
 	String
-	StringSlice
+	StringFileSlice
 )
 
 type CommandArgument struct {
@@ -47,6 +47,7 @@ type baseCommandFileHandle struct {
 	CloseSignal chan struct{}
 	FileHandle  *os.File
 	Factory     parser.LogEntryFactory
+	Name        string
 }
 
 type BaseOptions struct {
@@ -57,9 +58,11 @@ type BaseOptions struct {
 }
 
 type inputHandler struct {
-	in   []baseCommandFileHandle
+	in []struct {
+		base baseCommandFileHandle
+		args CommandArgumentCollection
+	}
 	sync synclib.WaitGroup
-	args CommandArgumentCollection
 }
 
 type outputHandler struct {
@@ -87,19 +90,22 @@ func NewOutputHandler(out *os.File, err *os.File) *outputHandler {
 	}
 }
 
-func (i *inputHandler) AddHandle(reader *os.File, args CommandArgumentCollection) {
+func (i *inputHandler) AddHandle(name string, reader *os.File, args CommandArgumentCollection) {
 	commandFileHandle := baseCommandFileHandle{
 		CloseSignal: make(chan struct{}),
 		Closed:      false,
 		FileHandle:  reader,
 		Factory:     parser.NewLogContext(),
+		Name:        name,
 	}
 
 	go commandFileHandle.closeHandler(&i.sync)
 
 	i.sync.Add(1)
-	i.in = append(i.in, commandFileHandle)
-	i.args = args
+	i.in = append(i.in, struct {
+		base baseCommandFileHandle
+		args CommandArgumentCollection
+	}{commandFileHandle, args})
 }
 
 // General purpose close handler for input and output handles.
@@ -117,7 +123,7 @@ func (b *baseCommandFileHandle) closeHandler(sync *synclib.WaitGroup) {
 }
 
 // A method for preparing all the bytes and pieces to pass along to the next step.
-func RunCommand(f Command, args CommandArgumentCollection, in *inputHandler, out *outputHandler) error {
+func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 	var (
 		// A count of inputs.
 		count int = len(in.in)
@@ -158,7 +164,7 @@ func RunCommand(f Command, args CommandArgumentCollection, in *inputHandler, out
 	f.Init()
 
 	for index, handle := range in.in {
-		if err = f.Prepare(index, handle.Factory, args.Booleans, args.Integers, args.Strings); err != nil {
+		if err = f.Prepare(handle.base.Name, index, handle.base.Factory, handle.args.Booleans, handle.args.Integers, handle.args.Strings); err != nil {
 			return err
 		}
 	}
@@ -196,7 +202,7 @@ func RunCommand(f Command, args CommandArgumentCollection, in *inputHandler, out
 	// Finally, a new goroutine is needed for each individual input file handle.
 	for i := 0; i < count; i += 1 {
 		// Start a goroutine to wait each input file handle to finish processing.
-		go parseFile(f, i, &in.in[i], outChannel, errorChannel, fatal, &processSync)
+		go parseFile(f, i, &in.in[i].base, outChannel, errorChannel, fatal, &processSync)
 	}
 
 	// Wait for all file handles to finish closing.

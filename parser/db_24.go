@@ -82,9 +82,9 @@ func parse24Command(r util.RuneReader) (LogMsgOpCommandLegacy, error) {
 	op := MakeLogMsgOpCommandLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
+	op.Name = op.Operation
 	if !r.ExpectString("cursorid:") {
 		if op.Command, err = util.ParseJsonRunes(r.SkipWords(1), false); err != nil {
-			util.Debug("rune parsing failed: %s", err)
 			return LogMsgOpCommandLegacy{}, err
 		}
 	}
@@ -123,7 +123,7 @@ func parse24Operation(r util.RuneReader) (LogMessage, error) {
 }
 func parseIntegerKeyValueErratic(param string, target map[string]int, r *util.RuneReader) {
 	if !parseIntegerKeyValue(param, target, mongo.COUNTERS) && param[len(param)-1] == ':' {
-		param = param[0: len(param)-1]
+		param = param[0 : len(param)-1]
 		if num, err := strconv.ParseInt(r.PreviewWord(1), 10, 64); err == nil {
 			if _, ok := mongo.COUNTERS[param]; ok {
 				target[mongo.COUNTERS[param]] = int(num)

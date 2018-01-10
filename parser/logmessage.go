@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	LOG_MESSAGE_TYPE_GENERAL    = iota
+	LOG_MESSAGE_TYPE_GENERAL = iota
 	LOG_MESSAGE_TYPE_COMMAND
 	LOG_MESSAGE_TYPE_CONNECTION
 )
@@ -61,10 +61,11 @@ type LogMsgOpCommandBase struct {
 	Counters    map[string]int
 	Duration    int64
 	Errors      []error
+	Name        string
 	PlanSummary []LogMsgOpCommandPlanSummary
 }
 
-type LogMsgOpCommandWP struct {
+type LogMsgOpCommandWireProtocol struct {
 	Agent    string
 	Protocol string
 }
@@ -72,9 +73,8 @@ type LogMsgOpCommandWP struct {
 type LogMsgOpCommand struct {
 	LogMsgOperation
 	LogMsgOpCommandBase
-	LogMsgOpCommandWP
-	SubOperation string
-	Locks        map[string]interface{}
+	LogMsgOpCommandWireProtocol
+	Locks map[string]interface{}
 }
 
 type LogMsgOpCommandLegacy struct {

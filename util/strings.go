@@ -18,8 +18,9 @@ func ArgumentSplit(r rune) bool {
 	switch r {
 	case ',', ';', ' ':
 		return true
+	default:
+		return false
 	}
-	return false
 }
 func ArgumentMatchOptions(match []string, a string) bool {
 	for _, value := range strings.FieldsFunc(a, ArgumentSplit) {
@@ -32,7 +33,7 @@ func ArgumentMatchOptions(match []string, a string) bool {
 func ArrayBinarySearchString(a string, m []string) bool {
 	p := sort.SearchStrings(m, a)
 	if p >= len(m) {
-		return false;
+		return false
 	}
 	return m[p] == a
 }

@@ -38,7 +38,6 @@ func (v *LogVersion26Parser) NewLogMessage(entry LogEntry) (LogMessage, error) {
 			return parse26Operation(r)
 			// Look at things related to index builds.
 		case r.ExpectString("build index on"):
-			util.Debug("entering build index")
 			return parse26BuildIndex(r)
 		default:
 			// Check for network status changes.
@@ -78,6 +77,7 @@ func parse26Command(r util.RuneReader) (LogMessage, error) {
 				if op.Command[param], err = util.ParseJsonRunes(&r, false); err != nil {
 					return nil, err
 				}
+				op.Name = param
 			} else if param == "locks(micros)" {
 				target = op.Locks
 				continue

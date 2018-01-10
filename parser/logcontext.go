@@ -2,9 +2,7 @@ package parser
 
 import (
 	"errors"
-	"fmt"
 	"mgotools/util"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -163,10 +161,6 @@ func (c *LogContext) NewLogEntry(raw RawLogEntry) (LogEntry, error) {
 		// A match succeeded so reset the factory list to the reduced set.
 		c.factories = c.factories[remaining-1:]
 		c.factoryCount = len(c.factories)
-		for i, t := range c.factories {
-			fmt.Fprintf(os.Stderr, " [%T %d]", t, i)
-		}
-		fmt.Fprint(os.Stderr, "\n")
 	}
 	updateYearRollover(out, c)
 	if !c.preambleParsed && out.LogMessage != nil {
@@ -177,8 +171,8 @@ func (c *LogContext) NewLogEntry(raw RawLogEntry) (LogEntry, error) {
 	c.Lines += 1
 	return out, err
 }
-func updateContext(entry LogEntry) (LogEntry) {
-	entry.Context = entry.RawContext[1: util.StringLength(entry.RawContext)-1]
+func updateContext(entry LogEntry) LogEntry {
+	entry.Context = entry.RawContext[1 : util.StringLength(entry.RawContext)-1]
 	length := util.StringLength(entry.Context)
 	if strings.HasPrefix(entry.Context, "conn") && length > 4 {
 		entry.Connection, _ = strconv.Atoi(entry.Context[4:])
@@ -197,7 +191,6 @@ FactoryCheck:
 				(b.Major == (1<<31-1) || b.Major == def.Major) &&
 				(b.Minor == (1<<31-1) || b.Minor == def.Minor) {
 				y = append(y, f)
-				util.Debug("*** Keeping factory %T (%d, %d, %d; %d %d %d)", f, def.Major, def.Minor, def.Binary, b.Major, b.Minor, b.Binary)
 				continue FactoryCheck
 			}
 		}
@@ -207,11 +200,6 @@ FactoryCheck:
 		c.factoryCount = len(y)
 		c.factoryFilter = a
 	}
-	util.Debug("*** Filtered factories, %d left", len(c.factories))
-	for i, f := range c.factories {
-		fmt.Fprintf(os.Stderr, "[%T %d]", f, i)
-	}
-	fmt.Fprint(os.Stderr, "\n")
 }
 func makeAllContextFactories() ([]LogVersionParser, int) {
 	var dateParserNew = util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})
@@ -223,7 +211,6 @@ func makeAllContextFactories() ([]LogVersionParser, int) {
 		&LogVersion32Parser{LogVersionCommon{dateParserNew}},
 		&LogVersion34Parser{LogVersionCommon{dateParserNew}},
 	}
-	util.Debug("*** Reset factories to %d", len(c))
 	return c, len(c)
 }
 func updateDate(entry LogEntry, raw RawLogEntry, c *LogContext) (LogEntry, RawLogEntry) {
