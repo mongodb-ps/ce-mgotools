@@ -67,7 +67,7 @@ func parse24BuildIndex(r util.RuneReader) (LogMessage, error) {
 		msg.Operation = "build index"
 		msg.Namespace, _ = r.SkipWords(2).SlurpWord()
 		if r.NextRune() == '{' {
-			if msg.Properties, err = util.ParseJsonRunes(&r, false); err == nil {
+			if msg.Properties, err = mongo.ParseJsonRunes(&r, false); err == nil {
 				return msg, nil
 			}
 		}
@@ -84,7 +84,7 @@ func parse24Command(r util.RuneReader) (LogMsgOpCommandLegacy, error) {
 	op.Namespace, _ = r.SlurpWord()
 	op.Name = op.Operation
 	if !r.ExpectString("cursorid:") {
-		if op.Command, err = util.ParseJsonRunes(r.SkipWords(1), false); err != nil {
+		if op.Command, err = mongo.ParseJsonRunes(r.SkipWords(1), false); err != nil {
 			return LogMsgOpCommandLegacy{}, err
 		}
 	}

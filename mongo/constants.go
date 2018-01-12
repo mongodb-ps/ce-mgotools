@@ -73,5 +73,46 @@ var COUNTERS = map[string]string{
 
 var OPERATIONS = []string{"command", "getmore", "insert", "query", "remove", "update"}
 
+var OPERATORS_COMPARISON = []string{
+	"$all",
+	"$bitsAllClear", // 3.2
+	"$bitsAllSet",   // 3.2
+	"$bitsAnyClear", // 3.2
+	"$bitsAnySet",   // 3.2
+	"$elemMatch",
+	"$eq", // 3.0
+	"$exists",
+	"$gt",
+	"$gte",
+	"$in",
+	"$lt",
+	"$lte",
+	"$ne",
+	"$nin",
+	"$size",
+	"$type",
+}
+
+var OPERATORS_LOGICAL = []string{
+	"$and",
+	"$not",
+	"$nor",
+	"$or",
+}
+
+var OPERATORS_EXPRESSION = []string{
+	"$comment",
+	"$expr",
+	"$geoIntersects", // 2.4
+	"$geoWithin",     // 2.4
+	"$jsonSchema",    // 3.6
+	"$mod",
+	"$near",
+	"$nearSphere",
+	"$regex",
+	"$text",
+	"$where",
+}
+
 // The severities variable contains all severities encountered in MongoDB.
 var SEVERITIES = []string{"D", "E", "F", "I", "W"}

@@ -1,12 +1,13 @@
 package parser
 
 import (
+	"mgotools/mongo"
 	"mgotools/util"
 	"time"
 )
 
 const (
-	LOG_VERSION_ANY    = 0
+	LOG_VERSION_ANY = 0
 	LOG_VERSION_MONGOD
 	LOG_VERSION_MONGOS
 )
@@ -97,7 +98,7 @@ func (v *LogVersionCommon) ParseNetwork(r util.RuneReader, entry LogEntry) (LogM
 			if addr, port, conn, ok := parseConnectionInit(r.SkipWords(3)); !ok {
 				return nil, LogVersionErrorUnmatched{"unexpected connection meta format"}
 			} else {
-				if meta, err := util.ParseJsonRunes(&r, false); err == nil {
+				if meta, err := mongo.ParseJsonRunes(&r, false); err == nil {
 					return LogMsgConnectionMeta{LogMsgConnection{addr, conn, port, true}, meta}, nil
 				}
 			}

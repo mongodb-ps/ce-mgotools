@@ -91,7 +91,7 @@ func parsePlanSummary(r *util.RuneReader) ([]LogMsgOpCommandPlanSummary, error) 
 			// There are no words, so exit.
 			break
 		} else if r.NextRune() == '{' {
-			if summary, err := util.ParseJsonRunes(r, false); err != nil {
+			if summary, err := mongo.ParseJsonRunes(r, false); err != nil {
 				// The plan summary did not parse as valid JSON so exit.
 				return nil, err
 			} else {
@@ -146,7 +146,7 @@ func parseStartupInfo(msg string) (LogMsgStartupInfo, error) {
 }
 
 func parseStartupOptions(msg string) (LogMsgStartupOptions, error) {
-	opt, err := util.ParseJson(msg, false)
+	opt, err := mongo.ParseJson(msg, false)
 	if err != nil {
 		return LogMsgStartupOptions{}, err
 	}

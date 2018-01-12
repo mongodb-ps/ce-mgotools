@@ -67,7 +67,7 @@ func parse3XCommand(r util.RuneReader, strict bool) (LogMessage, error) {
 			} else if strings.HasPrefix(param, "locks:") {
 				r.RewindSlurpWord()
 				r.Skip(6)
-				op.Locks, _ = util.ParseJsonRunes(&r, false)
+				op.Locks, _ = mongo.ParseJsonRunes(&r, false)
 			} else if strings.HasPrefix(param, "protocol:") {
 				op.Protocol = param[9:]
 			} else {
@@ -82,27 +82,27 @@ func parse3XCommand(r util.RuneReader, strict bool) (LogMessage, error) {
 		} else if param[0] == '{' {
 			r.RewindSlurpWord()
 			if name != "" {
-				if op.Command[name], err = util.ParseJsonRunes(&r, false); err != nil {
+				if op.Command[name], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				}
 			} else if section.Meta.Len() > 0 {
-				if op.Command[section.Meta.String()], err = util.ParseJsonRunes(&r, false); err != nil {
+				if op.Command[section.Meta.String()], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				}
 				section.Meta.Reset()
 			} else if op.Name != "" {
 				name = op.Name
-				if op.Command[name], err = util.ParseJsonRunes(&r, false); err != nil {
+				if op.Command[name], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				} else {
 					op.Name = ""
 				}
 			} else if _, ok := op.Command[op.Operation]; !ok {
-				if op.Command[op.Operation], err = util.ParseJsonRunes(&r, false); err != nil {
+				if op.Command[op.Operation], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				}
 			} else {
-				if op.Command["unknown"], err = util.ParseJsonRunes(&r, false); err != nil {
+				if op.Command["unknown"], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				}
 			}
@@ -142,7 +142,7 @@ func parse3XBuildIndex(r util.RuneReader) (LogMessage, error) {
 		r.SkipWords(1)
 	}
 	if r.NextRune() == '{' {
-		if msg.Properties, err = util.ParseJsonRunes(r.SkipWords(1), false); err != nil {
+		if msg.Properties, err = mongo.ParseJsonRunes(r.SkipWords(1), false); err != nil {
 			return msg, nil
 		}
 	}

@@ -107,7 +107,7 @@ func (r *RuneReader) EnclosedString(which rune) (string, error) {
 					continue
 				}
 				r.start, r.next = start, end+1
-				return string(r.runes[r.start+1: r.next-1]), nil
+				return string(r.runes[r.start+1 : r.next-1]), nil
 			}
 		}
 		escaped = false
@@ -165,13 +165,13 @@ func (r *RuneReader) Peek(length int) string {
 		} else if r.next+length < 0 {
 			length = -r.next
 		}
-		return string(r.runes[r.next+length: r.next])
+		return string(r.runes[r.next+length : r.next])
 	} else if r.next == r.length {
 		return ""
 	} else if r.next+length > r.length {
 		length = r.length - r.next
 	}
-	return string(r.runes[r.next: r.next+length])
+	return string(r.runes[r.next : r.next+length])
 }
 
 // Pos() returns the current position of the _end_ pointer in the rune set.
@@ -248,7 +248,7 @@ func (r *RuneReader) Read(start int, length int) (string, bool) {
 	if start < 0 || start+length > r.length || length < 1 {
 		return "", false
 	}
-	return string(r.runes[start: start+length]), true
+	return string(r.runes[start : start+length]), true
 }
 
 // Remainder() returns a string of all runes from and including
@@ -436,33 +436,6 @@ func checkReader(r *RuneReader, a ...interface{}) bool {
 			}
 		default:
 			panic(fmt.Sprintf("Unexpected match type: %T", v))
-		}
-	}
-	return false
-}
-
-func checkRune(r rune, a ...interface{}) bool {
-	for _, b := range a {
-		switch v := b.(type) {
-		case rune:
-			return r == v
-		case []rune:
-			for _, i := range v {
-				if r == i {
-					return true
-				}
-			}
-		case byte:
-		case int:
-			if r == rune(v) {
-				return true
-			}
-		case *unicode.RangeTable:
-			if unicode.Is(v, r) {
-				return true
-			}
-		default:
-			panic(fmt.Sprintf("unexpected match type: %T", v))
 		}
 	}
 	return false

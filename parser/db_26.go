@@ -74,7 +74,7 @@ func parse26Command(r util.RuneReader) (LogMessage, error) {
 	for {
 		if param, ok := r.SlurpWord(); ok {
 			if r.Expect('{') {
-				if op.Command[param], err = util.ParseJsonRunes(&r, false); err != nil {
+				if op.Command[param], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					return nil, err
 				}
 				op.Name = param
@@ -132,7 +132,7 @@ func parse26Operation(r util.RuneReader) (LogMessage, error) {
 				return nil, LogVersionErrorUnmatched{"unexpected end of string"}
 			} else if r.Expect('{') {
 				// Parse JSON, found immediately after an operation.
-				if op.Command, err = util.ParseJsonRunes(&r, false); err != nil {
+				if op.Command, err = mongo.ParseJsonRunes(&r, false); err != nil {
 					return nil, err
 				}
 			}

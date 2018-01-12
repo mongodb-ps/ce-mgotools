@@ -29,7 +29,7 @@ type filterCommandOptions struct {
 	MessageOutput            bool
 	NamespaceFilter          string
 	OperationFilter          string
-	PatternFilter            string
+	PatternFilter            *mongo.Pattern
 	SeverityFilter           string
 	ShortenOutput            int
 	SlowerFilter             time.Duration
@@ -50,8 +50,12 @@ type filterLog struct {
 	commandOptions filterCommandOptions
 }
 
-func (f *filterCommand) Finish(out chan<- string) error {
-	//out <- fmt.Sprintf("final counts: %d lines, %d errors", f.lineCount, f.errorCount)
+func (f *filterCommand) Finish(index int) error {
+	// There are no operations that need to be performed when a file finishes.
+	return nil
+}
+func (f *filterCommand) Terminate(out chan<- string) error {
+	// Finish any
 	return nil
 }
 func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan string, errs chan<- error, fatal <-chan struct{}) error {
@@ -64,41 +68,41 @@ func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan stri
 		exit = 1
 	}()
 	for line := range in {
-		switch {
-		case exit != 0:
+		if exit != 0 {
 			// Received an exit signal so immediately exit.
-			fmt.Println("Received exit signal")
+			util.Debug("received exit signal")
 			return nil
-		case line == "":
-		default:
-			options.lineCount += 1
-			raw, err := f.Log[index].NewRawLogEntry(line)
-			if err != nil {
-				panic(err)
+		} else if line == "" {
+			continue
+		}
+		options.lineCount += 1
+		raw, err := f.Log[index].NewRawLogEntry(line)
+		if err != nil {
+			panic(err)
+		}
+		entry, err := f.Log[index].NewLogEntry(raw)
+		if err != nil {
+			if _, ok := err.(parser.LogVersionErrorUnmatched); !ok {
+				errs <- err
+				options.errorCount += 1
 			}
-			entry, err := f.Log[index].NewLogEntry(raw)
-			if err != nil {
-				if _, ok := err.(parser.LogVersionErrorUnmatched); !ok {
-					errs <- err
-					options.errorCount += 1
-				}
-			} else {
-				if entry, modified := f.modify(entry, options); modified {
-					line = entry.String()
-				}
-				if ok := f.match(entry, f.Log[index].commandOptions); (!options.InvertMatch && ok) || (options.InvertMatch && !ok) {
-					if options.ShortenOutput > 0 {
-						line = entry.Prefix(options.ShortenOutput)
-					} else if options.MessageOutput {
-						line = entry.RawMessage
-					}
-					if options.MarkerOutput != "" {
-						out <- options.MarkerOutput + line
-					} else {
-						out <- line
-					}
-				}
+		} else {
+			if entry, modified := f.modify(entry, options); modified {
+				line = options.MarkerOutput + entry.String()
 			}
+			if ok := f.match(entry, f.Log[index].commandOptions); (options.InvertMatch && ok) || (!options.InvertMatch && !ok) {
+				continue
+			}
+			if options.MessageOutput {
+				line = entry.RawMessage
+			}
+			if options.ShortenOutput > 0 {
+				line = entry.Prefix(options.ShortenOutput)
+			}
+			if options.MarkerOutput != "" {
+				line = options.MarkerOutput + line
+			}
+			out <- line
 		}
 	}
 	return nil
@@ -226,6 +230,14 @@ func (f *filterCommand) Prepare(name string, index int, factory parser.LogEntryF
 			}
 		case "namespace":
 			opts.NamespaceFilter = value
+		case "pattern":
+			if pattern, err := mongo.ParseJson(value, false); err != nil {
+				return fmt.Errorf("unrecognized pattern (%s)", err)
+			} else if opts.PatternFilter, err = mongo.NewPattern(pattern); err != nil {
+				return fmt.Errorf("failed to transform pattern")
+			} else {
+				util.Debug("pattern: %+v", opts.PatternFilter)
+			}
 		case "operation":
 			opts.OperationFilter = value
 		case "severity":

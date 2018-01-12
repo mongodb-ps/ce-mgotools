@@ -13,9 +13,10 @@ import (
 )
 
 type Command interface {
+	Finish(int) error
 	Prepare(string, int, parser.LogEntryFactory, map[string]bool, map[string]int, map[string]string) error
 	ProcessLine(int, chan<- string, <-chan string, chan<- error, <-chan struct{}) error
-	Finish(chan<- string) error
+	Terminate(chan<- string) error
 	Init()
 }
 
@@ -161,8 +162,11 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 		return errors.New("an input and output handler are required")
 	}
 
+	// Alert the command that it will be prepared soon. This allows it to initialize itself and prepare any memory
+	// that needs allocating outside of a file loop.
 	f.Init()
 
+	// Pass each file and its information to the command so it can prepare.
 	for index, handle := range in.in {
 		if err = f.Prepare(handle.base.Name, index, handle.base.Factory, handle.args.Booleans, handle.args.Integers, handle.args.Strings); err != nil {
 			return err
@@ -180,8 +184,8 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 
 	// Initiate a goroutine to wait for a single error and signal all other input parsing routines.
 	go func() {
-		outputSync.Add(1)
 		// Wait for errors (or for the channel to close).
+		outputSync.Add(1)
 		for recv := range errorChannel {
 			errorWriter.WriteString(recv.Error() + "\n")
 			errorWriter.Flush()
@@ -190,9 +194,9 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 	}()
 
 	go func() {
-		outputSync.Add(1)
 		// Create another goroutine for outputs. Start checking for output from the several input goroutines.
 		// Output all received values directly (this may need to change in the future, i.e. should sorting be needed).
+		outputSync.Add(1)
 		for line := range outChannel {
 			outputWriter.WriteString(line + "\n")
 		}
@@ -220,7 +224,7 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 
 	// Allow the command to finalize any pending actions.
 	if err == nil {
-		f.Finish(outChannel)
+		f.Terminate(outChannel)
 	}
 
 	return err
@@ -259,6 +263,10 @@ func parseFile(f Command, index int, in *baseCommandFileHandle, out chan<- strin
 
 	if scannerError := scanner.Err(); scannerError != nil {
 		errs <- scannerError
+	}
+
+	if err := f.Finish(index); err != nil {
+		errs <- err
 	}
 	return
 }

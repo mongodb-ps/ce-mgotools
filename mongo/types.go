@@ -1,6 +1,8 @@
 package mongo
 
-import "time"
+import (
+	"time"
+)
 
 type MaxKey struct{}
 type MinKey struct{}

@@ -1,10 +1,14 @@
-package util
+package mongo
 
 import (
+	"mgotools/util"
 	"reflect"
 	"testing"
 	"time"
 )
+
+type Object = map[string]interface{}
+type Array = []interface{}
 
 func TestParseJson(t *testing.T) {
 	s := map[string]map[string]interface{}{
@@ -22,10 +26,12 @@ func TestParseJson(t *testing.T) {
 		`{"key":"true"}`:                                     {"key": "true"},
 		`{"number" : 1}`:                                     {"number": 1},
 		`{"float" : 1.5}`:                                    {"float": 1.5},
-		`{"object":{"key":"value"}}`:                         {"object": map[string]interface{}{"key": "value"}},
-		`{"object":{"key1":"value1" , "key2" : "value2" } }`: {"object": map[string]interface{}{"key1": "value1", "key2": "value2"}},
-		`{"key": ["value"]}`:                                 {"key": []interface{}{"value"}},
-		`{"key":[ "value1" , "value2" ]}`:                    {"key": []interface{}{"value1", "value2"}},
+		`{"object":{"key":"value"}}`:                         {"object": Object{"key": "value"}},
+		`{"object":{"key1":"value1" , "key2" : "value2" } }`: {"object": Object{"key1": "value1", "key2": "value2"}},
+		`{key:{$op:"value"}}`:                                {"key": Object{"$op": "value"}},
+		`{"key":[]}`:                                         {"key": Array{}},
+		`{"key": ["value"]}`:                                 {"key": Array{"value"}},
+		`{"key":[ "value1" , "value2" ]}`:                    {"key": Array{"value1", "value2"}},
 	}
 
 	for source, target := range s {
@@ -38,7 +44,7 @@ func TestParseJson(t *testing.T) {
 }
 
 func TestParseDataType(t *testing.T) {
-	m := []map[string]interface{}{
+	m := []Object{
 		{"$date": time.Now()},
 		{"$timestamp": time.Now()},
 		{"$oid": "1234567890abcdef"},
@@ -61,7 +67,7 @@ func TestParseDataType(t *testing.T) {
 }
 
 func TestParseNumber(t *testing.T) {
-	m := map[string]interface{}{
+	m := Object{
 		"1":           1,
 		"-1":          -1,
 		"0.1":         0.1,
@@ -77,7 +83,7 @@ func TestParseNumber(t *testing.T) {
 		"1 ":          1,
 	}
 	for s, v := range m {
-		if c, err := parseNumber(NewRuneReader(s)); c != v || err != nil {
+		if c, err := parseNumber(util.NewRuneReader(s)); c != v || err != nil {
 			t.Errorf("Parsing number '%s' (%T %v) returned %T %v: %s", s, v, v, c, c, err)
 		}
 	}
