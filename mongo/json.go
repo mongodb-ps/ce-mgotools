@@ -129,13 +129,14 @@ func parseKey(r *util.RuneReader, strict bool) (string, error) {
 		}
 		fallthrough
 	default:
+		if strict {
+			return "", fmt.Errorf("unquoted keys are not allowed in strict mode")
+		}
 		if !checkRune(c, unicode.Letter, []rune{'$', '_'}) {
 			return "", fmt.Errorf("first character in key must be a letter, dollar sign ($), or underscore (_)")
 		}
 		for r.Expect(unicode.Letter, unicode.Number, []rune{'$', '_'}) {
-			if _, ok := r.Next(); !ok {
-				return "", fmt.Errorf("unexpected end of string")
-			}
+			r.Next()
 		}
 	}
 	return r.CurrentWord(), nil
@@ -189,7 +190,7 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 		}
 	case r.Expect(unicode.Digit, '-', '+', '.'):
 		if value, err = parseNumber(r); err != nil {
-			return value, nil
+			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("unexpected value at %d, got '%c'", r.Pos(), r.NextRune())
