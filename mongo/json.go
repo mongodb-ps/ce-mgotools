@@ -176,14 +176,19 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 		for ok := true; ok && !checkRune(c, unicode.Space, []rune{',', '}'}); c, ok = r.Next() {
 		}
 		r.Prev()
-		switch word := r.CurrentWord(); word {
+		switch word := strings.ToLower(r.CurrentWord()); word {
 		case "true":
 			value = true
 		case "false":
 			value = false
+		case "null":
+			value = nil
 		default:
-			if util.StringLength(word) == 36 && strings.ToLower(word[:8]) == "objectid" {
+			length := util.StringLength(word)
+			if length == 36 && word[:8] == "objectid" {
 				value, err = parseObjectId(word, strict)
+			} else if length == 3 && word == "new" {
+				value, err = parseDate(r)
 			} else {
 				return nil, fmt.Errorf("unrecognized type beginning with '%c' at %d", r.NextRune(), r.Pos())
 			}
@@ -196,6 +201,28 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 		return nil, fmt.Errorf("unexpected value at %d, got '%c'", r.Pos(), r.NextRune())
 	}
 	return value, err
+}
+
+func parseDate(r *util.RuneReader) (time.Time, error) {
+	// new Date(1490821611611)
+	if r.CurrentWord() == "new" {
+		r.SkipWords(1)
+	}
+	var date string
+	if date, ok := r.SlurpWord(); !ok {
+		return time.Time{}, errors.New("unexpected end of string parsing date")
+	} else {
+		if len(date) == 19 && util.StringInsensitiveMatch(date[:5], "date(") && date[18] == ')' {
+			if t, err := strconv.ParseInt(date[5:18], 10, 64); err != nil {
+				return time.Time{}, err
+			} else {
+
+				return time.Unix(t/1000, (t%1000)*1000000), nil
+			}
+		}
+
+	}
+	return time.Time{}, fmt.Errorf("unrecognized date string (%s)", date)
 }
 
 func parseNumber(r *util.RuneReader) (interface{}, error) {

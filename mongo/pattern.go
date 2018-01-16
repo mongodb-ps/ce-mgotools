@@ -1,49 +1,117 @@
 package mongo
 
 import (
+	"fmt"
 	"mgotools/util"
 )
 
 type Pattern struct {
-	Pattern map[string]interface{}
+	pattern     Object
+	initialized bool
 }
 type V struct {
 }
 
-func NewPattern(s map[string]interface{}) (*Pattern, error) {
-	return &Pattern{patternize(s, false)}, nil
+func NewPattern(s map[string]interface{}) Pattern {
+	return Pattern{createPattern(s, false), true}
 }
-
-func patternize(s map[string]interface{}, expr bool) map[string]interface{} {
-	for key, _ := range s {
+func (p *Pattern) IsEmpty() bool {
+	return !p.initialized
+}
+func (p *Pattern) Equals(object Pattern) bool {
+	return deepEqual(p.pattern, object.pattern)
+}
+func (p *Pattern) Pattern() Object {
+	return p.pattern
+}
+func createPattern(s Object, expr bool) Object {
+	var arr func(Array, bool) Array
+	arr = func(t Array, expr bool) Array {
+		size := len(t)
+		for i := 0; i < size; i += 1 {
+			switch t2 := t[i].(type) {
+			case Object:
+				t[i] = createPattern(t2, true)
+			case Array:
+				if !expr {
+					t[i] = arr(t2, true)
+				} else {
+					t[i] = V{}
+				}
+			default:
+				t[i] = V{}
+			}
+		}
+		return t
+	}
+	for key := range s {
 		switch t := s[key].(type) {
-		case map[string]interface{}:
-			if !expr {
-				s[key] = patternize(t, true)
-			} else if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) {
-				s[key] = patternize(t, false)
-			} else if util.ArrayInsensitiveMatchString(OPERATORS_COMPARISON, key) {
+		case Object:
+			if !expr || util.ArrayInsensitiveMatchString(OPERATORS_COMPARISON, key) {
+				s[key] = createPattern(t, true)
+			} else if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) || util.ArrayInsensitiveMatchString(OPERATORS_EXPRESSION, key) {
+				s[key] = createPattern(t, false)
+			} else {
 				s[key] = V{}
 			}
-		case []interface{}:
-			s[key] = patternizeArray(t)
+		case Array:
+			if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) {
+				s[key] = arr(t, false)
+			} else if util.ArrayInsensitiveMatchString(OPERATORS_EXPRESSION, key) {
+				s[key] = arr(t, true)
+			} else {
+				s[key] = V{}
+			}
 		default:
 			s[key] = V{}
 		}
 	}
 	return s
 }
-func patternizeArray(t []interface{}) []interface{} {
-	size := len(t)
-	for i := 0; i < size; i += 1 {
-		switch t2 := t[i].(type) {
-		case map[string]interface{}:
-			t[i] = patternize(t2, true)
-		case []interface{}:
-			t[i] = patternizeArray(t)
+
+// Why create a new DeepEqual method? Why not use reflect.DeepEqual? The reflect package is scary. Not in
+// the "I don't know how to use this" way but in a "reflection is great, but unnecessary here" kind of way. There is
+// no reason to use a cannon to kill this particular mosquito since we're only doing checks against objects, arrays,
+// and a single empty struct V{}. See the benchmark in pattern_test.go for more justification.
+func deepEqual(ax, bx Object) bool {
+	if len(ax) != len(bx) {
+		return false
+	}
+	var f func(a, b interface{}) bool
+	f = func(a, b interface{}) bool {
+		switch t := a.(type) {
+		case Object:
+			if s, ok := b.(Object); !ok {
+				return false
+			} else if !deepEqual(t, s) {
+				return false
+			}
+			return true
+		case Array:
+			s, ok := b.(Array)
+			if !ok || len(s) != len(t) {
+				return false
+			}
+			l := len(s)
+			for i := 0; i < l; i += 1 {
+				if !f(t[i], s[i]) {
+					return false
+				}
+			}
+			return true
+		case V:
+			if _, ok := b.(V); !ok {
+				return false
+			}
+			return true
 		default:
-			t[i] = V{}
+			panic(fmt.Sprintf("unexpected type in pattern: %#v", a))
 		}
 	}
-	return t
+	for key := range ax {
+		if _, ok := bx[key]; !ok || !f(ax[key], bx[key]) {
+			return false
+		}
+	}
+	return true // len(a) == len(b) == 0
 }

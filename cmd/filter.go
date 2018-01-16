@@ -29,7 +29,7 @@ type filterCommandOptions struct {
 	MessageOutput            bool
 	NamespaceFilter          string
 	OperationFilter          string
-	PatternFilter            *mongo.Pattern
+	PatternFilter            mongo.Pattern
 	SeverityFilter           string
 	ShortenOutput            int
 	SlowerFilter             time.Duration
@@ -233,10 +233,10 @@ func (f *filterCommand) Prepare(name string, index int, factory parser.LogEntryF
 		case "pattern":
 			if pattern, err := mongo.ParseJson(value, false); err != nil {
 				return fmt.Errorf("unrecognized pattern (%s)", err)
-			} else if opts.PatternFilter, err = mongo.NewPattern(pattern); err != nil {
+			} else if opts.PatternFilter = mongo.NewPattern(pattern); err != nil {
 				return fmt.Errorf("failed to transform pattern")
 			} else {
-				util.Debug("pattern: %+v", opts.PatternFilter)
+				util.Debug("argument pattern: %+v", opts.PatternFilter)
 			}
 		case "operation":
 			opts.OperationFilter = value
@@ -287,7 +287,11 @@ func (f *filterCommand) match(entry parser.LogEntry, opts filterCommandOptions) 
 		return false
 	} else if opts.WordFilter != "" && strings.Contains(entry.String(), opts.WordFilter) {
 
-	} else if entry.LogMessage == nil && (opts.FasterFilter > 0 || opts.SlowerFilter > 0 || opts.CommandFilter != "" || opts.NamespaceFilter != "") {
+	} else if entry.LogMessage == nil && (opts.FasterFilter > 0 ||
+		opts.SlowerFilter > 0 ||
+		opts.CommandFilter != "" ||
+		opts.NamespaceFilter != "" ||
+		!opts.PatternFilter.IsEmpty()) {
 		// Return failure on any log messages that could not be parsed when filters exist that rely on parsing a
 		// log message.
 		return false
@@ -298,10 +302,8 @@ func (f *filterCommand) match(entry parser.LogEntry, opts filterCommandOptions) 
 	}
 
 	// Try converting into a base LogMsgOpCommand object and do comparisons if the filter succeeds.
-	if cmd, ok := entry.LogMessage.(parser.LogMsgOpCommand); ok {
-		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
-			return false
-		} else if opts.CommandFilter != "" && !stringMatchFields(cmd.Name, opts.CommandFilter) {
+	if cmd, ok := entry.LogMessage.(parser.LogMsgOpCommandBase); ok {
+		if opts.CommandFilter != "" && !stringMatchFields(cmd.Name, opts.CommandFilter) {
 			return false
 		} else if opts.FasterFilter > 0 && time.Duration(cmd.Duration) > opts.FasterFilter {
 			return false
@@ -311,6 +313,22 @@ func (f *filterCommand) match(entry parser.LogEntry, opts filterCommandOptions) 
 	} else if opts.FasterFilter > 0 || opts.SlowerFilter > 0 || opts.CommandFilter != "" || opts.NamespaceFilter != "" {
 		// Return failure on any log messages that are parsed successfully but don't contain components that can be
 		// filtered based on command-style criteria.
+		return false
+	}
+	// Try convergint to a LogMsgOpCommandLegacy object and compare filters based on that object type.
+	if cmd, ok := entry.LogMessage.(parser.LogMsgOpCommandLegacy); ok {
+		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
+			return false
+		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Command, opts.PatternFilter) {
+			return false
+		}
+	} else if cmd, ok := entry.LogMessage.(parser.LogMsgOpCommand); ok {
+		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
+			return false
+		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Command, opts.PatternFilter) {
+			return false
+		}
+	} else if !ok && !opts.PatternFilter.IsEmpty() {
 		return false
 	}
 
@@ -323,6 +341,16 @@ func (f *filterCommand) modify(entry parser.LogEntry, options filterCommandOptio
 		return entry, true
 	}
 	return entry, false
+}
+func checkQueryPattern(op string, cmd mongo.Object, check mongo.Pattern) bool {
+	for _, key := range []string{"query", "command", "update", "remove"} {
+		if query, ok := cmd[key].(map[string]interface{}); ok {
+			if check.Equals(mongo.NewPattern(query)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 func stringMatchFields(value string, check string) bool {
 	for _, item := range strings.FieldsFunc(check, util.ArgumentSplit) {

@@ -139,3 +139,11 @@ func TestParseNumber(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckRune(t *testing.T) {
+	if !checkRune('a', 'a') ||
+		!checkRune('a', []rune{'a'}) ||
+		!checkRune('a', int('a')) {
+		t.Errorf("unexpected character mismatch")
+	}
+}

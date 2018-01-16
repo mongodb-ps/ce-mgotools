@@ -27,11 +27,11 @@ func (v *LogVersion24Parser) NewLogMessage(entry LogEntry) (LogMessage, error) {
 		// Check for connection related messages, which is almost everything *not* related to startup messages.
 		switch {
 		case r.ExpectString("command"),
-			r.ExpectString("query"):
+			r.ExpectString("query"),
+			r.ExpectString("update"):
 			// Commands or queries!
 			return parse24Command(r)
 		case r.ExpectString("insert"),
-			r.ExpectString("update"),
 			r.ExpectString("getmore"),
 			r.ExpectString("remove"):
 			// Inserts!
@@ -79,17 +79,25 @@ func parse24Command(r util.RuneReader) (LogMsgOpCommandLegacy, error) {
 	var err error
 	// command test.$cmd command: { getlasterror: 1.0, w: 1.0 } ntoreturn:1 keyUpdates:0  reslen:67 0ms
 	// query test.foo query: { b: 1.0 } ntoreturn:0 ntoskip:0 nscanned:10 keyUpdates:0 locks(micros) r:146 nreturned:1 reslen:64 0ms
+	// update vcm_audit.payload.files query: { _id: ObjectId('000000000000000000000000') } update: { _id: ObjectId('000000000000000000000000') } idhack:1 nupdated:1 upsert:1 keyUpdates:0 locks(micros) w:33688 194ms
 	op := MakeLogMsgOpCommandLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
-	op.Name = op.Operation
-	if !r.ExpectString("cursorid:") {
-		if op.Command, err = mongo.ParseJsonRunes(r.SkipWords(1), false); err != nil {
-			return LogMsgOpCommandLegacy{}, err
-		}
-	}
 	var target map[string]int = op.Counters
 	for param, ok := r.SlurpWord(); ok && param != ""; param, ok = r.SlurpWord() {
+		if param[len(param)-1] == ':' {
+			param = param[:len(param)-1]
+			if op.Name == "" {
+				op.Name = param
+			}
+			if r.Expect('{') {
+				if op.Command[param], err = mongo.ParseJsonRunes(&r, false); err != nil {
+					util.Debug("param json failed: %s", err)
+					return op, err
+				}
+			}
+			continue
+		}
 		parseIntegerKeyValueErratic(param, target, &r)
 		if param == "locks(micros)" {
 			target = op.Locks

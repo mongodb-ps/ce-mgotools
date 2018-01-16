@@ -3,6 +3,13 @@
 // anything not already contained in the standard go release.
 package mongo
 
+type Object map[string]interface{}
+type Array []interface{}
+
+// The constant arrays that follow should *ALWAYS* be in sorted binary order. A lot of methods expect these arrays
+// to be pre-sorted so they can be used with binary searches for fast array comparison. Failure to put these arrays
+// in proper binary order will because these methods to fail.
+
 // The components array contains all component strings.
 var COMPONENTS = []string{
 	"ACCESS",        // 3.0 ?
@@ -79,8 +86,7 @@ var OPERATORS_COMPARISON = []string{
 	"$bitsAllSet",   // 3.2
 	"$bitsAnyClear", // 3.2
 	"$bitsAnySet",   // 3.2
-	"$elemMatch",
-	"$eq", // 3.0
+	"$eq",           // 3.0
 	"$exists",
 	"$gt",
 	"$gte",
@@ -101,10 +107,15 @@ var OPERATORS_LOGICAL = []string{
 }
 
 var OPERATORS_EXPRESSION = []string{
+	"$box",          // $geoWithin
+	"$center",       // $geoWithin
+	"$centerSphere", // $geoWithin
 	"$comment",
+	"$elemMatch",
 	"$expr",
 	"$geoIntersects", // 2.4
 	"$geoWithin",     // 2.4
+	"$geometry",      // $geoIntersects, $geoWithin
 	"$jsonSchema",    // 3.6
 	"$mod",
 	"$near",
