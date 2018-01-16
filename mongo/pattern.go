@@ -1,6 +1,7 @@
 package mongo
 
 import (
+	"bytes"
 	"fmt"
 	"mgotools/util"
 )
@@ -23,6 +24,66 @@ func (p *Pattern) Equals(object Pattern) bool {
 }
 func (p *Pattern) Pattern() Object {
 	return p.pattern
+}
+func (p *Pattern) String() string {
+	if !p.initialized {
+		return ""
+	}
+	var arr func(Array) string
+	var obj func(Object) string
+	arr = func(array Array) string {
+		var buffer = bytes.NewBufferString("[")
+		total := len(array)
+		if total > 0 {
+			buffer.WriteRune(' ')
+		}
+		for index := 0; index < total; index += 1 {
+			switch t := array[index].(type) {
+			case Array:
+				buffer.WriteString(arr(t))
+			case Object:
+				buffer.WriteString(obj(t))
+			case V:
+				buffer.WriteRune('1')
+			}
+			if index < total-1 {
+				buffer.WriteString(", ")
+			} else {
+				buffer.WriteRune(' ')
+			}
+		}
+		buffer.WriteRune(']')
+		return buffer.String()
+	}
+	obj = func(object Object) string {
+		var buffer = bytes.NewBufferString("{")
+		total := len(object)
+		count := 0
+		if total > 0 {
+			buffer.WriteRune(' ')
+		}
+		for key := range object {
+			count += 1
+			buffer.WriteString(key)
+			buffer.WriteString(": ")
+			switch t := object[key].(type) {
+			case Array:
+				buffer.WriteString(arr(t))
+			case Object:
+				buffer.WriteString(obj(t))
+			case V:
+				buffer.WriteRune('1')
+			}
+			if count < total {
+				buffer.WriteString(", ")
+			} else {
+				buffer.WriteRune(' ')
+			}
+		}
+		buffer.WriteString("}")
+		return buffer.String()
+	}
+	return obj(p.pattern)
 }
 func createPattern(s Object, expr bool) Object {
 	var arr func(Array, bool) Array

@@ -10,7 +10,13 @@ to parse through quickly. These tools are designed to easily filter
 through large files quickly. They're designed to be extendable so
 other projects can incorporate the binaries.
 
-## Requirements
-This project uses the `type` alias feature, meaning Go 1.9 is required
-to build.
+## Usage
+There is one binary currently generated. The plan is to build drop-in
+binary replacements for mloginfo and mlogfilter. Until then,
+sub-commands are available.
 
+### filter
+`./mgotools filter --help`
+
+### info
+`./mgotools info --help`

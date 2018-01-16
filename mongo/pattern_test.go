@@ -102,6 +102,34 @@ func TestPattern_Pattern(t *testing.T) {
 		t.Errorf("pattern should be empty")
 	}
 }
+func TestPattern_String(t *testing.T) {
+	s := []Pattern{
+		{Object{"a": V{}}, true},
+		{Object{"a": V{}, "b": V{}}, true},
+		{Object{"a": Array{V{}, V{}}}, true},
+		{Object{}, true},
+		{Object{"a": Array{}}, true},
+		{Object{"a": Array{Object{"b": V{}}}}, true},
+		{Object{"a": Array{Array{V{}}}}, true},
+	}
+	d := []string{
+		"{ a: 1 }",
+		"{ a: 1, b: 1 }",
+		"{ a: [ 1, 1 ] }",
+		"{}",
+		"{ a: [] }",
+		"{ a: [ { b: 1 } ] }",
+		"{ a: [ [ 1 ] ] }",
+	}
+	if len(s) != len(d) {
+		t.Fatalf("mismatch between array sizes, %d and %d", len(s), len(d))
+	}
+	for i := range s {
+		if s[i].String() != d[i] {
+			t.Errorf("pattern mismatch, expected '%s', got '%s'", d[i], s[i].String())
+		}
+	}
+}
 
 var patterns = []Pattern{
 	NewPattern(Object{}),
