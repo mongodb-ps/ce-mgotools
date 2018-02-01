@@ -1,4 +1,4 @@
-package cmd
+package factory
 
 // TODO: Stream input from _mongod_ and tee output
 // TODO: Create better factory model than including parser.LogEntryFactory
@@ -7,57 +7,30 @@ import (
 	"bufio"
 	"compress/gzip"
 	"errors"
-	"mgotools/parser"
 	"os"
 	synclib "sync"
 )
 
 type Command interface {
 	Finish(int) error
-	Prepare(string, int, parser.LogEntryFactory, map[string]bool, map[string]int, map[string]string) error
+	Prepare(InputContext) error
 	ProcessLine(int, chan<- string, <-chan string, chan<- error, <-chan struct{}) error
 	Terminate(chan<- string) error
-	Init()
 }
 
 type CommandFlag int
-
-const (
-	Bool CommandFlag = iota
-	Int
-	IntFileSlice
-	String
-	StringFileSlice
-)
-
-type CommandArgument struct {
-	Name      string
-	ShortName string
-	Usage     string
-	Type      CommandFlag
-}
-
-type CommandArgumentCollection struct {
-	Booleans map[string]bool
-	Integers map[string]int
-	Strings  map[string]string
-}
 
 type baseCommandFileHandle struct {
 	Closed      bool
 	CloseSignal chan struct{}
 	FileHandle  *os.File
-	Factory     parser.LogEntryFactory
 	Name        string
 }
-
 type BaseOptions struct {
 	DateFormat  string
 	LinearParse bool
 	Verbose     bool
-	SkipUnicode bool
 }
-
 type inputHandler struct {
 	in []struct {
 		base baseCommandFileHandle
@@ -65,7 +38,11 @@ type inputHandler struct {
 	}
 	sync synclib.WaitGroup
 }
-
+type InputContext struct {
+	Index int
+	Name  string
+	CommandArgumentCollection
+}
 type outputHandler struct {
 	out baseCommandFileHandle
 	err baseCommandFileHandle
@@ -96,7 +73,6 @@ func (i *inputHandler) AddHandle(name string, reader *os.File, args CommandArgum
 		CloseSignal: make(chan struct{}),
 		Closed:      false,
 		FileHandle:  reader,
-		Factory:     parser.NewLogContext(),
 		Name:        name,
 	}
 
@@ -162,13 +138,9 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 		return errors.New("an input and output handler are required")
 	}
 
-	// Alert the command that it will be prepared soon. This allows it to initialize itself and prepare any memory
-	// that needs allocating outside of a file loop.
-	f.Init()
-
 	// Pass each file and its information to the command so it can prepare.
 	for index, handle := range in.in {
-		if err = f.Prepare(handle.base.Name, index, handle.base.Factory, handle.args.Booleans, handle.args.Integers, handle.args.Strings); err != nil {
+		if err = f.Prepare(InputContext{index, handle.base.Name, handle.args}); err != nil {
 			return err
 		}
 	}
@@ -186,21 +158,21 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 	go func() {
 		// Wait for errors (or for the channel to close).
 		outputSync.Add(1)
+		defer outputSync.Done()
 		for recv := range errorChannel {
 			errorWriter.WriteString(recv.Error() + "\n")
 			errorWriter.Flush()
 		}
-		outputSync.Done()
 	}()
 
 	go func() {
 		// Create another goroutine for outputs. Start checking for output from the several input goroutines.
 		// Output all received values directly (this may need to change in the future, i.e. should sorting be needed).
 		outputSync.Add(1)
+		defer outputSync.Done()
 		for line := range outChannel {
 			outputWriter.WriteString(line + "\n")
 		}
-		outputSync.Done()
 	}()
 
 	// Finally, a new goroutine is needed for each individual input file handle.

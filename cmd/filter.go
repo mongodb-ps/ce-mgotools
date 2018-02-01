@@ -1,17 +1,21 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
-	"github.com/pkg/errors"
+	"strings"
+	"time"
+
+	"mgotools/cmd/factory"
 	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/util"
-	"strings"
-	"time"
+
+	"github.com/pkg/errors"
 )
 
 type filterCommand struct {
-	BaseOptions
+	factory.BaseOptions
 	Log map[int]filterLog
 }
 type filterCommandOptions struct {
@@ -43,11 +47,48 @@ type filterCommandOptions struct {
 	lineCount  int
 }
 type filterLog struct {
-	parser.LogEntryFactory
+	*parser.LogContext
+
 	argsBool       map[string]bool
 	argsInt        map[string]int
 	argsString     map[string]string
 	commandOptions filterCommandOptions
+}
+type filterError struct {
+	Line        uint
+	Accumulator bytes.Buffer
+	Error       error
+}
+
+func init() {
+	args := factory.CommandDefinition{
+		Usage: "filters a log file",
+		Flags: []factory.CommandArgument{
+			{Name: "command", Type: factory.String, Usage: "only output log lines which are `COMMAND` of a given type. Examples: \"distinct\", \"isMaster\", \"replSetGetStatus\""},
+			{Name: "component", ShortName: "c", Type: factory.String, Usage: "find all lines matching `COMPONENT`"},
+			{Name: "context", Type: factory.StringFileSlice, Usage: "find all lines matching `CONTEXT`"},
+			{Name: "connection", ShortName: "x", Type: factory.Int, Usage: "find all lines identified as part of `CONNECTION`"},
+			{Name: "exclude", Type: factory.Bool, Usage: "exclude matching lines rather than including them"},
+			{Name: "fast", Type: factory.Int, Usage: "returns only operations faster than `FAST` milliseconds"},
+			{Name: "from", ShortName: "f", Type: factory.StringFileSlice, Usage: "ignore all entries before `DATE` (see help for date formatting)"},
+			{Name: "marker", Type: factory.StringFileSlice, Usage: "append a pre-defined marker (filename, enum, alpha, none) or custom marker (one per file) identifying the source file of each line"},
+			{Name: "message", Type: factory.Bool, Usage: "excludes all non-message portions of each line"},
+			{Name: "namespace", Type: factory.String, Usage: "filter by `NAMESPACE` so only lines matching the namespace will be returned"},
+			{Name: "pattern", ShortName: "p", Type: factory.String, Usage: "filter queries of shape `PATTERN` (only applies to queries, getmores, updates, removed)"},
+			{Name: "severity", ShortName: "i", Type: factory.String, Usage: "find all lines of `SEVERITY`"},
+			{Name: "shorten", Type: factory.Int, Usage: "reduces output by truncating log lines to `LENGTH` characters"},
+			{Name: "slow", Type: factory.Int, Usage: "returns only operations slower than `SLOW` milliseconds"},
+			{Name: "timezone", Type: factory.IntFileSlice, Usage: "timezone adjustment: add `N` minutes to the corresponding log file"},
+			{Name: "to", ShortName: "t", Type: factory.StringFileSlice, Usage: "ignore all entries after `DATE` (see help for date formatting)"},
+			{Name: "word", Type: factory.StringFileSlice, Usage: "only output lines matching `WORD`"},
+		},
+	}
+	init := func() (factory.Command, error) {
+		return &filterCommand{
+			Log: make(map[int]filterLog),
+		}, nil
+	}
+	factory.GetCommandFactory().Register("filter", args, init)
 }
 
 func (f *filterCommand) Finish(index int) error {
@@ -70,15 +111,15 @@ func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan stri
 	for line := range in {
 		if exit != 0 {
 			// Received an exit signal so immediately exit.
-			util.Debug("received exit signal")
-			return nil
+			break
 		} else if line == "" {
+			// Ignore empty lines.
 			continue
 		}
 		options.lineCount += 1
-		raw, err := f.Log[index].NewRawLogEntry(line)
+		raw, err := parser.NewRawLogEntry(line)
 		if err != nil {
-			panic(err)
+			errs <- err
 		}
 		entry, err := f.Log[index].NewLogEntry(raw)
 		if err != nil {
@@ -107,10 +148,7 @@ func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan stri
 	}
 	return nil
 }
-func (f *filterCommand) Init() {
-	f.Log = make(map[int]filterLog)
-}
-func (f *filterCommand) Prepare(name string, index int, factory parser.LogEntryFactory, booleans map[string]bool, integers map[string]int, strings map[string]string) error {
+func (f *filterCommand) Prepare(context factory.InputContext) error {
 	opts := filterCommandOptions{
 		ConnectionFilter:         -1,
 		ExecutionDurationMinimum: -1,
@@ -120,9 +158,9 @@ func (f *filterCommand) Prepare(name string, index int, factory parser.LogEntryF
 		MessageOutput:            false,
 		ShortenOutput:            0,
 		TableScanFilter:          false,
-		argCount:                 len(booleans) + len(integers) + len(strings),
+		argCount:                 len(context.Booleans) + len(context.Integers) + len(context.Strings),
 	}
-	util.Debug("Options: %+v %+v %+v", booleans, integers, strings)
+	util.Debug("Options: %+v %+v %+v", context.Booleans, context.Integers, context.Strings)
 	dateParser := util.NewDateParser([]string{
 		"2006",
 		"2016-01-02",
@@ -154,7 +192,7 @@ func (f *filterCommand) Prepare(name string, index int, factory parser.LogEntryF
 		"Jan 2 2006 15:04:05.000 MST",
 	})
 	// parse through all boolean arguments
-	for key, value := range booleans {
+	for key, value := range context.Booleans {
 		switch key {
 		case "exclude":
 			opts.InvertMatch = value
@@ -163,7 +201,7 @@ func (f *filterCommand) Prepare(name string, index int, factory parser.LogEntryF
 		}
 	}
 	// parse through all integer arguments
-	for key, value := range integers {
+	for key, value := range context.Integers {
 		switch key {
 		case "connection":
 			if value > 0 {
@@ -192,7 +230,7 @@ func (f *filterCommand) Prepare(name string, index int, factory parser.LogEntryF
 		}
 	}
 	// parse through all string arguments
-	for key, value := range strings {
+	for key, value := range context.Strings {
 		if value == "" {
 			return fmt.Errorf("%s cannot be empty", key)
 		}
@@ -217,14 +255,14 @@ func (f *filterCommand) Prepare(name string, index int, factory parser.LogEntryF
 			}
 		case "marker":
 			if value == "enum" {
-				opts.MarkerOutput = fmt.Sprintf("%d ", index)
+				opts.MarkerOutput = fmt.Sprintf("%d ", context.Index)
 			} else if value == "alpha" {
-				for i := 0; i < index/26+1; i += 1 {
-					opts.MarkerOutput = opts.MarkerOutput + string(rune(index%26+97))
+				for i := 0; i < context.Index/26+1; i += 1 {
+					opts.MarkerOutput = opts.MarkerOutput + string(rune(context.Index%26+97))
 				}
 				opts.MarkerOutput = opts.MarkerOutput + " "
 			} else if value == "filename" {
-				opts.MarkerOutput = name + " "
+				opts.MarkerOutput = context.Name + " "
 			} else {
 				opts.MarkerOutput = value + " "
 			}
@@ -258,12 +296,12 @@ func (f *filterCommand) Prepare(name string, index int, factory parser.LogEntryF
 			}
 		}
 	}
-	f.Log[index] = filterLog{
-		LogEntryFactory: factory,
-		argsBool:        booleans,
-		argsInt:         integers,
-		argsString:      strings,
-		commandOptions:  opts,
+	f.Log[context.Index] = filterLog{
+		LogContext:     parser.NewLogContext(),
+		argsBool:       context.Booleans,
+		argsInt:        context.Integers,
+		argsString:     context.Strings,
+		commandOptions: opts,
 	}
 	return nil
 }
@@ -271,10 +309,10 @@ func (f *filterCommand) Usage() string {
 	return "used to filter log files based on a set of criteria"
 }
 func (f *filterCommand) match(entry parser.LogEntry, opts filterCommandOptions) bool {
-	if !entry.Valid {
-		return false
-	} else if opts.argCount == 0 {
+	if opts.argCount == 0 {
 		return true
+	} else if !entry.Valid {
+		return false
 	} else if opts.ConnectionFilter > -1 && entry.Connection != opts.ConnectionFilter {
 		return false
 	} else if opts.ComponentFilter != "" && !stringMatchFields(entry.RawComponent, opts.ComponentFilter) {

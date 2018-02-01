@@ -139,6 +139,8 @@ var patterns = []Pattern{
 	NewPattern(Object{"a": Object{"b": Array{1, 1}}}),
 	NewPattern(Object{"a": Object{"b": Object{"c": Object{"d": 1}}}}),
 	NewPattern(Object{"a": Array{Object{"a": 1}, Object{"b": 1}, Object{"c": 1}}}),
+	NewPattern(Object{"a": 1, "b": 1, "c": 1, "d": 1}),
+	NewPattern(Object{"a": Array{Object{"b": 1}}, "c": Array{Object{"d": 1}}}),
 }
 
 func BenchmarkPattern_Equals(b *testing.B) {
@@ -148,7 +150,39 @@ func BenchmarkPattern_Equals(b *testing.B) {
 		}
 	}
 }
-func BenchmarkReflection_DeepCopy(b *testing.B) {
+func BenchmarkPattern_String(b *testing.B) {
+	for i := 0; i < b.N; i += 1 {
+		for _, s := range patterns {
+			s.String()
+		}
+	}
+}
+func BenchmarkPattern_MatchEquals(b *testing.B) {
+	match := NewPattern(Object{"a": Array{Object{"a": 1}, Object{"b": 1}, Object{"c": 1}}})
+	size := len(patterns)
+	for i := 0; i < b.N; i += 1 {
+		for j := 0; j < size; j += 1 {
+			if patterns[j].Equals(match) {
+			}
+		}
+	}
+}
+func BenchmarkPattern_MatchString(b *testing.B) {
+	match := NewPattern(Object{"a": Array{Object{"a": 1}, Object{"b": 1}, Object{"c": 1}}})
+	var strings []string = make([]string, len(patterns))
+	size := len(patterns)
+	for i := 0; i < size; i += 1 {
+		strings[i] = patterns[i].String()
+	}
+	for i := 0; i < b.N; i += 1 {
+		s := match.String()
+		for j := 0; j < size; j += 1 {
+			if s == strings[j] {
+			}
+		}
+	}
+}
+func BenchmarkReflection_DeepEqual(b *testing.B) {
 	for i := 0; i < b.N; i += 1 {
 		for _, s := range patterns {
 			reflect.DeepEqual(s, s)

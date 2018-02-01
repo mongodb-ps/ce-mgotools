@@ -2,9 +2,11 @@ package parser
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"mgotools/util"
 	"strings"
+
+	"mgotools/util"
+
+	"github.com/pkg/errors"
 )
 
 type RawLogEntry struct {
@@ -24,7 +26,6 @@ func NewRawLogEntry(line string) (RawLogEntry, error) {
 		entry RawLogEntry = RawLogEntry{RuneReader: util.NewRuneReader(line)}
 		pos   int
 	)
-
 	// Check for a day in the first portion of the string, which represents version <= 2.4
 	if day := entry.PreviewWord(1); util.IsDay(day) {
 		entry.RawDate = entry.parseCDateString()
@@ -37,7 +38,7 @@ func NewRawLogEntry(line string) (RawLogEntry, error) {
 		fmt.Println("Could not parse date")
 		return entry, errors.New(fmt.Sprintf("could not parse date format: %s", line))
 	}
-	if entry.Peek(1) == "[" {
+	if entry.Expect('[') {
 		// the context is first so assume the line remainder is the message
 		if part, _ := entry.SlurpWord(); IsContext(part) {
 			entry.RawContext = part

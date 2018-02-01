@@ -7,7 +7,6 @@ import (
 	//"golang.org/x/text/unicode/norm"
 	"strconv"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -75,8 +74,8 @@ func StringDoubleSplit(s string, d rune) (string, string, bool) {
 // counting, but this should eventually translate to normalization (http://godoc.org/golang.org/x/text/unicode/norm).
 // See also: https://blog.golang.org/normalization
 func StringLength(s string) (n int) { return utf8.RuneCountInString(s) }
-func StringToLower(r rune) rune     { return unicode.ToLower(r) }
-func StringToUpper(r rune) rune     { return unicode.ToUpper(r) }
+func StringToLower(s string) string { return strings.ToLower(s) }
+func StringToUpper(s string) string { return strings.ToUpper(s) }
 
 func StringMatch(a, b string) bool {
 	if strings.Compare(a, b) == 0 {

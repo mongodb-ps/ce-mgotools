@@ -237,7 +237,7 @@ func (r *RuneReader) PreviewWord(count int) string {
 func (r *RuneReader) QuotedString() (string, error) {
 	which := r.NextRune()
 	if which != '\'' && which != '"' {
-		return "", fmt.Errorf("Unexpected character in quoted string '%c'", which)
+		return "", fmt.Errorf("unexpected character in quoted string '%c'", which)
 	}
 	return r.EnclosedString(which)
 }
@@ -442,7 +442,7 @@ func checkReader(r *RuneReader, a ...interface{}) bool {
 }
 
 func runeRange(r *RuneReader, start int, end int) string {
-	if start == end {
+	if start == end || start >= r.length {
 		return ""
 	} else if start == end-1 {
 		return string(r.runes[start])

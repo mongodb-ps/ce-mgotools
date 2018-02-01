@@ -156,10 +156,15 @@ func TestRuneReaderPrefix(t *testing.T) {
 }
 
 func TestRuneReaderQuotedString(t *testing.T) {
-	for _, s := range []string{"'quoted string'", "\"quoted string\""} {
-		r := util.NewRuneReader(s)
-		if out, err := r.QuotedString(); err != nil || out != s[1:len(s)-1] {
-			t.Errorf("Quoted string failed, expected '%s', got '%s'", s, out)
+	s := map[string]string{
+		"'quoted string'":                  "quoted string",
+		"\"quoted string\"":                "quoted string",
+		"\"quotes \\\"within\\\" quotes\"": "quotes \\\"within\\\" quotes",
+	}
+	for d := range s {
+		r := util.NewRuneReader(d)
+		if out, err := r.QuotedString(); err != nil || out != s[d] {
+			t.Errorf("quoted string failed, expected '%s', got '%s' (%s)", s[d], out, err)
 		}
 	}
 }

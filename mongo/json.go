@@ -3,13 +3,15 @@ package mongo
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/pkg/errors"
 	"math"
-	"mgotools/util"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
+
+	"mgotools/util"
+
+	"github.com/pkg/errors"
 )
 
 // https://docs.mongodb.com/manual/reference/mongodb-extended-json/
@@ -26,7 +28,7 @@ func ParseJsonRunes(r *util.RuneReader, strict bool) (map[string]interface{}, er
 	if strict && !r.EOL() {
 		return nil, fmt.Errorf("unexpected character '%c' at %d", r.NextRune(), r.Pos())
 	}
-	//Debug("\nJSON: %+v\nJSON error: %+v [next '%s']\n", v, e, r.PreviewWord(1))
+	//util.Debug("\nJSON: %+v\nJSON error: %+v\n[%s]\n", v, e, r.String())
 	return v, e
 }
 

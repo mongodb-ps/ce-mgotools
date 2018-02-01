@@ -2,9 +2,10 @@ package parser
 
 import (
 	"bytes"
-	"mgotools/util"
 	"net"
 	"time"
+
+	"mgotools/util"
 )
 
 // Log examples:
@@ -12,11 +13,6 @@ import (
 // 2017-07-29T16:53:40.671-0700 [initandlisten] db version v2.6.12
 // 2017-07-29T16:55:33.242-0700 I CONTROL  [initandlisten] db version v3.0.15
 // 2017-07-29T17:01:15.835-0700 I CONTROL  [initandlisten] db version v3.2.12
-
-type LogEntryFactory interface {
-	NewLogEntry(RawLogEntry) (LogEntry, error)
-	NewRawLogEntry(string) (RawLogEntry, error)
-}
 
 type LogEntry struct {
 	RawLogEntry

@@ -2,25 +2,20 @@ package parser
 
 import (
 	"errors"
-	"mgotools/util"
 	"strconv"
 	"strings"
 	"time"
+
+	"mgotools/util"
 )
 
 type LogContext struct {
-	LogEntryFactory
-
 	factories       []LogVersionParser
 	factoryCount    int
 	factoryFilter   []LogVersionDefinition
 	factoryMaxCount int
 	preambleParsed  bool
 	startupIndex    int
-
-	ArgsString map[string]string
-	ArgsInt    map[string]int
-	ArgsBool   map[string]bool
 
 	Count  int
 	Errors int
@@ -50,27 +45,21 @@ type logContextStartup struct {
 }
 
 func NewLogContext() *LogContext {
-	context := &LogContext{
+	context := LogContext{
 		Startup: []logContextStartup{{}},
 
 		preambleParsed: false,
 		startupIndex:   0,
 
-		ArgsBool:   make(map[string]bool),
-		ArgsInt:    make(map[string]int),
-		ArgsString: make(map[string]string),
-		Count:      0,
-		Errors:     0,
+		Count:  0,
+		Errors: 0,
 
 		DateRollover:    0,
 		DateYearMissing: false,
 	}
 	context.factories, context.factoryCount = makeAllContextFactories()
 	context.factoryMaxCount = context.factoryCount
-	return context
-}
-func (c *LogContext) NewRawLogEntry(line string) (RawLogEntry, error) {
-	return NewRawLogEntry(line)
+	return &context
 }
 func (c *LogContext) NewLogEntry(raw RawLogEntry) (LogEntry, error) {
 	var (

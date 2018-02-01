@@ -1,16 +1,17 @@
 package main
 
 import (
-	"github.com/urfave/cli"
-	mgocommands "mgotools/cmd"
-	"mgotools/util"
-	"path/filepath"
-
 	"errors"
 	"fmt"
 	"os"
-	"strings"
+	"path/filepath"
 	"time"
+
+	_ "mgotools/cmd"
+	"mgotools/cmd/factory"
+	"mgotools/util"
+
+	"github.com/urfave/cli"
 )
 
 func main() {
@@ -20,7 +21,7 @@ func main() {
 	app.Description = "A collection of tools designed to help parse and understand MongoDB logs"
 	app.Action = runCommand
 
-	app.Commands = makeCommands()
+	app.Commands = makeClientFlags()
 
 	app.Flags = []cli.Flag{
 		//cli.BoolFlag{Name: "linear, e", Usage: "parse input files linearly in order they are supplied (disable concurrency)"},
@@ -32,13 +33,13 @@ func main() {
 	}
 }
 
-func checkCommands(context *cli.Context, count int, command mgocommands.CommandDefinition) error {
-	var length int = 0
+func checkClientCommands(context *cli.Context, count int, command factory.CommandDefinition) error {
+	var length = 0
 	for _, flag := range command.Flags {
 		switch flag.Type {
-		case mgocommands.IntFileSlice:
+		case factory.IntFileSlice:
 			length = len(context.IntSlice(flag.Name))
-		case mgocommands.StringFileSlice:
+		case factory.StringFileSlice:
 			length = len(context.StringSlice(flag.Name))
 		}
 		if length > count {
@@ -48,23 +49,24 @@ func checkCommands(context *cli.Context, count int, command mgocommands.CommandD
 	return nil
 }
 
-func makeCommands() []cli.Command {
+func makeClientFlags() []cli.Command {
 	c := []cli.Command{}
-	for _, commandName := range mgocommands.GetCommandNames() {
-		command, _ := mgocommands.GetCommandDefinition(commandName)
+	commandFactory := factory.GetCommandFactory()
+	for _, commandName := range commandFactory.GetCommandNames() {
+		command, _ := commandFactory.GetCommandDefinition(commandName)
 		clientCommand := cli.Command{Name: commandName, Action: runCommand, Usage: command.Usage}
 		for _, argument := range command.Flags {
 			if argument.ShortName != "" {
 				argument.Name = fmt.Sprintf("%s, %s", argument.Name, argument.ShortName)
 			}
 			switch argument.Type {
-			case mgocommands.Bool:
+			case factory.Bool:
 				clientCommand.Flags = append(clientCommand.Flags, cli.BoolFlag{Name: argument.Name, Usage: argument.Usage})
-			case mgocommands.Int:
+			case factory.Int:
 				clientCommand.Flags = append(clientCommand.Flags, cli.IntFlag{Name: argument.Name, Usage: argument.Usage})
-			case mgocommands.IntFileSlice:
+			case factory.IntFileSlice:
 				clientCommand.Flags = append(clientCommand.Flags, cli.IntSliceFlag{Name: argument.Name, Usage: argument.Usage})
-			case mgocommands.StringFileSlice, mgocommands.String:
+			case factory.StringFileSlice, factory.String:
 				clientCommand.Flags = append(clientCommand.Flags, cli.StringSliceFlag{Name: argument.Name, Usage: argument.Usage})
 			}
 		}
@@ -76,22 +78,25 @@ func makeCommands() []cli.Command {
 func runCommand(c *cli.Context) error {
 	// Pull arguments from the helper interpreter.
 	var (
-		args          mgocommands.CommandArgumentCollection
-		clientContext cli.Args  = c.Args()
-		start         time.Time = time.Now()
+		commandFactory = factory.GetCommandFactory()
+		clientContext  = c.Args()
+		start          = time.Now()
 	)
 	if c.Command.Name == "" {
 		return errors.New("command required")
-	} else if cmdDefinition, ok := mgocommands.GetCommandDefinition(c.Command.Name); !ok {
+	} else if cmdDefinition, ok := commandFactory.GetCommandDefinition(c.Command.Name); !ok {
 		return fmt.Errorf("unrecognized command %s", c.Command.Name)
 	} else {
 		util.Debug("Command: %s, starting: %s", c.Command.Name, time.Now())
-		command := mgocommands.CommandFactory(c.Command.Name, makeOptions(c, cmdDefinition))
+		command, err := commandFactory.GetCommand(c.Command.Name)
+		if err != nil {
+			return err
+		}
 		// Get argument count.
 		argc := c.NArg()
 		fileCount := 0
-		input := mgocommands.NewInputHandler()
-		output := mgocommands.NewOutputHandler(os.Stdout, os.Stderr)
+		input := factory.NewInputHandler()
+		output := factory.NewOutputHandler(os.Stdout, os.Stderr)
 		// Check for pipe usage.
 		pipe, err := os.Stdin.Stat()
 		if err != nil {
@@ -100,8 +105,10 @@ func runCommand(c *cli.Context) error {
 			if argc > 0 {
 				return errors.New("file arguments and input pipes cannot be used simultaneously")
 			}
+
 			// Add stdin to the list of input files.
-			if args, err = makeContext(0, c, cmdDefinition); err != nil {
+			args, err := factory.MakeCommandArgumentCollection(0, getArgumentMap(cmdDefinition, c), cmdDefinition)
+			if err != nil {
 				return err
 			}
 			fileCount = 1
@@ -119,78 +126,40 @@ func runCommand(c *cli.Context) error {
 			if err != nil {
 				return err
 			}
-			if args, err = makeContext(index, c, cmdDefinition); err != nil {
+			args, err := factory.MakeCommandArgumentCollection(index, getArgumentMap(cmdDefinition, c), cmdDefinition)
+			if err != nil {
 				return err
 			}
-			util.Debug("index %d: %+v", index, args)
 			fileCount += 1
 			input.AddHandle(filepath.Base(path), file, args)
 		}
 		// Check for basic command sanity.
-		if err := checkCommands(c, fileCount, cmdDefinition); err != nil {
+		if err := checkClientCommands(c, fileCount, cmdDefinition); err != nil {
 			return err
 		}
 		// Run the actual command.
-		if err = mgocommands.RunCommand(command, input, output); err != nil {
+		if err = factory.RunCommand(command, input, output); err != nil {
 			fmt.Println(fmt.Sprintf("Error: %s", err))
 		}
 		util.Debug("Finished at %s (%s)", time.Now(), time.Since(start).String())
 		return err
 	}
 }
-
-func makeContext(index int, c *cli.Context, cmd mgocommands.CommandDefinition) (mgocommands.CommandArgumentCollection, error) {
-	var (
-		argsBool   map[string]bool   = make(map[string]bool)
-		argsInt    map[string]int    = make(map[string]int)
-		argsString map[string]string = make(map[string]string)
-	)
-	for _, argument := range cmd.Flags {
-		if c.IsSet(argument.Name) {
-			switch argument.Type {
-			case mgocommands.Bool:
-				argsBool[argument.Name] = c.Bool(argument.Name)
-				fmt.Println(fmt.Sprintf("** Bool: %s = %v", argument.Name, argsBool[argument.Name]))
-			case mgocommands.Int:
-				argsInt[argument.Name] = c.Int(argument.Name)
-				fmt.Println(fmt.Sprintf("** Int: %s = %s", argument.Name, argsInt[argument.Name]))
-			case mgocommands.IntFileSlice:
-				values := c.IntSlice(argument.Name)
-				switch {
-				case len(values) == 1:
-					argsInt[argument.Name] = values[0]
-				case index >= len(values):
-					return mgocommands.CommandArgumentCollection{}, errors.New(fmt.Sprintf("--%s must appear for each file", argument.Name))
-				default:
-					argsInt[argument.Name] = values[index]
-				}
-				fmt.Println(fmt.Sprintf("** IntFileSlice: %s = %d", argument.Name, argsInt[argument.Name]))
-			case mgocommands.String:
-				argsString[argument.Name] = strings.Join(c.StringSlice(argument.Name), " ")
-				fmt.Println(fmt.Sprintf("** String: %s = %s", argument.Name, argsString[argument.Name]))
-			case mgocommands.StringFileSlice:
-				// multiple strings apply to each log individually
-				values := c.StringSlice(argument.Name)
-				switch {
-				case len(values) == 1:
-					argsString[argument.Name] = values[0]
-				case index >= len(values):
-					return mgocommands.CommandArgumentCollection{}, errors.New(fmt.Sprintf("--%s must appear for each file", argument.Name))
-				default:
-					argsString[argument.Name] = values[index]
-				}
-				fmt.Println(fmt.Sprintf("** StringFileSlice: %s = %s", argument.Name, argsString[argument.Name]))
+func getArgumentMap(commandDefinition factory.CommandDefinition, c *cli.Context) map[string]interface{} {
+	out := make(map[string]interface{})
+	for _, arg := range commandDefinition.Flags {
+		if c.IsSet(arg.Name) {
+			switch arg.Type {
+			case factory.Bool:
+				out[arg.Name] = c.Bool(arg.Name)
+			case factory.Int:
+				out[arg.Name] = c.Int(arg.Name)
+			case factory.IntFileSlice:
+				out[arg.Name] = c.IntSlice(arg.Name)
+			case factory.String, factory.StringFileSlice:
+				out[arg.Name] = c.StringSlice(arg.Name)
 			}
 		}
 	}
-	return mgocommands.CommandArgumentCollection{argsBool, argsInt, argsString}, nil
-}
-
-func makeOptions(c *cli.Context, cmd mgocommands.CommandDefinition) mgocommands.BaseOptions {
-	options := mgocommands.BaseOptions{
-		DateFormat:  "2006-01-02T15:04:05.000-0700",
-		LinearParse: c.Bool("linear"),
-		Verbose:     c.Bool("verbose"),
-	}
-	return options
+	return out
 }

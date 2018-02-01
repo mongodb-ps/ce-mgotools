@@ -92,7 +92,6 @@ func parse24Command(r util.RuneReader) (LogMsgOpCommandLegacy, error) {
 			}
 			if r.Expect('{') {
 				if op.Command[param], err = mongo.ParseJsonRunes(&r, false); err != nil {
-					util.Debug("param json failed: %s", err)
 					return op, err
 				}
 			}
