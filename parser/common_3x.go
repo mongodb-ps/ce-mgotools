@@ -2,18 +2,20 @@ package parser
 
 import (
 	"bytes"
-	"mgotools/mongo"
-	"mgotools/util"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"mgotools/log"
+	"mgotools/mongo"
+	"mgotools/util"
 )
 
-func parse3XCommand(r util.RuneReader, strict bool) (LogMessage, error) {
+func parse3XCommand(r util.RuneReader, strict bool) (log.Message, error) {
 	var (
 		err     error
 		ok      bool
-		op      = MakeLogMsgOpCommand()
+		op      = log.MakeMsgOpCommand()
 		name    string
 		section struct {
 			Meta bytes.Buffer
@@ -130,11 +132,11 @@ func parse3XCommand(r util.RuneReader, strict bool) (LogMessage, error) {
 	return op, nil
 }
 
-func parse3XBuildIndex(r util.RuneReader) (LogMessage, error) {
+func parse3XBuildIndex(r util.RuneReader) (log.Message, error) {
 	// build index on: database.collection properties: { v: 2, key: { key1: 1.0 }, name: "name_1", ns: "database.collection" }
 	var (
 		err error
-		msg LogMsgOpIndex
+		msg log.MsgOpIndex
 	)
 	msg.Operation = "build index"
 	msg.Namespace, _ = r.SkipWords(3).SlurpWord()

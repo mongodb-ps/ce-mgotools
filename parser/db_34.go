@@ -1,12 +1,21 @@
 package parser
 
-import "mgotools/util"
+import (
+	"mgotools/log"
+	"mgotools/util"
+)
 
 type LogVersion34Parser struct {
 	LogVersionCommon
 }
 
-func (v *LogVersion34Parser) NewLogMessage(entry LogEntry) (LogMessage, error) {
+func init() {
+	LogVersionParserFactory.Register(func() LogVersionParser {
+		return &LogVersion34Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
+	})
+}
+
+func (v *LogVersion34Parser) NewLogMessage(entry log.Entry) (log.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch entry.RawComponent {
 	case "COMMAND", "WRITE":

@@ -2,18 +2,27 @@ package parser
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"mgotools/mongo"
-	"mgotools/util"
 	"strconv"
 	"strings"
+
+	"mgotools/log"
+	"mgotools/mongo"
+	"mgotools/util"
+
+	"github.com/pkg/errors"
 )
 
 type LogVersion26Parser struct {
 	LogVersionCommon
 }
 
-func (v *LogVersion26Parser) NewLogMessage(entry LogEntry) (LogMessage, error) {
+func init() {
+	LogVersionParserFactory.Register(func() LogVersionParser {
+		return &LogVersion26Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
+	})
+}
+
+func (v *LogVersion26Parser) NewLogMessage(entry log.Entry) (log.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
@@ -50,14 +59,14 @@ func (v *LogVersion26Parser) NewLogMessage(entry LogEntry) (LogMessage, error) {
 	}
 	return nil, LogVersionErrorUnmatched{Message: "version 2.6"}
 }
-func parse26BuildIndex(r util.RuneReader) (LogMessage, error) {
+func parse26BuildIndex(r util.RuneReader) (log.Message, error) {
 	// 2.6 index building format is the same as 3.x
 	return parse3XBuildIndex(r)
 }
-func parse26Command(r util.RuneReader) (LogMessage, error) {
+func parse26Command(r util.RuneReader) (log.Message, error) {
 	// command test.$cmd command: insert { insert: "foo", documents: [ { _id: ObjectId('59e3fdf50bae7edf962785a7'), a: 1.0 } ], ordered: true } keyUpdates:0 numYields:0 locks(micros) w:159 reslen:40 0ms
 	var err error
-	op := MakeLogMsgOpCommandLegacy()
+	op := log.MakeMsgOpCommandLegacy()
 	if opn, ok := r.SlurpWord(); ok {
 		op.Operation = opn
 	} else {
@@ -92,13 +101,13 @@ func parse26Command(r util.RuneReader) (LogMessage, error) {
 	}
 	return op, nil
 }
-func parse26Operation(r util.RuneReader) (LogMessage, error) {
+func parse26Operation(r util.RuneReader) (log.Message, error) {
 	// getmore test.foo cursorid:30107363235 ntoreturn:3 keyUpdates:0 numYields:0 locks(micros) r:14 nreturned:3 reslen:119 0ms
 	// insert test.foo query: { _id: ObjectId('5a331671de4f2a133f17884b'), a: 2.0 } ninserted:1 keyUpdates:0 numYields:0 locks(micros) w:10 0ms
 	// remove test.foo query: { a: { $gte: 9.0 } } ndeleted:1 keyUpdates:0 numYields:0 locks(micros) w:63 0ms
 	// update test.foo query: { a: { $gte: 8.0 } } update: { $set: { b: 1.0 } } nscanned:9 nscannedObjects:9 nMatched:1 nModified:1 keyUpdates:0 numYields:0 locks(micros) w:135 0ms
 	var err error
-	op := MakeLogMsgOpCommandLegacy()
+	op := log.MakeMsgOpCommandLegacy()
 	// Grab the operation name first.
 	if opn, ok := r.SlurpWord(); ok {
 		op.Operation = opn

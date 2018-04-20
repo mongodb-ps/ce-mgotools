@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"mgotools/log"
 	"mgotools/mongo"
 	"mgotools/util"
 	"strconv"
@@ -11,7 +12,13 @@ type LogVersion24Parser struct {
 	LogVersionCommon
 }
 
-func (v *LogVersion24Parser) NewLogMessage(entry LogEntry) (LogMessage, error) {
+func init() {
+	LogVersionParserFactory.Register(func() LogVersionParser {
+		return &LogVersion24Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR})}}
+	})
+}
+
+func (v *LogVersion24Parser) NewLogMessage(entry log.Entry) (log.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
@@ -56,11 +63,11 @@ func (v *LogVersion24Parser) NewLogMessage(entry LogEntry) (LogMessage, error) {
 func (v *LogVersion24Parser) Version() LogVersionDefinition {
 	return LogVersionDefinition{Major: 2, Minor: 4, Binary: LOG_VERSION_MONGOD}
 }
-func parse24BuildIndex(r util.RuneReader) (LogMessage, error) {
+func parse24BuildIndex(r util.RuneReader) (log.Message, error) {
 	// build index database.collection { key: 1.0 }
 	var (
 		err error
-		msg LogMsgOpIndex
+		msg log.MsgOpIndex
 	)
 	switch {
 	case r.ExpectString("build index"):
@@ -75,12 +82,12 @@ func parse24BuildIndex(r util.RuneReader) (LogMessage, error) {
 	return nil, LogVersionErrorUnmatched{Message: "index format unrecognized"}
 }
 
-func parse24Command(r util.RuneReader) (LogMsgOpCommandLegacy, error) {
+func parse24Command(r util.RuneReader) (log.MsgOpCommandLegacy, error) {
 	var err error
 	// command test.$cmd command: { getlasterror: 1.0, w: 1.0 } ntoreturn:1 keyUpdates:0  reslen:67 0ms
 	// query test.foo query: { b: 1.0 } ntoreturn:0 ntoskip:0 nscanned:10 keyUpdates:0 locks(micros) r:146 nreturned:1 reslen:64 0ms
 	// update vcm_audit.payload.files query: { _id: ObjectId('000000000000000000000000') } update: { _id: ObjectId('000000000000000000000000') } idhack:1 nupdated:1 upsert:1 keyUpdates:0 locks(micros) w:33688 194ms
-	op := MakeLogMsgOpCommandLegacy()
+	op := log.MakeMsgOpCommandLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 	var target map[string]int = op.Counters
@@ -107,9 +114,9 @@ func parse24Command(r util.RuneReader) (LogMsgOpCommandLegacy, error) {
 	}
 	return op, nil
 }
-func parse24Operation(r util.RuneReader) (LogMessage, error) {
+func parse24Operation(r util.RuneReader) (log.Message, error) {
 	// insert test.system.indexes ninserted:1 keyUpdates:0 locks(micros) w:10527 10ms
-	op := MakeLogMsgOpCommandLegacy()
+	op := log.MakeMsgOpCommandLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 	var target map[string]int = op.Counters

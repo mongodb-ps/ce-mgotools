@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"mgotools/cmd/factory"
+	"mgotools/log"
 	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/util"
@@ -43,11 +44,11 @@ type filterCommandOptions struct {
 	WordFilter               string
 
 	argCount   int
-	errorCount int
-	lineCount  int
+	ErrorCount uint
+	LineCount  uint
 }
 type filterLog struct {
-	*parser.LogContext
+	*parser.Context
 
 	argsBool       map[string]bool
 	argsInt        map[string]int
@@ -116,16 +117,16 @@ func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan stri
 			// Ignore empty lines.
 			continue
 		}
-		options.lineCount += 1
-		raw, err := parser.NewRawLogEntry(line)
+		options.LineCount += 1
+		base, err := log.NewBase(line, options.LineCount)
 		if err != nil {
 			errs <- err
 		}
-		entry, err := f.Log[index].NewLogEntry(raw)
+		entry, err := f.Log[index].NewEntry(base)
 		if err != nil {
 			if _, ok := err.(parser.LogVersionErrorUnmatched); !ok {
 				errs <- err
-				options.errorCount += 1
+				options.ErrorCount += 1
 			}
 		} else {
 			if entry, modified := f.modify(entry, options); modified {
@@ -297,7 +298,7 @@ func (f *filterCommand) Prepare(context factory.InputContext) error {
 		}
 	}
 	f.Log[context.Index] = filterLog{
-		LogContext:     parser.NewLogContext(),
+		Context:        parser.NewContext(),
 		argsBool:       context.Booleans,
 		argsInt:        context.Integers,
 		argsString:     context.Strings,
@@ -308,7 +309,7 @@ func (f *filterCommand) Prepare(context factory.InputContext) error {
 func (f *filterCommand) Usage() string {
 	return "used to filter log files based on a set of criteria"
 }
-func (f *filterCommand) match(entry parser.LogEntry, opts filterCommandOptions) bool {
+func (f *filterCommand) match(entry log.Entry, opts filterCommandOptions) bool {
 	if opts.argCount == 0 {
 		return true
 	} else if !entry.Valid {
@@ -325,7 +326,7 @@ func (f *filterCommand) match(entry parser.LogEntry, opts filterCommandOptions) 
 		return false
 	} else if opts.WordFilter != "" && strings.Contains(entry.String(), opts.WordFilter) {
 
-	} else if entry.LogMessage == nil && (opts.FasterFilter > 0 ||
+	} else if entry.Message == nil && (opts.FasterFilter > 0 ||
 		opts.SlowerFilter > 0 ||
 		opts.CommandFilter != "" ||
 		opts.NamespaceFilter != "" ||
@@ -333,14 +334,14 @@ func (f *filterCommand) match(entry parser.LogEntry, opts filterCommandOptions) 
 		// Return failure on any log messages that could not be parsed when filters exist that rely on parsing a
 		// log message.
 		return false
-	} else if entry.LogMessage == nil {
-		// Return successfully on empty log messages (since the raw parts of the entry should have matched). All
+	} else if entry.Message == nil {
+		// Return successfully on empty log messages (since the base parts of the entry should have matched). All
 		// subsequent filters should check on the log message.
 		return true
 	}
 
-	// Try converting into a base LogMsgOpCommand object and do comparisons if the filter succeeds.
-	if cmd, ok := entry.LogMessage.(parser.LogMsgOpCommandBase); ok {
+	// Try converting into a base MsgOpCommand object and do comparisons if the filter succeeds.
+	if cmd, ok := entry.Message.(log.MsgOpCommandBase); ok {
 		if opts.CommandFilter != "" && !stringMatchFields(cmd.Name, opts.CommandFilter) {
 			return false
 		} else if opts.FasterFilter > 0 && time.Duration(cmd.Duration) > opts.FasterFilter {
@@ -353,14 +354,14 @@ func (f *filterCommand) match(entry parser.LogEntry, opts filterCommandOptions) 
 		// filtered based on command-style criteria.
 		return false
 	}
-	// Try convergint to a LogMsgOpCommandLegacy object and compare filters based on that object type.
-	if cmd, ok := entry.LogMessage.(parser.LogMsgOpCommandLegacy); ok {
+	// Try convergint to a MsgOpCommandLegacy object and compare filters based on that object type.
+	if cmd, ok := entry.Message.(log.MsgOpCommandLegacy); ok {
 		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
 			return false
 		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Command, opts.PatternFilter) {
 			return false
 		}
-	} else if cmd, ok := entry.LogMessage.(parser.LogMsgOpCommand); ok {
+	} else if cmd, ok := entry.Message.(log.MsgOpCommand); ok {
 		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
 			return false
 		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Command, opts.PatternFilter) {
@@ -372,7 +373,7 @@ func (f *filterCommand) match(entry parser.LogEntry, opts filterCommandOptions) 
 
 	return true
 }
-func (f *filterCommand) modify(entry parser.LogEntry, options filterCommandOptions) (parser.LogEntry, bool) {
+func (f *filterCommand) modify(entry log.Entry, options filterCommandOptions) (log.Entry, bool) {
 	if options.TimezoneModifier != 0 && entry.DateValid {
 		// add seconds to the parsed date object
 		entry.Date = entry.Date.Add(options.TimezoneModifier * time.Minute)

@@ -55,7 +55,7 @@ func (d *DateParser) ParseDate(value string) (time.Time, error) {
 		date  time.Time
 		err   error
 		index int
-		order []string = d.formatOrder
+		order = d.formatOrder
 	)
 	for index = 0; index < d.formatCount; index += 1 {
 		if date, err = time.Parse(order[index], value); err == nil {
@@ -65,10 +65,9 @@ func (d *DateParser) ParseDate(value string) (time.Time, error) {
 			break
 		}
 	}
-	if err != nil {
+	if err == nil {
 		d.reorderFormat(index)
 	}
-
 	return date, err
 }
 
@@ -76,7 +75,7 @@ func (d *DateParser) reorderFormat(index int) {
 	if index > 0 {
 		var (
 			format  string
-			reorder []string = make([]string, d.formatCount)
+			reorder = make([]string, d.formatCount)
 		)
 		d.lock.Lock()
 		copy(reorder, d.formatOrder)

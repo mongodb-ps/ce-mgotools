@@ -1,40 +1,30 @@
 package parser
 
 import (
-	"fmt"
-	"github.com/pkg/errors"
-	"mgotools/mongo"
-	"mgotools/util"
 	"net"
 	"strconv"
 	"strings"
+
+	"mgotools/log"
+	"mgotools/mongo"
+	"mgotools/util"
+
+	"github.com/pkg/errors"
 )
 
-// IsComponent checks a string value against the possible components array.
-func IsComponent(value string) bool {
-	return util.ArrayMatchString(mongo.COMPONENTS, value)
-}
-
-// IsContext checks for a bracketed string ([<string>])
-func IsContext(value string) bool {
-	length := util.StringLength(value)
-	return length > 2 && value[0] == '[' && value[length-1] == ']'
-}
-
-// IsSeverity checks a string value against the severities array.
-func IsSeverity(value string) bool {
-	return util.StringLength(value) == 1 && util.ArrayMatchString(mongo.SEVERITIES, value)
-}
+var ErrorNoPlanSummaryFound = errors.New("no plan summary found")
+var ErrorNoStartupArgumentsFound = errors.New("no startup arguments found")
+var ErrorUnexpectedVersionFormat = errors.New("unexpected version format")
 
 func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 	var (
 		addr   *util.RuneReader
 		buffer string
 		char   rune
-		conn   int    = 0
+		conn          = 0
+		port          = 0
 		ip     net.IP = nil
 		ok     bool
-		port   int = 0
 	)
 	msg.SkipWords(1) // "from"
 	partialAddress, ok := msg.SlurpWord()
@@ -84,8 +74,8 @@ func parseIntegerKeyValue(source string, target map[string]int, limit map[string
 	return false
 }
 
-func parsePlanSummary(r *util.RuneReader) ([]LogMsgOpCommandPlanSummary, error) {
-	var out []LogMsgOpCommandPlanSummary
+func parsePlanSummary(r *util.RuneReader) ([]log.MsgOpCommandPlanSummary, error) {
+	var out []log.MsgOpCommandPlanSummary
 	for {
 		if op, ok := r.SlurpWord(); !ok {
 			// There are no words, so exit.
@@ -96,7 +86,7 @@ func parsePlanSummary(r *util.RuneReader) ([]LogMsgOpCommandPlanSummary, error) 
 				return nil, err
 			} else {
 				// The plan summary parsed as valid JSON, so record the operation and fall-through.
-				out = append(out, LogMsgOpCommandPlanSummary{op, summary})
+				out = append(out, log.MsgOpCommandPlanSummary{op, summary})
 			}
 			if r.NextRune() != ',' {
 				// There are no other plans so exit plan summary parsing.
@@ -108,25 +98,25 @@ func parsePlanSummary(r *util.RuneReader) ([]LogMsgOpCommandPlanSummary, error) 
 			}
 		} else if length := len(op); length > 2 && op[length-1] == ',' {
 			// This is needed for repeated bare words (e.g. planSummary: COLLSCAN, COLLSCAN).
-			out = append(out, LogMsgOpCommandPlanSummary{op[:length-1], nil})
+			out = append(out, log.MsgOpCommandPlanSummary{op[:length-1], nil})
 			continue
 		} else {
 			// Finally, the plan summary is boring and only includes a single word (e.g. COLLSCAN).
-			out = append(out, LogMsgOpCommandPlanSummary{op, nil})
+			out = append(out, log.MsgOpCommandPlanSummary{op, nil})
 			break
 		}
 	}
 	if len(out) == 0 {
 		// Return an error if no plans exist.
-		return nil, errors.New("no plan summary found")
+		return nil, ErrorNoPlanSummaryFound
 	}
 	return out, nil
 }
 
-func parseStartupInfo(msg string) (LogMsgStartupInfo, error) {
+func parseStartupInfo(msg string) (log.MsgStartupInfo, error) {
 	if optionsRegex, err := util.GetRegexRegistry().Compile(`([^=\s]+)=([^\s]+)`); err == nil {
 		matches := optionsRegex.FindAllStringSubmatch(msg, -1)
-		startupInfo := LogMsgStartupInfo{}
+		startupInfo := log.MsgStartupInfo{}
 
 		for _, match := range matches {
 			switch match[1] {
@@ -142,20 +132,20 @@ func parseStartupInfo(msg string) (LogMsgStartupInfo, error) {
 		}
 		return startupInfo, nil
 	}
-	return LogMsgStartupInfo{}, fmt.Errorf("no startup arguments found")
+	return log.MsgStartupInfo{}, ErrorNoStartupArgumentsFound
 }
 
-func parseStartupOptions(msg string) (LogMsgStartupOptions, error) {
+func parseStartupOptions(msg string) (log.MsgStartupOptions, error) {
 	opt, err := mongo.ParseJson(msg, false)
 	if err != nil {
-		return LogMsgStartupOptions{}, err
+		return log.MsgStartupOptions{}, err
 	}
-	return LogMsgStartupOptions{String: msg, Options: opt}, nil
+	return log.MsgStartupOptions{String: msg, Options: opt}, nil
 }
 
-func parseVersion(msg string, binary string) (LogMsgVersion, error) {
+func parseVersion(msg string, binary string) (log.MsgVersion, error) {
 	msg = strings.TrimLeft(msg, "v")
-	version := LogMsgVersion{String: msg, Binary: binary}
+	version := log.MsgVersion{String: msg, Binary: binary}
 	if parts := strings.Split(version.String, "."); len(parts) >= 2 {
 		version.Major, _ = strconv.Atoi(parts[0])
 		version.Minor, _ = strconv.Atoi(parts[1])
@@ -164,7 +154,7 @@ func parseVersion(msg string, binary string) (LogMsgVersion, error) {
 		}
 	}
 	if version.String == "" {
-		return version, fmt.Errorf("unexpected version format")
+		return version, ErrorUnexpectedVersionFormat
 	}
 	return version, nil
 }

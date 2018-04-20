@@ -1,4 +1,4 @@
-package parser
+package log
 
 import (
 	"bytes"
@@ -14,9 +14,9 @@ import (
 // 2017-07-29T16:55:33.242-0700 I CONTROL  [initandlisten] db version v3.0.15
 // 2017-07-29T17:01:15.835-0700 I CONTROL  [initandlisten] db version v3.2.12
 
-type LogEntry struct {
-	RawLogEntry
-	LogMessage LogMessage
+type Entry struct {
+	Base
+	Message Message
 
 	Connection      int
 	Context         string
@@ -29,12 +29,12 @@ type LogEntry struct {
 	Valid bool
 }
 
-type LogEntryEventConnectionAttributes struct {
+type EntryEventConnectionAttributes struct {
 	Address net.IPAddr
 	Port    uint16
 }
 
-func (r *LogEntry) String() string {
+func (r *Entry) String() string {
 	var buffer bytes.Buffer
 	buffer.WriteString(r.Date.Format(util.DATE_FORMAT_ISO8602_LOCAL))
 	buffer.WriteString(" ")

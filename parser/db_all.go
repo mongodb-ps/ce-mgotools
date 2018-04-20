@@ -1,43 +1,23 @@
 package parser
 
 import (
+	"mgotools/log"
 	"mgotools/mongo"
 	"mgotools/util"
-	"time"
 )
 
 const (
-	LOG_VERSION_ANY = 0
+	LOG_VERSION_ANY = iota
 	LOG_VERSION_MONGOD
 	LOG_VERSION_MONGOS
 )
 
-type LogVersionParser interface {
-	NewLogMessage(LogEntry) (LogMessage, error)
-	ParseDate(string) (time.Time, error)
-	Version() LogVersionDefinition
-}
-type LogVersionCommon struct {
-	*util.DateParser
-}
-type LogVersionDateUnmatched struct {
-	Message string
-}
-type LogVersionDefinition struct {
-	Major  int
-	Minor  int
-	Binary int
-}
-type LogVersionErrorUnmatched struct {
-	Message string
-}
-
-func (v *LogVersionCommon) ParseControl(r util.RuneReader, entry LogEntry) (LogMessage, error) {
+func (v *LogVersionCommon) ParseControl(r util.RuneReader, entry log.Entry) (log.Message, error) {
 	switch entry.Context {
 	case "initandlisten":
 		switch {
 		case r.ExpectString("build info"):
-			return LogMsgBuildInfo{BuildInfo: r.SkipWords(2).Remainder()}, nil
+			return log.MsgBuildInfo{BuildInfo: r.SkipWords(2).Remainder()}, nil
 		case r.ExpectString("db version"):
 			return parseVersion(r.SkipWords(2).Remainder(), "mongod")
 		case r.ExpectString("MongoDB starting"):
@@ -50,48 +30,48 @@ func (v *LogVersionCommon) ParseControl(r util.RuneReader, entry LogEntry) (LogM
 		}
 	case "signalProcessingThread":
 		if r.ExpectString("dbexit") {
-			return LogMsgShutdown{String: r.Remainder()}, nil
+			return log.MsgShutdown{String: r.Remainder()}, nil
 		} else {
-			return LogMsgSignal{r.Remainder()}, nil
+			return log.MsgSignal{r.Remainder()}, nil
 		}
 	}
 	return nil, LogVersionErrorUnmatched{Message: "unrecognized control message"}
 }
 
-func (v *LogVersionCommon) ParseDDL(r util.RuneReader, entry LogEntry) (LogMessage, error) {
+func (v *LogVersionCommon) ParseDDL(r util.RuneReader, entry log.Entry) (log.Message, error) {
 	if entry.Connection > 0 {
 		switch {
 		case r.ExpectString("CMD: drop"):
 			if namespace, ok := r.SkipWords(2).SlurpWord(); ok {
-				return LogMsgDropCollection{namespace}, nil
+				return log.MsgDropCollection{namespace}, nil
 			}
 		case r.ExpectString("dropDatabase"):
 			if database, ok := r.SkipWords(1).SlurpWord(); ok {
 				if r.NextRune() == '-' {
 					r.SkipWords(1)
 				}
-				return LogMsgDropDatabase{database, r.Remainder()}, nil
+				return log.MsgDropDatabase{database, r.Remainder()}, nil
 			}
 		}
 	}
 	return nil, LogVersionErrorUnmatched{Message: "unrecognized ddl message"}
 }
 
-func (v *LogVersionCommon) ParseNetwork(r util.RuneReader, entry LogEntry) (LogMessage, error) {
+func (v *LogVersionCommon) ParseNetwork(r util.RuneReader, entry log.Entry) (log.Message, error) {
 	if entry.Connection == 0 {
 		if r.ExpectString("connection accepted") { // connection accepted from <IP>:<PORT> #<CONN>
 			if addr, port, conn, ok := parseConnectionInit(r.SkipWords(2)); ok {
-				return LogMsgConnection{Address: addr, Port: port, Conn: conn, Opened: true}, nil
+				return log.MsgConnection{Address: addr, Port: port, Conn: conn, Opened: true}, nil
 			}
 		} else if r.ExpectString("waiting for connections") {
-			return LogMsgListening{}, nil
+			return log.MsgListening{}, nil
 		} else if entry.Context == "signalProcessingThread" {
-			return LogMsgSignal{entry.RawMessage}, nil
+			return log.MsgSignal{entry.RawMessage}, nil
 		}
 	} else if entry.Connection > 0 {
 		if r.ExpectString("end connection") {
 			if addr, port, _, ok := parseConnectionInit(&r); ok {
-				return LogMsgConnection{Address: addr, Port: port, Conn: entry.Connection, Opened: false}, nil
+				return log.MsgConnection{Address: addr, Port: port, Conn: entry.Connection, Opened: false}, nil
 			}
 		} else if r.ExpectString("received client metadata from") {
 			// Skip "received client metadata" and grab connection information.
@@ -99,7 +79,7 @@ func (v *LogVersionCommon) ParseNetwork(r util.RuneReader, entry LogEntry) (LogM
 				return nil, LogVersionErrorUnmatched{"unexpected connection meta format"}
 			} else {
 				if meta, err := mongo.ParseJsonRunes(&r, false); err == nil {
-					return LogMsgConnectionMeta{LogMsgConnection{addr, conn, port, true}, meta}, nil
+					return log.MsgConnectionMeta{log.MsgConnection{addr, conn, port, true}, meta}, nil
 				}
 			}
 		}
@@ -107,19 +87,19 @@ func (v *LogVersionCommon) ParseNetwork(r util.RuneReader, entry LogEntry) (LogM
 	return nil, LogVersionErrorUnmatched{"unrecognized network message"}
 }
 
-func (v *LogVersionCommon) ParseStorage(r util.RuneReader, entry LogEntry) (LogMessage, error) {
+func (v *LogVersionCommon) ParseStorage(r util.RuneReader, entry log.Entry) (log.Message, error) {
 	switch entry.Context {
 	case "signalProcessingThread":
-		return LogMsgSignal{entry.RawMessage}, nil
+		return log.MsgSignal{entry.RawMessage}, nil
 	case "initandlisten":
 		if r.ExpectString("wiredtiger_open config") {
-			return LogMsgWiredTigerConfig{String: r.SkipWords(2).Remainder()}, nil
+			return log.MsgWiredTigerConfig{String: r.SkipWords(2).Remainder()}, nil
 		}
 	}
 	return nil, LogVersionErrorUnmatched{"unrecognized storage option"}
 }
 
-func (v *LogVersionCommon) NewLogMessage(entry LogEntry) (LogMessage, error) {
+func (v *LogVersionCommon) NewLogMessage(entry log.Entry) (log.Message, error) {
 	panic("unimplemented call to LogVersionCommon::NewLogMessage")
 }
 func (e LogVersionErrorUnmatched) Error() string {

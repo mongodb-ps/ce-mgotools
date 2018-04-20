@@ -1,18 +1,19 @@
-package parser
+package log
 
 import (
-	"fmt"
 	"strings"
 
+	"mgotools/mongo"
 	"mgotools/util"
 
 	"github.com/pkg/errors"
 )
 
-type RawLogEntry struct {
+type Base struct {
 	*util.RuneReader
 
 	CString      bool
+	LineNumber   uint
 	RawDate      string
 	RawComponent string
 	RawContext   string
@@ -20,10 +21,12 @@ type RawLogEntry struct {
 	RawSeverity  string
 }
 
-// Generate a LogEntry from a line of text. This method assumes the entry is *not* JSON.
-func NewRawLogEntry(line string) (RawLogEntry, error) {
+var ErrorParsingDate = errors.New("unrecognized date format")
+
+// Generate an Entry from a line of text. This method assumes the entry is *not* JSON.
+func NewBase(line string, num uint) (Base, error) {
 	var (
-		entry RawLogEntry = RawLogEntry{RuneReader: util.NewRuneReader(line)}
+		entry = Base{RuneReader: util.NewRuneReader(line), LineNumber: num}
 		pos   int
 	)
 	// Check for a day in the first portion of the string, which represents version <= 2.4
@@ -35,8 +38,7 @@ func NewRawLogEntry(line string) (RawLogEntry, error) {
 		entry.CString = false
 	}
 	if entry.EOL() || entry.RawDate == "" {
-		fmt.Println("Could not parse date")
-		return entry, errors.New(fmt.Sprintf("could not parse date format: %s", line))
+		return entry, ErrorParsingDate
 	}
 	if entry.Expect('[') {
 		// the context is first so assume the line remainder is the message
@@ -69,7 +71,7 @@ func NewRawLogEntry(line string) (RawLogEntry, error) {
 
 // Take a parts array ([]string { "Sun", "Jan", "02", "15:04:05" }) and combined into a single element
 // ([]string { "Sun Jan 02 15:04:05" }) with all trailing elements appended to the array.
-func (r *RawLogEntry) parseCDateString() string {
+func (r *Base) parseCDateString() string {
 	var (
 		ok     bool     = true
 		target []string = make([]string, 4)
@@ -89,4 +91,20 @@ func (r *RawLogEntry) parseCDateString() string {
 	}
 
 	return strings.Join(target, " ")
+}
+
+// IsComponent checks a string value against the possible components array.
+func IsComponent(value string) bool {
+	return util.ArrayMatchString(mongo.COMPONENTS, value)
+}
+
+// IsContext checks for a bracketed string ([<string>])
+func IsContext(value string) bool {
+	length := util.StringLength(value)
+	return length > 2 && value[0] == '[' && value[length-1] == ']'
+}
+
+// IsSeverity checks a string value against the severities array.
+func IsSeverity(value string) bool {
+	return util.StringLength(value) == 1 && util.ArrayMatchString(mongo.SEVERITIES, value)
 }

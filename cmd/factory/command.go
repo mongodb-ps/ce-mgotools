@@ -1,7 +1,7 @@
 package factory
 
 // TODO: Stream input from _mongod_ and tee output
-// TODO: Create better factory model than including parser.LogEntryFactory
+// TODO: Create better factory model than including parser.EntryFactory
 
 import (
 	"bufio"
@@ -9,6 +9,8 @@ import (
 	"errors"
 	"os"
 	synclib "sync"
+
+	"mgotools/util"
 )
 
 type Command interface {
@@ -213,6 +215,8 @@ func parseFile(f Command, index int, in *baseCommandFileHandle, out chan<- strin
 
 	// Delegate line parsing to the individual commands.
 	go func() {
+		sync.Add(1)
+		defer sync.Done()
 		// Close the input file handle.
 		defer func() { in.CloseSignal <- struct{}{} }()
 		// Begin running the command.
@@ -234,12 +238,14 @@ func parseFile(f Command, index int, in *baseCommandFileHandle, out chan<- strin
 	}
 
 	if scannerError := scanner.Err(); scannerError != nil {
+		util.Debug("error: %s", scannerError)
 		errs <- scannerError
 	}
 
 	if err := f.Finish(index); err != nil {
 		errs <- err
 	}
+	util.Debug("end of parseFile")
 	return
 }
 

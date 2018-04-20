@@ -7,47 +7,32 @@ import (
 )
 
 type regexRegistry struct {
-	Compiled map[string]*regexp.Regexp
-	Lock     sync.Mutex
+	Compiled sync.Map
+	mutex    sync.Mutex
 }
 
-var mutex sync.Mutex
-
-var regexRegistryInstance *regexRegistry
+var regexRegistryInstance = &regexRegistry{}
 
 func GetRegexRegistry() *regexRegistry {
-	if regexRegistryInstance == nil {
-		mutex.Lock()
-		defer mutex.Unlock()
-
-		if regexRegistryInstance == nil {
-			regexRegistryInstance = &regexRegistry{
-				Compiled: make(map[string]*regexp.Regexp),
-			}
-		}
-	}
-
 	return regexRegistryInstance
 }
 
 func (r *regexRegistry) Compile(pattern string) (*regexp.Regexp, error) {
+	var regex interface{}
 	var ok bool
-	var compiled *regexp.Regexp
-	var err error
 
-	if compiled, ok = r.Compiled[pattern]; !ok {
-		mutex.Lock()
-		defer mutex.Unlock()
+	if regex, ok = r.Compiled.Load(pattern); !ok {
+		r.mutex.Lock()
+		defer r.mutex.Unlock()
 
-		if compiled, ok = r.Compiled[pattern]; ok {
-			return compiled, nil
+		if compiled, err := regexp.Compile(pattern); err != nil {
+			return nil, err
+		} else {
+			r.Compiled.Store(pattern, compiled)
+			regex = compiled
 		}
-
-		compiled, err = regexp.Compile(pattern)
-		r.Compiled[pattern] = compiled
 	}
-
-	return compiled, err
+	return regex.(*regexp.Regexp), nil
 }
 
 func (r *regexRegistry) CompileAndMatch(pattern string, match string) ([]string, error) {

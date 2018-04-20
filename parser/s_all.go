@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"mgotools/log"
 	"mgotools/util"
 	"strings"
 )
@@ -9,7 +10,9 @@ type LogVersionSCommon struct {
 	LogVersionCommon
 }
 
-func (v *LogVersionSCommon) NewLogMessage(entry LogEntry) (LogMessage, error) {
+var logVersionSCommon = LogVersionSCommon{}
+
+func (v *LogVersionSCommon) NewLogMessage(entry log.Entry) (log.Message, error) {
 	msg := util.NewRuneReader(entry.RawMessage)
 	preview1 := strings.TrimRight(msg.PreviewWord(1), ":")
 	preview2 := strings.TrimRight(msg.PreviewWord(2), ":")
@@ -28,7 +31,4 @@ func (v *LogVersionSCommon) NewLogMessage(entry LogEntry) (LogMessage, error) {
 		}
 	}
 	return nil, LogVersionErrorUnmatched{Message: "version (s)all"}
-}
-func (v *LogVersionSCommon) Version() LogVersionDefinition {
-	return LogVersionDefinition{Major:1<<31-1,Minor:1<<31-1,Binary:LOG_VERSION_MONGOS}
 }

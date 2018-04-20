@@ -4,13 +4,19 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	//"golang.org/x/text/unicode/norm"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode/utf8"
+	//"golang.org/x/text/unicode/norm"
 )
 
+var debugMutex sync.Mutex
+
 func Debug(format string, v ...interface{}) {
+	debugMutex.Lock()
+	defer debugMutex.Unlock()
+
 	fmt.Fprintf(os.Stderr, format+"\n", v...)
 }
 func ArgumentSplit(r rune) bool {
