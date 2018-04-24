@@ -7,8 +7,8 @@ import (
 )
 
 func BenchmarkShort(b *testing.B) {
-	t := LogVersionDefinition{2, 4, 1}
-	for n, f := range map[string]func(LogVersionDefinition) string{
+	t := VersionDefinition{2, 4, 1}
+	for n, f := range map[string]func(VersionDefinition) string{
 		"VersionFmtString":    VersionFmtString,
 		"VersoinCompoundItoa": VersionCompoundItoa,
 		"VersionBytesItoa":    VersionBytesItoa,
@@ -23,8 +23,8 @@ func BenchmarkShort(b *testing.B) {
 }
 
 func BenchmarkMediumShort(b *testing.B) {
-	t := LogVersionDefinition{10, 2, 2}
-	for n, f := range map[string]func(LogVersionDefinition) string{
+	t := VersionDefinition{10, 2, 2}
+	for n, f := range map[string]func(VersionDefinition) string{
 		"VersionFmtString":    VersionFmtString,
 		"VersoinCompoundItoa": VersionCompoundItoa,
 		"VersionBytesItoa":    VersionBytesItoa,
@@ -40,8 +40,8 @@ func BenchmarkMediumShort(b *testing.B) {
 }
 
 func BenchmarkShortMedium(b *testing.B) {
-	t := LogVersionDefinition{2, 10, 2}
-	for n, f := range map[string]func(LogVersionDefinition) string{
+	t := VersionDefinition{2, 10, 2}
+	for n, f := range map[string]func(VersionDefinition) string{
 		"VersionFmtString":    VersionFmtString,
 		"VersoinCompoundItoa": VersionCompoundItoa,
 		"VersionBytesItoa":    VersionBytesItoa,
@@ -57,8 +57,8 @@ func BenchmarkShortMedium(b *testing.B) {
 }
 
 func BenchmarkLong(b *testing.B) {
-	t := LogVersionDefinition{10, 50, 1}
-	for n, f := range map[string]func(LogVersionDefinition) string{
+	t := VersionDefinition{10, 50, 1}
+	for n, f := range map[string]func(VersionDefinition) string{
 		"VersionFmtString":    VersionFmtString,
 		"VersoinCompoundItoa": VersionCompoundItoa,
 		"VersionBytesItoa":    VersionBytesItoa,
@@ -72,7 +72,7 @@ func BenchmarkLong(b *testing.B) {
 	}
 }
 
-func VersionFmtString(version LogVersionDefinition) string {
+func VersionFmtString(version VersionDefinition) string {
 	switch version.Binary {
 	case LOG_VERSION_MONGOD:
 		return fmt.Sprintf("mongod %d.%d", version.Major, version.Minor)
@@ -83,7 +83,7 @@ func VersionFmtString(version LogVersionDefinition) string {
 	}
 }
 
-func VersionCompoundItoa(version LogVersionDefinition) string {
+func VersionCompoundItoa(version VersionDefinition) string {
 	switch version.Binary {
 	case LOG_VERSION_MONGOD:
 		return "mongod " + strconv.Itoa(version.Major) + "." + strconv.Itoa(version.Minor)
@@ -94,7 +94,7 @@ func VersionCompoundItoa(version LogVersionDefinition) string {
 	}
 }
 
-func VersionBytesItoa(version LogVersionDefinition) string {
+func VersionBytesItoa(version VersionDefinition) string {
 	var dst []byte
 	switch version.Binary {
 	case LOG_VERSION_MONGOD:
@@ -110,7 +110,7 @@ func VersionBytesItoa(version LogVersionDefinition) string {
 	return string(dst)
 }
 
-func VersionBytes(version LogVersionDefinition) string {
+func VersionBytes(version VersionDefinition) string {
 	var dst [12]byte
 	offset := 0
 

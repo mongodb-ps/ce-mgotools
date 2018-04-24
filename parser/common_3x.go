@@ -6,16 +6,16 @@ import (
 	"strings"
 	"unicode"
 
-	"mgotools/log"
 	"mgotools/mongo"
+	"mgotools/record"
 	"mgotools/util"
 )
 
-func parse3XCommand(r util.RuneReader, strict bool) (log.Message, error) {
+func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 	var (
 		err     error
 		ok      bool
-		op      = log.MakeMsgOpCommand()
+		op      = record.MakeMsgOpCommand()
 		name    string
 		section struct {
 			Meta bytes.Buffer
@@ -26,12 +26,12 @@ func parse3XCommand(r util.RuneReader, strict bool) (log.Message, error) {
 	// Check for the operation first.
 	op.Operation, ok = r.SlurpWord()
 	if !ok || (strict && !util.ArrayBinarySearchString(op.Operation, mongo.OPERATIONS)) {
-		return nil, LogVersionErrorUnmatched{"unexpected operation"}
+		return nil, VersionErrorUnmatched{"unexpected operation"}
 	}
 	// Then for the namespace.
 	op.Namespace, ok = r.SlurpWord()
 	if strict && (!ok || !strings.ContainsRune(op.Namespace, '.')) {
-		return nil, LogVersionErrorUnmatched{"unexpected namespace"}
+		return nil, VersionErrorUnmatched{"unexpected namespace"}
 	} else if !strict && op.Namespace != "" && !strings.ContainsRune(op.Namespace, '.') {
 		r.RewindSlurpWord()
 		op.Name = op.Namespace
@@ -40,7 +40,7 @@ func parse3XCommand(r util.RuneReader, strict bool) (log.Message, error) {
 		// Then for the sub-operation.
 		op.Name, ok = r.SlurpWord()
 		if !ok || op.Name == "" || op.Name[len(op.Name)-1] != ':' {
-			return nil, LogVersionErrorUnmatched{"unexpected sub-operation"}
+			return nil, VersionErrorUnmatched{"unexpected sub-operation"}
 		}
 		op.Name = op.Name[:len(op.Name)-1]
 	}
@@ -132,11 +132,11 @@ func parse3XCommand(r util.RuneReader, strict bool) (log.Message, error) {
 	return op, nil
 }
 
-func parse3XBuildIndex(r util.RuneReader) (log.Message, error) {
+func parse3XBuildIndex(r util.RuneReader) (record.Message, error) {
 	// build index on: database.collection properties: { v: 2, key: { key1: 1.0 }, name: "name_1", ns: "database.collection" }
 	var (
 		err error
-		msg log.MsgOpIndex
+		msg record.MsgOpIndex
 	)
 	msg.Operation = "build index"
 	msg.Namespace, _ = r.SkipWords(3).SlurpWord()
@@ -148,5 +148,5 @@ func parse3XBuildIndex(r util.RuneReader) (log.Message, error) {
 			return msg, nil
 		}
 	}
-	return nil, LogVersionErrorUnmatched{"unmatched index build"}
+	return nil, VersionErrorUnmatched{"unmatched index build"}
 }

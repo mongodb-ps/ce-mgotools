@@ -1,32 +1,32 @@
 package parser
 
 import (
-	"mgotools/log"
 	"mgotools/mongo"
+	"mgotools/record"
 	"mgotools/util"
 	"strconv"
 	"strings"
 )
 
-type LogVersion24Parser struct {
-	LogVersionCommon
+type Version24Parser struct {
+	VersionCommon
 }
 
 func init() {
-	LogVersionParserFactory.Register(func() LogVersionParser {
-		return &LogVersion24Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR})}}
+	VersionParserFactory.Register(func() VersionParser {
+		return &Version24Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR})}}
 	})
 }
 
-func (v *LogVersion24Parser) NewLogMessage(entry log.Entry) (log.Message, error) {
+func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
 		// Check for control messages, which is almost everything in 2.4 that is logged at startup.
-		if msg, err := v.LogVersionCommon.ParseControl(r, entry); err == nil {
+		if msg, err := v.VersionCommon.ParseControl(r, entry); err == nil {
 			// Most startup messages are part of control.
 			return msg, nil
-		} else if msg, err := v.LogVersionCommon.ParseNetwork(r, entry); err == nil {
+		} else if msg, err := v.VersionCommon.ParseNetwork(r, entry); err == nil {
 			// Alternatively, we care about basic network actions like new connections being established.
 			return msg, nil
 		}
@@ -58,16 +58,16 @@ func (v *LogVersion24Parser) NewLogMessage(entry log.Entry) (log.Message, error)
 			}
 		}
 	}
-	return nil, LogVersionErrorUnmatched{Message: "version 2.4"}
+	return nil, VersionErrorUnmatched{Message: "version 2.4"}
 }
-func (v *LogVersion24Parser) Version() LogVersionDefinition {
-	return LogVersionDefinition{Major: 2, Minor: 4, Binary: LOG_VERSION_MONGOD}
+func (v *Version24Parser) Version() VersionDefinition {
+	return VersionDefinition{Major: 2, Minor: 4, Binary: LOG_VERSION_MONGOD}
 }
-func parse24BuildIndex(r util.RuneReader) (log.Message, error) {
+func parse24BuildIndex(r util.RuneReader) (record.Message, error) {
 	// build index database.collection { key: 1.0 }
 	var (
 		err error
-		msg log.MsgOpIndex
+		msg record.MsgOpIndex
 	)
 	switch {
 	case r.ExpectString("build index"):
@@ -79,15 +79,15 @@ func parse24BuildIndex(r util.RuneReader) (log.Message, error) {
 			}
 		}
 	}
-	return nil, LogVersionErrorUnmatched{Message: "index format unrecognized"}
+	return nil, VersionErrorUnmatched{Message: "index format unrecognized"}
 }
 
-func parse24Command(r util.RuneReader) (log.MsgOpCommandLegacy, error) {
+func parse24Command(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
 	var err error
 	// command test.$cmd command: { getlasterror: 1.0, w: 1.0 } ntoreturn:1 keyUpdates:0  reslen:67 0ms
 	// query test.foo query: { b: 1.0 } ntoreturn:0 ntoskip:0 nscanned:10 keyUpdates:0 locks(micros) r:146 nreturned:1 reslen:64 0ms
 	// update vcm_audit.payload.files query: { _id: ObjectId('000000000000000000000000') } update: { _id: ObjectId('000000000000000000000000') } idhack:1 nupdated:1 upsert:1 keyUpdates:0 locks(micros) w:33688 194ms
-	op := log.MakeMsgOpCommandLegacy()
+	op := record.MakeMsgOpCommandLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 	var target map[string]int = op.Counters
@@ -114,9 +114,9 @@ func parse24Command(r util.RuneReader) (log.MsgOpCommandLegacy, error) {
 	}
 	return op, nil
 }
-func parse24Operation(r util.RuneReader) (log.Message, error) {
+func parse24Operation(r util.RuneReader) (record.Message, error) {
 	// insert test.system.indexes ninserted:1 keyUpdates:0 locks(micros) w:10527 10ms
-	op := log.MakeMsgOpCommandLegacy()
+	op := record.MakeMsgOpCommandLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 	var target map[string]int = op.Counters
@@ -126,7 +126,7 @@ func parse24Operation(r util.RuneReader) (log.Message, error) {
 			continue
 		} else if param == "locks:{" {
 			// Wrong version, so exit.
-			return nil, LogVersionErrorUnmatched{}
+			return nil, VersionErrorUnmatched{}
 		}
 		parseIntegerKeyValue(param, target, mongo.COUNTERS)
 	}

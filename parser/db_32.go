@@ -1,21 +1,21 @@
 package parser
 
 import (
-	"mgotools/log"
+	"mgotools/record"
 	"mgotools/util"
 )
 
 type LogVersion32Parser struct {
-	LogVersionCommon
+	VersionCommon
 }
 
 func init() {
-	LogVersionParserFactory.Register(func() LogVersionParser {
-		return &LogVersion32Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
+	VersionParserFactory.Register(func() VersionParser {
+		return &LogVersion32Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
 	})
 }
 
-func (v *LogVersion32Parser) NewLogMessage(entry log.Entry) (log.Message, error) {
+func (v *LogVersion32Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch entry.RawComponent {
 	case "COMMAND", "WRITE":
@@ -35,8 +35,8 @@ func (v *LogVersion32Parser) NewLogMessage(entry log.Entry) (log.Message, error)
 	case "STORAGE":
 		return v.ParseStorage(r, entry)
 	}
-	return nil, LogVersionErrorUnmatched{Message: "version 3.2"}
+	return nil, VersionErrorUnmatched{Message: "version 3.2"}
 }
-func (v *LogVersion32Parser) Version() LogVersionDefinition {
-	return LogVersionDefinition{Major: 3, Minor: 2, Binary: LOG_VERSION_MONGOD}
+func (v *LogVersion32Parser) Version() VersionDefinition {
+	return VersionDefinition{Major: 3, Minor: 2, Binary: LOG_VERSION_MONGOD}
 }

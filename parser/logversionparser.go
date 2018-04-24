@@ -3,47 +3,46 @@ package parser
 import (
 	"time"
 
-	"mgotools/log"
+	"mgotools/record"
 	"mgotools/util"
 )
 
-type LogVersionCommon struct {
-	*util.DateParser
-}
-
 /*
- * LogVersionParserFactory
+ * VersionParserFactory
  */
-// Global LogVersionParserFactory to register different version files.
-var LogVersionParserFactory = &logVersionParserFactory{factories: make([]LogVersionParser, 0, 64)}
 
-type LogVersionParser interface {
-	NewLogMessage(log.Entry) (log.Message, error)
+// Global VersionParserFactory to register different version files.
+var VersionParserFactory = &logVersionParserFactory{factories: make([]VersionParser, 0, 64)}
+
+type VersionParser interface {
+	NewLogMessage(record.Entry) (record.Message, error)
 	ParseDate(string) (time.Time, error)
-	Version() LogVersionDefinition
-}
-type logVersionParserFactory struct {
-	count     int
-	factories []LogVersionParser
+	Version() VersionDefinition
 }
 
-func (f *logVersionParserFactory) Get() []LogVersionParser {
+type logVersionParserFactory struct {
+	factories []VersionParser
+}
+
+func (f *logVersionParserFactory) Get() []VersionParser {
 	return f.factories
 }
-func (f *logVersionParserFactory) Register(init func() LogVersionParser) {
+func (f *logVersionParserFactory) Register(init func() VersionParser) {
 	f.factories = append(f.factories, init())
 }
 
+type BinaryType uint32
+
 /*
- * LogVersionDefinition
+ * VersionDefinition
  */
-type LogVersionDefinition struct {
+type VersionDefinition struct {
 	Major  int
 	Minor  int
-	Binary int
+	Binary BinaryType
 }
 
-func (v *LogVersionDefinition) Hash() int64 {
+func (v *VersionDefinition) Hash() int64 {
 	// This has function will clash if v.Major gets to be 32 bits long, but if that happens something has gone horribly
 	// wrong in the world.
 	if v.Binary == LOG_VERSION_MONGOD {
@@ -56,7 +55,7 @@ func (v *LogVersionDefinition) Hash() int64 {
 }
 
 // Compares two versions. a < b == -1, a > b == 1, a = b == 0
-func (a *LogVersionDefinition) Compare(b LogVersionDefinition) int {
+func (a *VersionDefinition) Compare(b VersionDefinition) int {
 	switch {
 	case a.Major == b.Major && a.Minor == b.Minor:
 		return 0
@@ -70,7 +69,11 @@ func (a *LogVersionDefinition) Compare(b LogVersionDefinition) int {
 	panic("version comparison failed")
 }
 
-func (v LogVersionDefinition) String() string {
+func (a *VersionDefinition) Equals(b VersionDefinition) bool {
+	return a.Compare(b) == 0 && a.Binary == b.Binary
+}
+
+func (v VersionDefinition) String() string {
 	var dst [12]byte
 	offset := 0
 
@@ -103,4 +106,8 @@ func (v LogVersionDefinition) String() string {
 		panic("version too large")
 	}
 	return string(dst[:12-2+offset])
+}
+
+type VersionCommon struct {
+	*util.DateParser
 }

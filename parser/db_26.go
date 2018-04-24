@@ -5,32 +5,32 @@ import (
 	"strconv"
 	"strings"
 
-	"mgotools/log"
 	"mgotools/mongo"
+	"mgotools/record"
 	"mgotools/util"
 
 	"github.com/pkg/errors"
 )
 
 type LogVersion26Parser struct {
-	LogVersionCommon
+	VersionCommon
 }
 
 func init() {
-	LogVersionParserFactory.Register(func() LogVersionParser {
-		return &LogVersion26Parser{LogVersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
+	VersionParserFactory.Register(func() VersionParser {
+		return &LogVersion26Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
 	})
 }
 
-func (v *LogVersion26Parser) NewLogMessage(entry log.Entry) (log.Message, error) {
+func (v *LogVersion26Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
 		// Check for control messages, which is almost everything in 2.6 that is logged at startup.
-		if msg, err := v.LogVersionCommon.ParseControl(r, entry); err == nil {
+		if msg, err := v.VersionCommon.ParseControl(r, entry); err == nil {
 			// Most startup messages are part of control.
 			return msg, nil
-		} else if msg, err := v.LogVersionCommon.ParseNetwork(r, entry); err == nil {
+		} else if msg, err := v.VersionCommon.ParseNetwork(r, entry); err == nil {
 			// Alternatively, we care about basic network actions like new connections being established.
 			return msg, nil
 		}
@@ -57,16 +57,16 @@ func (v *LogVersion26Parser) NewLogMessage(entry log.Entry) (log.Message, error)
 			}
 		}
 	}
-	return nil, LogVersionErrorUnmatched{Message: "version 2.6"}
+	return nil, VersionErrorUnmatched{Message: "version 2.6"}
 }
-func parse26BuildIndex(r util.RuneReader) (log.Message, error) {
+func parse26BuildIndex(r util.RuneReader) (record.Message, error) {
 	// 2.6 index building format is the same as 3.x
 	return parse3XBuildIndex(r)
 }
-func parse26Command(r util.RuneReader) (log.Message, error) {
+func parse26Command(r util.RuneReader) (record.Message, error) {
 	// command test.$cmd command: insert { insert: "foo", documents: [ { _id: ObjectId('59e3fdf50bae7edf962785a7'), a: 1.0 } ], ordered: true } keyUpdates:0 numYields:0 locks(micros) w:159 reslen:40 0ms
 	var err error
-	op := log.MakeMsgOpCommandLegacy()
+	op := record.MakeMsgOpCommandLegacy()
 	if opn, ok := r.SlurpWord(); ok {
 		op.Operation = opn
 	} else {
@@ -101,18 +101,18 @@ func parse26Command(r util.RuneReader) (log.Message, error) {
 	}
 	return op, nil
 }
-func parse26Operation(r util.RuneReader) (log.Message, error) {
+func parse26Operation(r util.RuneReader) (record.Message, error) {
 	// getmore test.foo cursorid:30107363235 ntoreturn:3 keyUpdates:0 numYields:0 locks(micros) r:14 nreturned:3 reslen:119 0ms
 	// insert test.foo query: { _id: ObjectId('5a331671de4f2a133f17884b'), a: 2.0 } ninserted:1 keyUpdates:0 numYields:0 locks(micros) w:10 0ms
 	// remove test.foo query: { a: { $gte: 9.0 } } ndeleted:1 keyUpdates:0 numYields:0 locks(micros) w:63 0ms
 	// update test.foo query: { a: { $gte: 8.0 } } update: { $set: { b: 1.0 } } nscanned:9 nscannedObjects:9 nMatched:1 nModified:1 keyUpdates:0 numYields:0 locks(micros) w:135 0ms
 	var err error
-	op := log.MakeMsgOpCommandLegacy()
+	op := record.MakeMsgOpCommandLegacy()
 	// Grab the operation name first.
 	if opn, ok := r.SlurpWord(); ok {
 		op.Operation = opn
 	} else {
-		return nil, LogVersionErrorUnmatched{"unexpected operation"}
+		return nil, VersionErrorUnmatched{"unexpected operation"}
 	}
 	if ns, ok := r.SlurpWord(); ok && strings.ContainsRune(ns, '.') {
 		op.Namespace = ns
@@ -128,7 +128,7 @@ func parse26Operation(r util.RuneReader) (log.Message, error) {
 				continue
 			} else {
 				// Wrong version.
-				return nil, LogVersionErrorUnmatched{}
+				return nil, VersionErrorUnmatched{}
 			}
 		} else if param == "planSummary:" {
 			// Plan summaries require complicated and special code, so branch off and parse for plan summaries.
@@ -138,7 +138,7 @@ func parse26Operation(r util.RuneReader) (log.Message, error) {
 			continue
 		} else if length := len(param); length > 1 && util.ArrayBinarySearchString(param[:length-1], mongo.OPERATIONS) {
 			if r.EOL() {
-				return nil, LogVersionErrorUnmatched{"unexpected end of string"}
+				return nil, VersionErrorUnmatched{"unexpected end of string"}
 			} else if r.Expect('{') {
 				// Parse JSON, found immediately after an operation.
 				if op.Command, err = mongo.ParseJsonRunes(&r, false); err != nil {
@@ -154,11 +154,11 @@ func parse26Operation(r util.RuneReader) (log.Message, error) {
 			break
 		} else {
 			// An unexpected value means that this parser either isn't the correct version or the line is invalid.
-			return nil, LogVersionErrorUnmatched{fmt.Sprintf("encountered unexpected value '%s'", param)}
+			return nil, VersionErrorUnmatched{fmt.Sprintf("encountered unexpected value '%s'", param)}
 		}
 	}
 	return op, nil
 }
-func (v *LogVersion26Parser) Version() LogVersionDefinition {
-	return LogVersionDefinition{Major: 2, Minor: 6, Binary: LOG_VERSION_MONGOD}
+func (v *LogVersion26Parser) Version() VersionDefinition {
+	return VersionDefinition{Major: 2, Minor: 6, Binary: LOG_VERSION_MONGOD}
 }

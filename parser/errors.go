@@ -3,16 +3,23 @@ package parser
 /*
  * Log parser errors
  */
-type LogVersionDateUnmatched struct{}
-type LogVersionMessageUnmatched struct{}
+type VersionDateUnmatched struct{}
+type VersionMessageUnmatched struct{}
 
-type LogVersionErrorUnmatched struct {
+type VersionErrorUnmatched struct {
 	Message string
 }
 
-func (e LogVersionDateUnmatched) Error() string {
+func (e VersionDateUnmatched) Error() string {
 	return "unmatched date string"
 }
-func (e LogVersionMessageUnmatched) Error() string {
+func (e VersionMessageUnmatched) Error() string {
 	return "unmatched or empty message string"
+}
+func (e VersionErrorUnmatched) Error() string {
+	if e.Message != "" {
+		return "Log message not recognized: " + e.Message
+	} else {
+		return "Log message not recognized"
+	}
 }

@@ -126,10 +126,10 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 		outputSync synclib.WaitGroup
 
 		// Create a helper to write to the output handle.
-		outputWriter *bufio.Writer = bufio.NewWriter(out.out.FileHandle)
+		outputWriter = bufio.NewWriter(out.out.FileHandle)
 
 		// Create a helper to write to the error handle.
-		errorWriter *bufio.Writer = bufio.NewWriter(out.err.FileHandle)
+		errorWriter = bufio.NewWriter(out.err.FileHandle)
 	)
 
 	// Always flush the output at the end of execution.

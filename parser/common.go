@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"mgotools/log"
 	"mgotools/mongo"
+	"mgotools/record"
 	"mgotools/util"
 
 	"github.com/pkg/errors"
@@ -74,8 +74,8 @@ func parseIntegerKeyValue(source string, target map[string]int, limit map[string
 	return false
 }
 
-func parsePlanSummary(r *util.RuneReader) ([]log.MsgOpCommandPlanSummary, error) {
-	var out []log.MsgOpCommandPlanSummary
+func parsePlanSummary(r *util.RuneReader) ([]record.MsgOpCommandPlanSummary, error) {
+	var out []record.MsgOpCommandPlanSummary
 	for {
 		if op, ok := r.SlurpWord(); !ok {
 			// There are no words, so exit.
@@ -86,7 +86,7 @@ func parsePlanSummary(r *util.RuneReader) ([]log.MsgOpCommandPlanSummary, error)
 				return nil, err
 			} else {
 				// The plan summary parsed as valid JSON, so record the operation and fall-through.
-				out = append(out, log.MsgOpCommandPlanSummary{op, summary})
+				out = append(out, record.MsgOpCommandPlanSummary{op, summary})
 			}
 			if r.NextRune() != ',' {
 				// There are no other plans so exit plan summary parsing.
@@ -98,11 +98,11 @@ func parsePlanSummary(r *util.RuneReader) ([]log.MsgOpCommandPlanSummary, error)
 			}
 		} else if length := len(op); length > 2 && op[length-1] == ',' {
 			// This is needed for repeated bare words (e.g. planSummary: COLLSCAN, COLLSCAN).
-			out = append(out, log.MsgOpCommandPlanSummary{op[:length-1], nil})
+			out = append(out, record.MsgOpCommandPlanSummary{op[:length-1], nil})
 			continue
 		} else {
 			// Finally, the plan summary is boring and only includes a single word (e.g. COLLSCAN).
-			out = append(out, log.MsgOpCommandPlanSummary{op, nil})
+			out = append(out, record.MsgOpCommandPlanSummary{op, nil})
 			break
 		}
 	}
@@ -113,10 +113,10 @@ func parsePlanSummary(r *util.RuneReader) ([]log.MsgOpCommandPlanSummary, error)
 	return out, nil
 }
 
-func parseStartupInfo(msg string) (log.MsgStartupInfo, error) {
+func parseStartupInfo(msg string) (record.MsgStartupInfo, error) {
 	if optionsRegex, err := util.GetRegexRegistry().Compile(`([^=\s]+)=([^\s]+)`); err == nil {
 		matches := optionsRegex.FindAllStringSubmatch(msg, -1)
-		startupInfo := log.MsgStartupInfo{}
+		startupInfo := record.MsgStartupInfo{}
 
 		for _, match := range matches {
 			switch match[1] {
@@ -132,20 +132,20 @@ func parseStartupInfo(msg string) (log.MsgStartupInfo, error) {
 		}
 		return startupInfo, nil
 	}
-	return log.MsgStartupInfo{}, ErrorNoStartupArgumentsFound
+	return record.MsgStartupInfo{}, ErrorNoStartupArgumentsFound
 }
 
-func parseStartupOptions(msg string) (log.MsgStartupOptions, error) {
+func parseStartupOptions(msg string) (record.MsgStartupOptions, error) {
 	opt, err := mongo.ParseJson(msg, false)
 	if err != nil {
-		return log.MsgStartupOptions{}, err
+		return record.MsgStartupOptions{}, err
 	}
-	return log.MsgStartupOptions{String: msg, Options: opt}, nil
+	return record.MsgStartupOptions{String: msg, Options: opt}, nil
 }
 
-func parseVersion(msg string, binary string) (log.MsgVersion, error) {
+func parseVersion(msg string, binary string) (record.MsgVersion, error) {
 	msg = strings.TrimLeft(msg, "v")
-	version := log.MsgVersion{String: msg, Binary: binary}
+	version := record.MsgVersion{String: msg, Binary: binary}
 	if parts := strings.Split(version.String, "."); len(parts) >= 2 {
 		version.Major, _ = strconv.Atoi(parts[0])
 		version.Minor, _ = strconv.Atoi(parts[1])

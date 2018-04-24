@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"mgotools/cmd/factory"
-	"mgotools/log"
 	"mgotools/mongo"
 	"mgotools/parser"
+	"mgotools/parser/context"
+	"mgotools/record"
 	"mgotools/util"
 
 	"github.com/pkg/errors"
@@ -48,7 +49,7 @@ type filterCommandOptions struct {
 	LineCount  uint
 }
 type filterLog struct {
-	*parser.Context
+	*context.Log
 
 	argsBool       map[string]bool
 	argsInt        map[string]int
@@ -102,8 +103,8 @@ func (f *filterCommand) Terminate(out chan<- string) error {
 }
 func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan string, errs chan<- error, fatal <-chan struct{}) error {
 	var (
-		options filterCommandOptions = f.Log[index].commandOptions
-		exit    int                  = 0
+		options     = f.Log[index].commandOptions
+		exit    int = 0
 	)
 	go func() {
 		<-fatal
@@ -118,13 +119,13 @@ func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan stri
 			continue
 		}
 		options.LineCount += 1
-		base, err := log.NewBase(line, options.LineCount)
+		base, err := record.NewBase(line, options.LineCount)
 		if err != nil {
 			errs <- err
 		}
 		entry, err := f.Log[index].NewEntry(base)
 		if err != nil {
-			if _, ok := err.(parser.LogVersionErrorUnmatched); !ok {
+			if _, ok := err.(parser.VersionErrorUnmatched); !ok {
 				errs <- err
 				options.ErrorCount += 1
 			}
@@ -149,7 +150,7 @@ func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan stri
 	}
 	return nil
 }
-func (f *filterCommand) Prepare(context factory.InputContext) error {
+func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 	opts := filterCommandOptions{
 		ConnectionFilter:         -1,
 		ExecutionDurationMinimum: -1,
@@ -159,12 +160,12 @@ func (f *filterCommand) Prepare(context factory.InputContext) error {
 		MessageOutput:            false,
 		ShortenOutput:            0,
 		TableScanFilter:          false,
-		argCount:                 len(context.Booleans) + len(context.Integers) + len(context.Strings),
+		argCount:                 len(inputContext.Booleans) + len(inputContext.Integers) + len(inputContext.Strings),
 	}
-	util.Debug("Options: %+v %+v %+v", context.Booleans, context.Integers, context.Strings)
+	util.Debug("Options: %+v %+v %+v", inputContext.Booleans, inputContext.Integers, inputContext.Strings)
 	dateParser := util.NewDateParser([]string{
 		"2006",
-		"2016-01-02",
+		"2006-01-02",
 		"2006-01-02T15:04:05",
 		"2006-01-02T15:04:05-0700",
 		"2006-01-02T15:04:05 MST",
@@ -193,7 +194,7 @@ func (f *filterCommand) Prepare(context factory.InputContext) error {
 		"Jan 2 2006 15:04:05.000 MST",
 	})
 	// parse through all boolean arguments
-	for key, value := range context.Booleans {
+	for key, value := range inputContext.Booleans {
 		switch key {
 		case "exclude":
 			opts.InvertMatch = value
@@ -202,7 +203,7 @@ func (f *filterCommand) Prepare(context factory.InputContext) error {
 		}
 	}
 	// parse through all integer arguments
-	for key, value := range context.Integers {
+	for key, value := range inputContext.Integers {
 		switch key {
 		case "connection":
 			if value > 0 {
@@ -231,7 +232,7 @@ func (f *filterCommand) Prepare(context factory.InputContext) error {
 		}
 	}
 	// parse through all string arguments
-	for key, value := range context.Strings {
+	for key, value := range inputContext.Strings {
 		if value == "" {
 			return fmt.Errorf("%s cannot be empty", key)
 		}
@@ -256,14 +257,14 @@ func (f *filterCommand) Prepare(context factory.InputContext) error {
 			}
 		case "marker":
 			if value == "enum" {
-				opts.MarkerOutput = fmt.Sprintf("%d ", context.Index)
+				opts.MarkerOutput = fmt.Sprintf("%d ", inputContext.Index)
 			} else if value == "alpha" {
-				for i := 0; i < context.Index/26+1; i += 1 {
-					opts.MarkerOutput = opts.MarkerOutput + string(rune(context.Index%26+97))
+				for i := 0; i < inputContext.Index/26+1; i += 1 {
+					opts.MarkerOutput = opts.MarkerOutput + string(rune(inputContext.Index%26+97))
 				}
 				opts.MarkerOutput = opts.MarkerOutput + " "
 			} else if value == "filename" {
-				opts.MarkerOutput = context.Name + " "
+				opts.MarkerOutput = inputContext.Name + " "
 			} else {
 				opts.MarkerOutput = value + " "
 			}
@@ -297,11 +298,11 @@ func (f *filterCommand) Prepare(context factory.InputContext) error {
 			}
 		}
 	}
-	f.Log[context.Index] = filterLog{
-		Context:        parser.NewContext(),
-		argsBool:       context.Booleans,
-		argsInt:        context.Integers,
-		argsString:     context.Strings,
+	f.Log[inputContext.Index] = filterLog{
+		Log:            context.NewLog(),
+		argsBool:       inputContext.Booleans,
+		argsInt:        inputContext.Integers,
+		argsString:     inputContext.Strings,
 		commandOptions: opts,
 	}
 	return nil
@@ -309,7 +310,7 @@ func (f *filterCommand) Prepare(context factory.InputContext) error {
 func (f *filterCommand) Usage() string {
 	return "used to filter log files based on a set of criteria"
 }
-func (f *filterCommand) match(entry log.Entry, opts filterCommandOptions) bool {
+func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) bool {
 	if opts.argCount == 0 {
 		return true
 	} else if !entry.Valid {
@@ -341,7 +342,7 @@ func (f *filterCommand) match(entry log.Entry, opts filterCommandOptions) bool {
 	}
 
 	// Try converting into a base MsgOpCommand object and do comparisons if the filter succeeds.
-	if cmd, ok := entry.Message.(log.MsgOpCommandBase); ok {
+	if cmd, ok := entry.Message.(record.MsgOpCommandBase); ok {
 		if opts.CommandFilter != "" && !stringMatchFields(cmd.Name, opts.CommandFilter) {
 			return false
 		} else if opts.FasterFilter > 0 && time.Duration(cmd.Duration) > opts.FasterFilter {
@@ -355,13 +356,13 @@ func (f *filterCommand) match(entry log.Entry, opts filterCommandOptions) bool {
 		return false
 	}
 	// Try convergint to a MsgOpCommandLegacy object and compare filters based on that object type.
-	if cmd, ok := entry.Message.(log.MsgOpCommandLegacy); ok {
+	if cmd, ok := entry.Message.(record.MsgOpCommandLegacy); ok {
 		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
 			return false
 		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Command, opts.PatternFilter) {
 			return false
 		}
-	} else if cmd, ok := entry.Message.(log.MsgOpCommand); ok {
+	} else if cmd, ok := entry.Message.(record.MsgOpCommand); ok {
 		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
 			return false
 		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Command, opts.PatternFilter) {
@@ -373,7 +374,7 @@ func (f *filterCommand) match(entry log.Entry, opts filterCommandOptions) bool {
 
 	return true
 }
-func (f *filterCommand) modify(entry log.Entry, options filterCommandOptions) (log.Entry, bool) {
+func (f *filterCommand) modify(entry record.Entry, options filterCommandOptions) (record.Entry, bool) {
 	if options.TimezoneModifier != 0 && entry.DateValid {
 		// add seconds to the parsed date object
 		entry.Date = entry.Date.Add(options.TimezoneModifier * time.Minute)

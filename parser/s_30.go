@@ -1,25 +1,25 @@
 package parser
 
 import (
-	"mgotools/log"
+	"mgotools/record"
 	"mgotools/util"
 )
 
-type LogVersion30SParser struct {
-	LogVersionCommon
+type Version30SParser struct {
+	VersionCommon
 }
 
 func init() {
-	LogVersionParserFactory.Register(func() LogVersionParser {
-		return &LogVersion30SParser{LogVersionCommon{
+	VersionParserFactory.Register(func() VersionParser {
+		return &Version30SParser{VersionCommon{
 			util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
 		}}
 	})
 }
 
-func (v *LogVersion30SParser) NewLogMessage(entry log.Entry) (log.Message, error) {
+func (v *Version30SParser) NewLogMessage(entry record.Entry) (record.Message, error) {
 	return logVersionSCommon.NewLogMessage(entry)
 }
-func (v *LogVersion30SParser) Version() LogVersionDefinition {
-	return LogVersionDefinition{Major: 3, Minor: 0, Binary: LOG_VERSION_MONGOS}
+func (v *Version30SParser) Version() VersionDefinition {
+	return VersionDefinition{Major: 3, Minor: 0, Binary: LOG_VERSION_MONGOS}
 }
