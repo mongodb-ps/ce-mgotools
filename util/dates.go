@@ -4,6 +4,7 @@ import (
 	//"github.com/olebedev/when"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // ctime-no-ms
@@ -99,7 +100,38 @@ func IsMonth(match string) bool {
 	return ArrayInsensitiveMatchString(DATE_MONTHS, match)
 }
 
-func IsTime(match string) bool {
+/*func IsTime(match string) bool {
 	check, _ := GetRegexRegistry().Compile(DATE_REGEX_TIME)
 	return check.MatchString(match)
+}*/
+func IsTime(match string) bool {
+	// 00:00:00.000
+	check := []rune(match)
+	size := len(check)
+
+	if size == 8 {
+		return unicode.IsNumber(check[0]) &&
+			unicode.IsNumber(check[1]) &&
+			check[2] == ':' &&
+			unicode.IsNumber(check[3]) &&
+			unicode.IsNumber(check[4]) &&
+			check[5] == ':' &&
+			unicode.IsNumber(check[6]) &&
+			unicode.IsNumber(check[7])
+	} else if size == 12 {
+		return unicode.IsNumber(check[0]) &&
+			unicode.IsNumber(check[1]) &&
+			check[2] == ':' &&
+			unicode.IsNumber(check[3]) &&
+			unicode.IsNumber(check[4]) &&
+			check[5] == ':' &&
+			unicode.IsNumber(check[6]) &&
+			unicode.IsNumber(check[7]) &&
+			check[8] == '.' &&
+			unicode.IsNumber(check[9]) &&
+			unicode.IsNumber(check[10]) &&
+			unicode.IsNumber(check[11])
+	} else {
+		return false
+	}
 }

@@ -5,17 +5,17 @@ import (
 	"mgotools/util"
 )
 
-type LogVersion30Parser struct {
+type Version30Parser struct {
 	VersionCommon
 }
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &LogVersion30Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
+		return &Version30Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
 	})
 }
 
-func (v *LogVersion30Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
+func (v *Version30Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch entry.RawComponent {
 	case "COMMAND", "WRITE":
@@ -37,6 +37,35 @@ func (v *LogVersion30Parser) NewLogMessage(entry record.Entry) (record.Message, 
 	}
 	return nil, VersionErrorUnmatched{"version 3.0"}
 }
-func (v *LogVersion30Parser) Version() VersionDefinition {
-	return VersionDefinition{Major: 3, Minor: 0, Binary: LOG_VERSION_MONGOD}
+
+func (v *Version30Parser) Check(base record.Base) bool {
+	return !base.CString &&
+		base.RawSeverity != record.SeverityNone &&
+		v.isExpectedComponent(base.RawComponent)
+}
+
+func (v *Version30Parser) isExpectedComponent(c string) bool {
+	switch c {
+	case "CONTROL",
+		"DEFAULT",
+		"EXECUTOR",
+		"GEO",
+		"INDEX",
+		"JOURNAL",
+		"NETWORK",
+		"QUERY",
+		"REPL",
+		"SHARDING",
+		"STORAGE",
+		"TOTAL",
+		"WRITE",
+		"-":
+		return true
+	default:
+		return false
+	}
+}
+
+func (v *Version30Parser) Version() VersionDefinition {
+	return VersionDefinition{Major: 3, Minor: 0, Binary: record.BinaryMongod}
 }

@@ -112,7 +112,7 @@ func runCommand(c *cli.Context) error {
 				return err
 			}
 			fileCount = 1
-			input.AddHandle("-", os.Stdin, args)
+			input.AddHandle("stdin", os.Stdin, args)
 		}
 		// Loop through each argument and add files to the command.
 		for index := 0; index < argc; index += 1 {

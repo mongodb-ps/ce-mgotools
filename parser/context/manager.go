@@ -26,17 +26,19 @@ type logParser struct {
 }
 
 type manager struct {
-	all       map[parser.VersionDefinition]logParser
 	mutex     sync.RWMutex
 	output    chan Result
+	rejected  uint32
+	versions  map[parser.VersionDefinition]*logParser
 	waitGroup sync.WaitGroup
 }
 
 func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, error), parsers []parser.VersionParser) manager {
-	set := make(map[parser.VersionDefinition]logParser)
+	set := make(map[parser.VersionDefinition]*logParser)
 
 	m := manager{
-		all:       set,
+		versions:  set,
+		rejected:  0,
 		mutex:     sync.RWMutex{},
 		output:    make(chan Result, len(set)),
 		waitGroup: sync.WaitGroup{},
@@ -44,7 +46,7 @@ func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, er
 
 	for _, item := range parsers {
 		version := item.Version()
-		set[version] = logParser{
+		set[version] = &logParser{
 			Input:    make(chan record.Base),
 			Parser:   item,
 			Rejected: false,
@@ -54,7 +56,7 @@ func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, er
 		}
 
 		// Create a goroutine that will continuously monitor for base objects and begin conversion once received.
-		go parseByVersion(set[version].Input, m.output, worker, set[version], &m.waitGroup)
+		go parseByVersion(set[version].Input, m.output, worker, *set[version], &m.waitGroup)
 	}
 
 	return m
@@ -68,7 +70,7 @@ func parseByVersion(baseIn <-chan record.Base, entryOut chan<- Result, worker fu
 	result := Result{Version: v.Version}
 	for base := range baseIn {
 		// Do a quick-and-dirty version check and only process against factories that may return a result.
-		result.Rejected = !quickVersionCheck(base, v.Version)
+		result.Rejected = !v.Parser.Check(base)
 		if !result.Rejected {
 			// Run the parser against the active factory (parser).
 			entry, err := worker(base, v.Parser)
@@ -92,24 +94,22 @@ func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition,
 
 	// Loop over each factory and provide a copy of the entry.
 	expected := 0
-	for _, factoryDefinition := range m.all {
+	for _, factoryDefinition := range m.versions {
 		if !factoryDefinition.Rejected {
 			factoryDefinition.Input <- base
 			expected += 1
 		}
 	}
 
-	util.Debug("# sent %d entries for attempts", expected)
 	// Create a "winner" object that will be filled with "the winner" out of all the factories attempted.
 	var winner *Result = nil
-
 	for i := 0; i < expected; i += 1 {
 		// Wait for a result from one of the potential factories and call it an attempt. There is no expectation
 		// that results will return in any particular order.
 		attempt := <-m.output
 
 		// Keep records of all attempts for later calculations.
-		versionParser := m.all[attempt.Version]
+		versionParser := m.versions[attempt.Version]
 		versionParser.Tries += 1
 
 		// A rejected attempt
@@ -145,15 +145,17 @@ func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition,
 		}
 	}
 
+	// Check for a blank winner, meaning no versions succeeded in the attempt.
 	if winner == nil {
-		winner = &Result{Err: parser.VersionMessageUnmatched{}}
+		winner = &Result{Err: parser.VersionErrorUnmatched{}}
+	} else {
+		m.versions[winner.Version].Wins += 1
 	}
 
 	// Unlock the read lock. Note that this is not deferred because doing so would conflict with any deferred rejections.
 	m.mutex.RUnlock()
 
-	util.Debug("winner (line %d): (%d.%d %d) %d attempted", base.LineNumber, winner.Version.Major, winner.Version.Minor, winner.Version.Binary, expected)
-	util.Debug("winner (line %d): %v", base.LineNumber, *winner)
+	// Mark the winning version and return the results.
 	return winner.Entry, winner.Version, winner.Err
 }
 
@@ -161,13 +163,21 @@ func (m *manager) Reject(test func(parser.VersionDefinition) bool) bool {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	count := 0
-	for version := range m.all {
+	count := uint32(0)
+	for version := range m.versions {
 		if test(version) {
 			count += 1
-			(m.all[version]).Rejected = true
+			m.versions[version].Rejected = true
 		}
 	}
+
+	m.rejected += count
+	if m.rejected == uint32(len(m.versions)) {
+		for version := range m.versions {
+			m.versions[version].Rejected = false
+		}
+	}
+
 	return count > 1
 }
 
@@ -175,7 +185,7 @@ func (m *manager) Reset() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	for version := range m.all {
-		(m.all[version]).Rejected = false
+	for version := range m.versions {
+		m.versions[version].Rejected = false
 	}
 }

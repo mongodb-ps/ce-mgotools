@@ -63,7 +63,7 @@ func (c *Log) NewEntry(base record.Base) (record.Entry, error) {
 	manager := c.parserFactory
 	entry, version, err := manager.Try(base)
 
-	if err != nil {
+	if _, ok := err.(parser.VersionMessageUnmatched); err != nil && ok {
 		return record.Entry{}, err
 	}
 
@@ -85,9 +85,7 @@ func (c *Log) NewEntry(base record.Base) (record.Entry, error) {
 		entry.Date = time.Date(time.Now().Year(), entry.Date.Month(), entry.Date.Day(), entry.Date.Hour(), entry.Date.Minute(), entry.Date.Second(), entry.Date.Nanosecond(), entry.Date.Location())
 	}
 
-	util.Debug("* parsing messages (line %d)", base.LineNumber)
 	if entry.Message != nil && entry.Connection == 0 {
-		util.Debug("type (line %d): %T", base.LineNumber, entry.Message)
 		switch msg := entry.Message.(type) {
 		case record.MsgStartupInfo:
 			c.Startup = append(c.Startup, logStartup{})
@@ -109,12 +107,12 @@ func (c *Log) NewEntry(base record.Base) (record.Entry, error) {
 			case "mongod":
 				c.Startup[c.startupIndex].DatabaseVersion = msg
 				manager.Reject(func(version parser.VersionDefinition) bool {
-					return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != parser.LOG_VERSION_MONGOD
+					return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongod
 				})
 			case "mongos":
 				c.Startup[c.startupIndex].ShardVersion = msg
 				manager.Reject(func(version parser.VersionDefinition) bool {
-					return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != parser.LOG_VERSION_MONGOS
+					return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongos
 				})
 			case "OpenSSL":
 				c.Startup[c.startupIndex].OpenSSLVersion = msg
@@ -129,25 +127,6 @@ func (c *Log) NewEntry(base record.Base) (record.Entry, error) {
 	return entry, nil
 }
 
-func quickVersionCheck(base record.Base, check parser.VersionDefinition) bool {
-	// Order of operations here matter. For example, CString always means version 2.4 but it doesn't
-	// say anything about the binary. Therefore, binary checks need to happen before version checks
-	// since they never eliminate all results down to a single version and binary pair.
-	if base.RawContext == "[mongosMain]" && check.Binary != parser.LOG_VERSION_MONGOS {
-		util.Debug("mongos")
-		// Some version of mongos
-		return false
-	} else if base.CString {
-		// CString is only set for old date formats, which is version 2.4 (or less, which isn't supported)
-		return check.Major == 2 && check.Minor == 4
-	} else if base.RawComponent == "" {
-		// A missing component means version 2.6 of any binary type.
-		return check.Major == 2 && check.Minor == 6
-	} else {
-		return true
-	}
-}
-
 func (c *Log) baseToEntry(base record.Base, factory parser.VersionParser) (record.Entry, error) {
 	var (
 		err error
@@ -155,7 +134,7 @@ func (c *Log) baseToEntry(base record.Base, factory parser.VersionParser) (recor
 	)
 
 	if out.Date, err = factory.ParseDate(base.RawDate); err != nil {
-		return record.Entry{}, parser.VersionDateUnmatched{}
+		return record.Entry{Valid: false}, parser.VersionDateUnmatched{}
 	}
 
 	// No dates matched so mark the date invalid and reset the count.
@@ -183,7 +162,6 @@ func (c *Log) baseToEntry(base record.Base, factory parser.VersionParser) (recor
 	// Check for the base message for validity and parse it.
 	if out.RawMessage == "" {
 		// No log message exists so it cannot be further analyzed.
-		out.Valid = false
 		return out, parser.VersionMessageUnmatched{}
 	}
 

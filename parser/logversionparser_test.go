@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+
+	"mgotools/record"
 )
 
 func BenchmarkShort(b *testing.B) {
@@ -74,9 +76,9 @@ func BenchmarkLong(b *testing.B) {
 
 func VersionFmtString(version VersionDefinition) string {
 	switch version.Binary {
-	case LOG_VERSION_MONGOD:
+	case record.BinaryMongod:
 		return fmt.Sprintf("mongod %d.%d", version.Major, version.Minor)
-	case LOG_VERSION_MONGOS:
+	case record.BinaryMongos:
 		return fmt.Sprintf("mongos %d.%d", version.Major, version.Minor)
 	default:
 		panic("unexpected binary")
@@ -85,9 +87,9 @@ func VersionFmtString(version VersionDefinition) string {
 
 func VersionCompoundItoa(version VersionDefinition) string {
 	switch version.Binary {
-	case LOG_VERSION_MONGOD:
+	case record.BinaryMongod:
 		return "mongod " + strconv.Itoa(version.Major) + "." + strconv.Itoa(version.Minor)
-	case LOG_VERSION_MONGOS:
+	case record.BinaryMongos:
 		return "mongos " + strconv.Itoa(version.Major) + "." + strconv.Itoa(version.Minor)
 	default:
 		panic("unexpected binary")
@@ -97,9 +99,9 @@ func VersionCompoundItoa(version VersionDefinition) string {
 func VersionBytesItoa(version VersionDefinition) string {
 	var dst []byte
 	switch version.Binary {
-	case LOG_VERSION_MONGOD:
+	case record.BinaryMongod:
 		dst = []byte{'m', 'o', 'n', 'g', 'o', 'd', ' '}
-	case LOG_VERSION_MONGOS:
+	case record.BinaryMongos:
 		dst = []byte{'m', 'o', 'n', 'g', 'o', 's', ' '}
 	default:
 		panic("unexpected binary")
@@ -115,9 +117,9 @@ func VersionBytes(version VersionDefinition) string {
 	offset := 0
 
 	switch version.Binary {
-	case LOG_VERSION_MONGOD:
+	case record.BinaryMongod:
 		dst = [12]byte{'m', 'o', 'n', 'g', 'o', 'd', ' ', 0, '.', '.'}
-	case LOG_VERSION_MONGOS:
+	case record.BinaryMongos:
 		dst = [12]byte{'m', 'o', 'n', 'g', 'o', 's', ' ', 0, '.', '.'}
 	default:
 		panic("unexpected binary")

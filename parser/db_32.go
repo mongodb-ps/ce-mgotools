@@ -5,17 +5,23 @@ import (
 	"mgotools/util"
 )
 
-type LogVersion32Parser struct {
+type Version32Parser struct {
 	VersionCommon
 }
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &LogVersion32Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
+		return &Version32Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
 	})
 }
 
-func (v *LogVersion32Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
+func (v *Version32Parser) Check(base record.Base) bool {
+	return !base.CString &&
+		base.RawSeverity != record.SeverityNone &&
+		base.RawComponent != ""
+}
+
+func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch entry.RawComponent {
 	case "COMMAND", "WRITE":
@@ -37,6 +43,6 @@ func (v *LogVersion32Parser) NewLogMessage(entry record.Entry) (record.Message, 
 	}
 	return nil, VersionErrorUnmatched{Message: "version 3.2"}
 }
-func (v *LogVersion32Parser) Version() VersionDefinition {
-	return VersionDefinition{Major: 3, Minor: 2, Binary: LOG_VERSION_MONGOD}
+func (v *Version32Parser) Version() VersionDefinition {
+	return VersionDefinition{Major: 3, Minor: 2, Binary: record.BinaryMongod}
 }

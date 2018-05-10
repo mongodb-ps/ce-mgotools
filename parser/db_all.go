@@ -6,12 +6,6 @@ import (
 	"mgotools/util"
 )
 
-const (
-	LOG_VERSION_ANY = BinaryType(iota)
-	LOG_VERSION_MONGOD
-	LOG_VERSION_MONGOS
-)
-
 func (v *VersionCommon) ParseControl(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	switch entry.Context {
 	case "initandlisten":

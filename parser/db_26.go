@@ -12,17 +12,17 @@ import (
 	"github.com/pkg/errors"
 )
 
-type LogVersion26Parser struct {
+type Version26Parser struct {
 	VersionCommon
 }
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &LogVersion26Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
+		return &Version26Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
 	})
 }
 
-func (v *LogVersion26Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
+func (v *Version26Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
@@ -59,6 +59,13 @@ func (v *LogVersion26Parser) NewLogMessage(entry record.Entry) (record.Message, 
 	}
 	return nil, VersionErrorUnmatched{Message: "version 2.6"}
 }
+
+func (v *Version26Parser) Check(base record.Base) bool {
+	return !base.CString &&
+		base.RawSeverity == 0 &&
+		base.RawComponent == ""
+}
+
 func parse26BuildIndex(r util.RuneReader) (record.Message, error) {
 	// 2.6 index building format is the same as 3.x
 	return parse3XBuildIndex(r)
@@ -159,6 +166,6 @@ func parse26Operation(r util.RuneReader) (record.Message, error) {
 	}
 	return op, nil
 }
-func (v *LogVersion26Parser) Version() VersionDefinition {
-	return VersionDefinition{Major: 2, Minor: 6, Binary: LOG_VERSION_MONGOD}
+func (v *Version26Parser) Version() VersionDefinition {
+	return VersionDefinition{Major: 2, Minor: 6, Binary: record.BinaryMongod}
 }

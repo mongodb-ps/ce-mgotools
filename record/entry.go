@@ -38,7 +38,7 @@ func (r *Entry) String() string {
 	var buffer bytes.Buffer
 	buffer.WriteString(r.Date.Format(util.DATE_FORMAT_ISO8602_LOCAL))
 	buffer.WriteString(" ")
-	buffer.WriteString(r.RawSeverity)
+	buffer.WriteRune(rune(r.RawSeverity))
 	buffer.WriteString(" ")
 	buffer.WriteString(r.RawComponent)
 	buffer.WriteString("  ")

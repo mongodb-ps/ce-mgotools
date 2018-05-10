@@ -15,6 +15,7 @@ import (
 var VersionParserFactory = &logVersionParserFactory{factories: make([]VersionParser, 0, 64)}
 
 type VersionParser interface {
+	Check(base record.Base) bool
 	NewLogMessage(record.Entry) (record.Message, error)
 	ParseDate(string) (time.Time, error)
 	Version() VersionDefinition
@@ -31,23 +32,21 @@ func (f *logVersionParserFactory) Register(init func() VersionParser) {
 	f.factories = append(f.factories, init())
 }
 
-type BinaryType uint32
-
 /*
  * VersionDefinition
  */
 type VersionDefinition struct {
 	Major  int
 	Minor  int
-	Binary BinaryType
+	Binary record.Binary
 }
 
 func (v *VersionDefinition) Hash() int64 {
 	// This has function will clash if v.Major gets to be 32 bits long, but if that happens something has gone horribly
 	// wrong in the world.
-	if v.Binary == LOG_VERSION_MONGOD {
+	if v.Binary == record.BinaryMongod {
 		return int64(v.Major)<<32 + int64(v.Minor)
-	} else if v.Binary == LOG_VERSION_MONGOS {
+	} else if v.Binary == record.BinaryMongos {
 		return int64(v.Major)<<32 + int64(v.Minor) | int64(1<<63-1)
 	} else {
 		panic("unexpected binary")
@@ -78,9 +77,9 @@ func (v VersionDefinition) String() string {
 	offset := 0
 
 	switch v.Binary {
-	case LOG_VERSION_MONGOD:
+	case record.BinaryMongod:
 		dst = [12]byte{'m', 'o', 'n', 'g', 'o', 'd', ' ', 0, '.', '.'}
-	case LOG_VERSION_MONGOS:
+	case record.BinaryMongos:
 		dst = [12]byte{'m', 'o', 'n', 'g', 'o', 's', ' ', 0, '.', '.'}
 	default:
 		panic("unexpected binary")

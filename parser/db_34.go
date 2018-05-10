@@ -15,6 +15,12 @@ func init() {
 	})
 }
 
+func (v *Version34Parser) Check(base record.Base) bool {
+	return !base.CString &&
+		base.RawSeverity != record.SeverityNone &&
+		base.RawComponent != ""
+}
+
 func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
 	r := *util.NewRuneReader(entry.RawMessage)
 	switch entry.RawComponent {
@@ -38,5 +44,5 @@ func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	return nil, VersionErrorUnmatched{Message: "version 3.4"}
 }
 func (v *Version34Parser) Version() VersionDefinition {
-	return VersionDefinition{Major: 3, Minor: 4, Binary: LOG_VERSION_MONGOD}
+	return VersionDefinition{Major: 3, Minor: 4, Binary: record.BinaryMongod}
 }

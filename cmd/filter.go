@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"time"
@@ -20,7 +19,10 @@ type filterCommand struct {
 	factory.BaseOptions
 	Log map[int]filterLog
 }
+
 type filterCommandOptions struct {
+	argCount int
+
 	AppNameFilter            string
 	CommandFilter            string
 	ComponentFilter          string
@@ -36,18 +38,15 @@ type filterCommandOptions struct {
 	NamespaceFilter          string
 	OperationFilter          string
 	PatternFilter            mongo.Pattern
-	SeverityFilter           string
+	SeverityFilter           record.Severity
 	ShortenOutput            int
 	SlowerFilter             time.Duration
 	TableScanFilter          bool
 	TimezoneModifier         time.Duration
 	ToFilter                 time.Time
 	WordFilter               string
-
-	argCount   int
-	ErrorCount uint
-	LineCount  uint
 }
+
 type filterLog struct {
 	*context.Log
 
@@ -55,11 +54,9 @@ type filterLog struct {
 	argsInt        map[string]int
 	argsString     map[string]string
 	commandOptions filterCommandOptions
-}
-type filterError struct {
-	Line        uint
-	Accumulator bytes.Buffer
-	Error       error
+
+	ErrorCount uint
+	LineCount  uint
 }
 
 func init() {
@@ -97,59 +94,86 @@ func (f *filterCommand) Finish(index int) error {
 	// There are no operations that need to be performed when a file finishes.
 	return nil
 }
+
 func (f *filterCommand) Terminate(out chan<- string) error {
 	// Finish any
 	return nil
 }
+
 func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan string, errs chan<- error, fatal <-chan struct{}) error {
-	var (
-		options     = f.Log[index].commandOptions
-		exit    int = 0
-	)
+	accumulator := make(chan record.AccumulatorResult)
+
+	exit := 0
+	options := f.Log[index].commandOptions
+
 	go func() {
 		<-fatal
 		exit = 1
 	}()
-	for line := range in {
+
+	// The accumulator is designed solve the multi-line problem. The log format
+	// does not escape multiple lines properly, causing weird problems when
+	// parsing multi-line queries. The accumulator takes in one or more
+	// record.Base objects and outputs a single record.Base object for every
+	// line.
+	go record.Accumulator(in, accumulator, record.NewBase)
+
+	// Iterate through every record.Base object provided. This is identical
+	// to iterating through every line of a log without multi-line queries.
+	for base := range accumulator {
 		if exit != 0 {
 			// Received an exit signal so immediately exit.
 			break
-		} else if line == "" {
-			// Ignore empty lines.
-			continue
+		} else if base.Error != nil {
+
 		}
-		options.LineCount += 1
-		base, err := record.NewBase(line, options.LineCount)
+
+		log := f.Log[index]
+		entry, err := f.Log[index].NewEntry(base.Base)
+
 		if err != nil {
-			errs <- err
-		}
-		entry, err := f.Log[index].NewEntry(base)
-		if err != nil {
-			if _, ok := err.(parser.VersionErrorUnmatched); !ok {
+			log.ErrorCount += 1
+			if _, ok := err.(parser.VersionErrorUnmatched); ok {
 				errs <- err
-				options.ErrorCount += 1
-			}
-		} else {
-			if entry, modified := f.modify(entry, options); modified {
-				line = options.MarkerOutput + entry.String()
-			}
-			if ok := f.match(entry, f.Log[index].commandOptions); (options.InvertMatch && ok) || (!options.InvertMatch && !ok) {
+				continue
+			} else if log.commandOptions.argCount > 0 {
 				continue
 			}
-			if options.MessageOutput {
-				line = entry.RawMessage
-			}
-			if options.ShortenOutput > 0 {
-				line = entry.Prefix(options.ShortenOutput)
-			}
-			if options.MarkerOutput != "" {
-				line = options.MarkerOutput + line
-			}
-			out <- line
 		}
+
+		var line string
+		if entry, modified := f.modify(entry, options); modified {
+			line = entry.String()
+		} else {
+			line = base.Base.String()
+		}
+
+		if ok := f.match(entry, f.Log[index].commandOptions); (options.InvertMatch && ok) || (!options.InvertMatch && !ok) {
+			// DEBUG:
+			if len(line) > 70 {
+				line = line[:70]
+			}
+			util.Debug("*: %s", line)
+			continue
+		}
+
+		if options.MessageOutput {
+			line = entry.RawMessage
+		}
+
+		if options.MarkerOutput != "" {
+			line = options.MarkerOutput + line
+		}
+
+		if options.ShortenOutput > 0 {
+			line = entry.Prefix(options.ShortenOutput)
+		}
+
+		out <- line
 	}
 	return nil
 }
+
 func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 	opts := filterCommandOptions{
 		ConnectionFilter:         -1,
@@ -284,7 +308,7 @@ func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 			if !util.ArgumentMatchOptions(mongo.SEVERITIES, value) {
 				return errors.New("--severity is not a recognized severity")
 			}
-			opts.SeverityFilter = value
+			opts.SeverityFilter = record.Severity(value[0])
 		case "to":
 			if dateParser, err := dateParser.ParseDate(value); err != nil {
 				return errors.New("--to flag could not be parsed")
@@ -307,9 +331,11 @@ func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 	}
 	return nil
 }
+
 func (f *filterCommand) Usage() string {
 	return "used to filter log files based on a set of criteria"
 }
+
 func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) bool {
 	if opts.argCount == 0 {
 		return true
@@ -321,7 +347,7 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 		return false
 	} else if opts.ContextFilter != "" && !stringMatchFields(entry.Context, opts.ContextFilter) {
 		return false
-	} else if opts.SeverityFilter != "" && !stringMatchFields(entry.RawSeverity, opts.SeverityFilter) {
+	} else if opts.SeverityFilter > 0 && entry.RawSeverity != opts.SeverityFilter {
 		return false
 	} else if !entry.DateValid || (!opts.FromFilter.IsZero() && opts.FromFilter.After(entry.Date)) || (!opts.ToFilter.IsZero() && opts.ToFilter.Before(entry.Date)) {
 		return false
@@ -374,6 +400,7 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 
 	return true
 }
+
 func (f *filterCommand) modify(entry record.Entry, options filterCommandOptions) (record.Entry, bool) {
 	if options.TimezoneModifier != 0 && entry.DateValid {
 		// add seconds to the parsed date object
@@ -382,6 +409,7 @@ func (f *filterCommand) modify(entry record.Entry, options filterCommandOptions)
 	}
 	return entry, false
 }
+
 func checkQueryPattern(op string, cmd mongo.Object, check mongo.Pattern) bool {
 	for _, key := range []string{"query", "command", "update", "remove"} {
 		if query, ok := cmd[key].(map[string]interface{}); ok {
@@ -392,6 +420,7 @@ func checkQueryPattern(op string, cmd mongo.Object, check mongo.Pattern) bool {
 	}
 	return false
 }
+
 func stringMatchFields(value string, check string) bool {
 	for _, item := range strings.FieldsFunc(check, util.ArgumentSplit) {
 		if util.StringInsensitiveMatch(item, value) {

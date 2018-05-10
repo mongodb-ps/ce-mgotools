@@ -18,9 +18,6 @@ type RuneReader struct {
 
 // Generates a RuneReader from a string.
 func NewRuneReader(a string) *RuneReader {
-	if a == "" {
-		return nil
-	}
 	r := []rune(a)
 	return &RuneReader{
 		runes:  r,
@@ -242,15 +239,6 @@ func (r *RuneReader) QuotedString() (string, error) {
 	return r.EnclosedString(which)
 }
 
-// Read(_start_, _length_) returns a string representing the rune set from
-// _start_ of _length_ runes.
-func (r *RuneReader) Read(start int, length int) (string, bool) {
-	if start < 0 || start+length > r.length || length < 1 {
-		return "", false
-	}
-	return string(r.runes[start : start+length]), true
-}
-
 // Remainder() returns a string of all runes from and including
 // the _end_ pointer to the last rune in the rune set. That is,
 // it returns everything from the _end_ pointer to the end.
@@ -386,6 +374,15 @@ func (r *RuneReader) SlurpWord() (string, bool) {
 
 func (r *RuneReader) String() string {
 	return string(r.runes)
+}
+
+// Substr(_start_, _length_) returns a string representing the rune set from
+// _start_ of _length_ runes.
+func (r *RuneReader) Substr(start int, length int) (string, bool) {
+	if start < 0 || start+length > r.length || length < 1 {
+		return "", false
+	}
+	return string(r.runes[start : start+length]), true
 }
 
 // Sync() brings the _start_ and _end_ pointers in sync by

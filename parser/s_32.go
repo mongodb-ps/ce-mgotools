@@ -17,9 +17,16 @@ func init() {
 	})
 }
 
+func (v *Version32SParser) Check(base record.Base) bool {
+	return !base.CString &&
+		base.RawSeverity != record.SeverityNone &&
+		base.RawComponent != ""
+}
+
 func (v *Version32SParser) NewLogMessage(entry record.Entry) (record.Message, error) {
 	return logVersionSCommon.NewLogMessage(entry)
 }
+
 func (v *Version32SParser) Version() VersionDefinition {
-	return VersionDefinition{Major: 3, Minor: 2, Binary: LOG_VERSION_MONGOS}
+	return VersionDefinition{Major: 3, Minor: 2, Binary: record.BinaryMongos}
 }

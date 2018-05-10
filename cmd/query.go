@@ -20,10 +20,12 @@ type commandQuery struct {
 	Log      *context.Log
 	Patterns map[string]*queryPattern
 }
+
 type queryLog struct {
 	//factory.BaseOptions
 	Log map[int]commandQuery
 }
+
 type queryPattern struct {
 	Pattern       string
 	Operation     string
@@ -48,6 +50,7 @@ func init() {
 func (s *queryLog) Finish(index int) error {
 	return nil
 }
+
 func (s *queryLog) Prepare(inputContext factory.InputContext) error {
 	s.Log[inputContext.Index] = commandQuery{
 		inputContext.Name,
@@ -58,12 +61,14 @@ func (s *queryLog) Prepare(inputContext factory.InputContext) error {
 	}
 	return nil
 }
+
 func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, errors chan<- error, fatal <-chan struct{}) error {
 	var (
-		exit bool = false
+		exit = false
 		lock sync.Mutex
 	)
 	wg := sync.WaitGroup{}
+
 	// Wait for kill signals.
 	go func() {
 		<-fatal
@@ -169,11 +174,10 @@ func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 		go parse()
 	}
 	// Wait for the workers to finish.
-	util.Debug("starting wait in ProcessLine")
 	wg.Wait()
-	util.Debug("finishing wait in ProcessLine")
 	return nil
 }
+
 func (s *queryLog) Terminate(out chan<- string) error {
 	return nil
 }

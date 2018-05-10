@@ -41,10 +41,10 @@ func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 		}
 	}
 	pos := addr.Pos()
-	if buffer, ok = addr.Read(pos, length-pos); ok {
+	if buffer, ok = addr.Substr(pos, length-pos); ok {
 		port, _ = strconv.Atoi(buffer)
 	}
-	if part, ok := addr.Read(0, pos-1); ok {
+	if part, ok := addr.Substr(0, pos-1); ok {
 		ip = net.ParseIP(part)
 	}
 	if msgNumber, ok := msg.SlurpWord(); ok {

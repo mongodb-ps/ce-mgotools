@@ -8,19 +8,22 @@ import (
 
 func TestNewRuneReaderEmpty(t *testing.T) {
 	r := util.NewRuneReader("")
-	if r != nil {
-		t.Error("expected nil")
+	if r == nil {
+		t.Error("Unexpected nil")
+	}
+	if !r.EOL() {
+		t.Errorf("Incorrect data size")
 	}
 }
 
-func TestRuneReaderLength(t *testing.T) {
+func TestRuneReader_Length(t *testing.T) {
 	r := util.NewRuneReader("abcd")
 	if r.Length() != 4 {
 		t.Errorf("expected length 4, got %d", r.Length())
 	}
 }
 
-func TestRuneReaderEOL(t *testing.T) {
+func TestRuneReader_EOL(t *testing.T) {
 	r := util.NewRuneReader("a")
 	if r.EOL() {
 		t.Error("EOL reports true, expected false")
@@ -31,7 +34,7 @@ func TestRuneReaderEOL(t *testing.T) {
 	}
 }
 
-func TestRuneReaderExpect(t *testing.T) {
+func TestRuneReader_Expect(t *testing.T) {
 	r := util.NewRuneReader("abcdefg")
 	if !r.Expect("abcdefg") {
 		t.Error("Expect w/ string failed")
@@ -73,7 +76,7 @@ func TestRuneReaderExpect(t *testing.T) {
 	}
 }
 
-func TestRuneReaderExpectString(t *testing.T) {
+func TestRuneReader_ExpectString(t *testing.T) {
 	r := util.NewRuneReader("this is a string")
 	if !r.ExpectString("this") {
 		t.Errorf("ExpectString failed at 'this'")
@@ -92,7 +95,7 @@ func TestRuneReaderExpectString(t *testing.T) {
 	}
 }
 
-func TestRuneReaderNext(t *testing.T) {
+func TestRuneReader_Next(t *testing.T) {
 	r := util.NewRuneReader("ab")
 	if c, ok := r.Next(); c != 'a' {
 		t.Errorf("expected 'a' got '%c'", c)
@@ -111,7 +114,7 @@ func TestRuneReaderNext(t *testing.T) {
 	}
 }
 
-func TestRuneReaderPeek(t *testing.T) {
+func TestRuneReader_Peek(t *testing.T) {
 	r := util.NewRuneReader("abc")
 	if r.Peek(1) != "a" {
 		t.Error("Peek length one returned incorrect values")
@@ -139,7 +142,7 @@ func TestRuneReaderPeek(t *testing.T) {
 	}
 }
 
-func TestRuneReaderPrefix(t *testing.T) {
+func TestRuneReader_Prefix(t *testing.T) {
 	r := util.NewRuneReader("abcd")
 	if r.Prefix(1) != "a" {
 		t.Error("Peek length 1 mismatch")
@@ -155,7 +158,25 @@ func TestRuneReaderPrefix(t *testing.T) {
 	}
 }
 
-func TestRuneReaderQuotedString(t *testing.T) {
+func TestRuneReader_PreviewWord(t *testing.T) {
+	s := util.NewRuneReader("abc def")
+	if s.PreviewWord(1) != "abc" {
+		t.Errorf("Expected 'abc', got '%s'", s.PreviewWord(1))
+	}
+	if s.PreviewWord(2) != "abc def" {
+		t.Errorf("Expected 'abc def', got '%s'", s.PreviewWord(2))
+	}
+
+	s = util.NewRuneReader("")
+	if s.PreviewWord(1) != "" {
+		t.Errorf("Expected empty string, got '%s'", s.PreviewWord(1))
+	}
+	if s.PreviewWord(2) != "" {
+		t.Errorf("Expected empty string, got '%s'", s.PreviewWord(2))
+	}
+}
+
+func TestRuneReader_QuotedString(t *testing.T) {
 	s := map[string]string{
 		"'quoted string'":                  "quoted string",
 		"\"quoted string\"":                "quoted string",
@@ -169,21 +190,21 @@ func TestRuneReaderQuotedString(t *testing.T) {
 	}
 }
 
-func TestRuneReaderRead(t *testing.T) {
+func TestRuneReader_Substr(t *testing.T) {
 	r := util.NewRuneReader("0123456789")
-	if out, ok := r.Read(0, 10); out != "0123456789" || !ok {
-		t.Errorf("Read failed, expected 0123456789 got %s", out)
+	if out, ok := r.Substr(0, 10); out != "0123456789" || !ok {
+		t.Errorf("Substr failed, expected 0123456789 got %s", out)
 	}
-	if out, ok := r.Read(0, 1); out != "0" || !ok {
-		t.Errorf("Read failed, expected 0 got %s", out)
+	if out, ok := r.Substr(0, 1); out != "0" || !ok {
+		t.Errorf("Substr failed, expected 0 got %s", out)
 	}
-	if out, ok := r.Read(10, 1); out != "" || ok {
-		t.Errorf("Read succeeded, expected '' got %s", out)
+	if out, ok := r.Substr(10, 1); out != "" || ok {
+		t.Errorf("Substr succeeded, expected '' got %s", out)
 	}
 
 }
 
-func TestRuneReaderScanForRune(t *testing.T) {
+func TestRuneReader_ScanForRune(t *testing.T) {
 	r := util.NewRuneReader("abcd")
 	if s, ok := r.ScanForRune('a'); s != "a" || !ok {
 		t.Errorf("scan for rune 'a' failed, '%s' returned", s)
@@ -201,7 +222,7 @@ func TestRuneReaderScanForRune(t *testing.T) {
 	}
 }
 
-func TestRuneReaderScanForRuneWhile(t *testing.T) {
+func TestRuneReader_ScanForRuneWhile(t *testing.T) {
 	r := util.NewRuneReader("abc def")
 	if s, ok := r.ScanForRuneWhile([]rune{'a', 'b', 'c'}); s != "abc" || !ok {
 		t.Errorf("scan for rune a,b,c failed, '%s' returned", s)
@@ -217,7 +238,7 @@ func TestRuneReaderScanForRuneWhile(t *testing.T) {
 
 }
 
-func TestRuneReaderSkip(t *testing.T) {
+func TestRuneReader_Skip(t *testing.T) {
 	r := util.NewRuneReader("abc")
 	r.Skip(0)
 	if r.Pos() != 0 {
@@ -246,7 +267,7 @@ func TestRuneReaderSkip(t *testing.T) {
 	}
 }
 
-func TestRuneReaderSkipWords(t *testing.T) {
+func TestRuneReader_SkipWords(t *testing.T) {
 	r := util.NewRuneReader("this is a string")
 	r.SkipWords(1)
 	if r.Pos() != 5 {
@@ -260,10 +281,24 @@ func TestRuneReaderSkipWords(t *testing.T) {
 	if r.Pos() != 16 {
 		t.Errorf("Expected 16, got %d", r.Pos())
 	}
-
 }
 
-func TestRuneReaderSeek(t *testing.T) {
+func TestRuneReader_String(t *testing.T) {
+	r := util.NewRuneReader("abc")
+	if r.String() != "abc" {
+		t.Errorf("Expected 'abc', got '%s'", r.String())
+	}
+	r = util.NewRuneReader("a")
+	if r.String() != "a" {
+		t.Errorf("Expected 'a', got '%s'", r.String())
+	}
+	r = util.NewRuneReader("")
+	if r.String() != "" {
+		t.Errorf("Expected empty string, got '%s'", r.String())
+	}
+}
+
+func TestRuneReader_Seek(t *testing.T) {
 	// a = 0, b = 1, c = 2, d = 3, e = 4, f = 5, g = 6
 	r := util.NewRuneReader("abcdefg")
 	r.Seek(0, 0)
@@ -291,7 +326,7 @@ func TestRuneReaderSeek(t *testing.T) {
 		t.Errorf("expected 'fg', 'got '%s'", r.CurrentWord())
 	}
 }
-func TestRuneReaderSlurpWord(t *testing.T) {
+func TestRuneReader_SlurpWord(t *testing.T) {
 	msg := util.NewRuneReader("this is a series of words")
 	expect := []string{"this", "is", "a", "series", "of", "words"}
 	for i := 0; i < len(expect); i++ {
@@ -318,7 +353,7 @@ func TestRuneReaderSlurpWord(t *testing.T) {
 	}
 }
 
-func TestRuneReaderCurrentWord(t *testing.T) {
+func TestRuneReader_CurrentWord(t *testing.T) {
 	// a = 0, b = 1, c = 2, ' ' = 3, d = 4, e = 5, f = 6
 	r := util.NewRuneReader("abc def")
 	if r.CurrentWord() != "" {
@@ -342,7 +377,7 @@ func TestRuneReaderCurrentWord(t *testing.T) {
 	}
 }
 
-func TestRuneReaderCurrentRune(t *testing.T) {
+func TestRuneReader_CurrentRune(t *testing.T) {
 	r := util.NewRuneReader("a")
 	if r.NextRune() != 'a' {
 		t.Fatal("expected 'a'")
@@ -353,7 +388,7 @@ func TestRuneReaderCurrentRune(t *testing.T) {
 	}
 }
 
-func TestRuneReaderChompLeft(t *testing.T) {
+func TestRuneReader_ChompLeft(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {
 			t.Error("expected a panic but did not panic")

@@ -105,19 +105,19 @@ func (b *baseCommandFileHandle) closeHandler(sync *synclib.WaitGroup) {
 func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 	var (
 		// A count of inputs.
-		count int = len(in.in)
+		count = len(in.in)
 
 		// A generic error that does *not* get used by input/output goroutines.
 		err error
 
 		// A multi-directional fan-out channel for catching and passing along errors.
-		errorChannel chan error = make(chan error)
+		errorChannel = make(chan error)
 
 		// An output channel that will facilitate moving data from commands to the output handle.
-		outChannel chan string = make(chan string)
+		outChannel = make(chan string)
 
 		// A fatal channel to halt all input parsers.
-		fatal chan struct{} = make(chan struct{})
+		fatal = make(chan struct{})
 
 		// A way to synchronize multiple goroutines.
 		processSync synclib.WaitGroup
@@ -157,21 +157,23 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 	}()
 
 	// Initiate a goroutine to wait for a single error and signal all other input parsing routines.
+	outputSync.Add(1)
 	go func() {
 		// Wait for errors (or for the channel to close).
-		outputSync.Add(1)
 		defer outputSync.Done()
+
 		for recv := range errorChannel {
 			errorWriter.WriteString(recv.Error() + "\n")
 			errorWriter.Flush()
 		}
 	}()
 
+	outputSync.Add(1)
 	go func() {
 		// Create another goroutine for outputs. Start checking for output from the several input goroutines.
 		// Output all received values directly (this may need to change in the future, i.e. should sorting be needed).
-		outputSync.Add(1)
 		defer outputSync.Done()
+
 		for line := range outChannel {
 			outputWriter.WriteString(line + "\n")
 		}
@@ -205,7 +207,7 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 }
 
 func parseFile(f Command, index int, in *baseCommandFileHandle, out chan<- string, errs chan<- error, fatal chan struct{}, sync *synclib.WaitGroup) {
-	var inputChannel chan string = make(chan string, 1024)
+	var inputChannel = make(chan string, 1024)
 
 	// Close channels that will no longer be used after this method exists (and signal any pending goroutines).
 	defer close(inputChannel)
@@ -232,9 +234,7 @@ func parseFile(f Command, index int, in *baseCommandFileHandle, out chan<- strin
 	}
 
 	for scanner.Scan() {
-		if text := scanner.Text(); text != "" {
-			inputChannel <- text
-		}
+		inputChannel <- scanner.Text()
 	}
 
 	if scannerError := scanner.Err(); scannerError != nil {
@@ -245,7 +245,7 @@ func parseFile(f Command, index int, in *baseCommandFileHandle, out chan<- strin
 	if err := f.Finish(index); err != nil {
 		errs <- err
 	}
-	util.Debug("end of parseFile")
+	util.Debug("end of parseFile (%s)", in.Name)
 	return
 }
 

@@ -60,8 +60,15 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	}
 	return nil, VersionErrorUnmatched{Message: "version 2.4"}
 }
+
+func (v *Version24Parser) Check(base record.Base) bool {
+	return base.RawComponent == "" &&
+		base.RawSeverity == record.SeverityNone &&
+		base.CString
+}
+
 func (v *Version24Parser) Version() VersionDefinition {
-	return VersionDefinition{Major: 2, Minor: 4, Binary: LOG_VERSION_MONGOD}
+	return VersionDefinition{Major: 2, Minor: 4, Binary: record.BinaryMongod}
 }
 func parse24BuildIndex(r util.RuneReader) (record.Message, error) {
 	// build index database.collection { key: 1.0 }
