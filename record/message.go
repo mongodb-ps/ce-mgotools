@@ -120,6 +120,19 @@ type MsgWiredTigerConfig struct {
 	String string
 }
 
+func MsgOpCommandBaseFromMessage(msg Message) (*MsgOpCommandBase, bool) {
+	switch t := msg.(type) {
+	case MsgOpCommandBase:
+		return &t, true
+	case MsgOpCommand:
+		return &t.MsgOpCommandBase, true
+	case MsgOpCommandLegacy:
+		return &t.MsgOpCommandBase, true
+	default:
+		return nil, false
+	}
+}
+
 func MakeMsgOpCommand() MsgOpCommand {
 	return MsgOpCommand{
 		MsgOpCommandBase: MsgOpCommandBase{

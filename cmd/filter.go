@@ -149,11 +149,6 @@ func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan stri
 		}
 
 		if ok := f.match(entry, f.Log[index].commandOptions); (options.InvertMatch && ok) || (!options.InvertMatch && !ok) {
-			// DEBUG:
-			if len(line) > 70 {
-				line = line[:70]
-			}
-			util.Debug("*: %s", line)
 			continue
 		}
 
@@ -368,7 +363,7 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 	}
 
 	// Try converting into a base MsgOpCommand object and do comparisons if the filter succeeds.
-	if cmd, ok := entry.Message.(record.MsgOpCommandBase); ok {
+	if cmd, ok := record.MsgOpCommandBaseFromMessage(entry.Message); ok {
 		if opts.CommandFilter != "" && !stringMatchFields(cmd.Name, opts.CommandFilter) {
 			return false
 		} else if opts.FasterFilter > 0 && time.Duration(cmd.Duration) > opts.FasterFilter {
@@ -381,7 +376,8 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 		// filtered based on command-style criteria.
 		return false
 	}
-	// Try convergint to a MsgOpCommandLegacy object and compare filters based on that object type.
+
+	// Try convergent to a MsgOpCommandLegacy object and compare filters based on that object type.
 	if cmd, ok := entry.Message.(record.MsgOpCommandLegacy); ok {
 		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
 			return false
