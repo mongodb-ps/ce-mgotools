@@ -23,6 +23,25 @@ func TestRuneReader_Length(t *testing.T) {
 	}
 }
 
+func TestRuneReader_EnclosedString(t *testing.T) {
+	r := util.NewRuneReader(`"quote"`)
+	if s, err := r.EnclosedString('"'); err != nil || s != "quote" {
+		t.Errorf("expected \"quote\", got %s (%s)", s, err)
+	}
+	r = util.NewRuneReader(`'quote'`)
+	if s, err := r.EnclosedString('\''); err != nil || s != "quote" {
+		t.Errorf("expected 'quote', got %s (%s)", s, err)
+	}
+	r = util.NewRuneReader("[quote]")
+	if s, err := r.EnclosedString(']'); err != nil || s != "quote" {
+		t.Errorf("expected [quote], got %s (%s)", s, err)
+	}
+	r = util.NewRuneReader("quote")
+	if s, err := r.EnclosedString('"'); err == nil || s == "quote" {
+		t.Errorf("expected error, got nil")
+	}
+}
+
 func TestRuneReader_EOL(t *testing.T) {
 	r := util.NewRuneReader("a")
 	if r.EOL() {

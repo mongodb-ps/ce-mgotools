@@ -11,15 +11,34 @@ import (
 )
 
 type Severity rune
-type Binary uint32
 
 const SeverityNone = Severity(0)
+
+func (s Severity) String() string {
+	if s == SeverityNone {
+		s = '-'
+	}
+	return string(s)
+}
+
+type Binary uint32
 
 const (
 	BinaryAny = Binary(iota)
 	BinaryMongod
 	BinaryMongos
 )
+
+func (b Binary) String() string {
+	switch b {
+	case BinaryMongod:
+		return "mongod"
+	case BinaryMongos:
+		return "mongos"
+	default:
+		return "unknown"
+	}
+}
 
 type Base struct {
 	*util.RuneReader
@@ -55,8 +74,8 @@ func NewBase(line string, num uint) (Base, error) {
 	}
 	if entry.Expect('[') {
 		// the context is first so assume the line remainder is the message
-		if part, _ := entry.SlurpWord(); IsContext(part) {
-			entry.RawContext = part
+		if r, err := entry.EnclosedString(']'); err != nil {
+			entry.RawContext = r
 		}
 	} else {
 		// the context isn't first so there is likely more available to check
@@ -64,14 +83,19 @@ func NewBase(line string, num uint) (Base, error) {
 			if part, ok := entry.SlurpWord(); ok {
 				if entry.RawSeverity == SeverityNone && IsSeverity(part) {
 					entry.RawSeverity = Severity(part[0])
+					continue
 				} else if entry.RawComponent == "" && IsComponent(part) {
 					entry.RawComponent = part
-				} else if entry.RawContext == "" && IsContext(part) {
-					entry.RawContext = part
-				} else {
+					continue
+				} else if entry.RawContext == "" && part[0] == '[' {
 					entry.RewindSlurpWord()
-					break
+					if r, err := entry.EnclosedString(']'); err == nil {
+						entry.RawContext = r
+						continue
+					}
 				}
+				entry.RewindSlurpWord()
+				break
 			}
 		}
 	}
