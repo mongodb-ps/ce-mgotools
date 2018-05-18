@@ -33,7 +33,7 @@ func ParseJsonRunes(r *util.RuneReader, strict bool) (map[string]interface{}, er
 }
 
 func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) {
-	var data map[string]interface{} = make(map[string]interface{})
+	var data = make(map[string]interface{})
 	if current := r.NextRune(); current != '{' {
 		return nil, fmt.Errorf("expected '{' but found '%c'", current)
 	} else {
@@ -78,8 +78,8 @@ func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) 
 func parseArray(r *util.RuneReader, strict bool) ([]interface{}, error) {
 	var (
 		c      rune
-		ok     bool          = true
-		values []interface{} = make([]interface{}, 0, 16)
+		ok     bool = true
+		values      = make([]interface{}, 0, 16)
 	)
 	if c, _ := r.Next(); c != '[' {
 		panic("unexpected character [")
@@ -166,7 +166,7 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 	case c == '"': // Double quoted string
 		value, err = r.QuotedString()
 	case c == '/': // Regular expression
-		if value, err = r.EnclosedString('/'); err != nil {
+		if value, err = r.EnclosedString('/', true); err != nil {
 			return "", err
 		}
 		if options, ok := r.ScanForRuneWhile([]rune{'i', 'g', 'x'}); ok { // TODO: POPULATE OTHER OPTIONS

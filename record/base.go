@@ -74,7 +74,7 @@ func NewBase(line string, num uint) (Base, error) {
 	}
 	if entry.Expect('[') {
 		// the context is first so assume the line remainder is the message
-		if r, err := entry.EnclosedString(']'); err != nil {
+		if r, err := entry.EnclosedString(']', false); err != nil {
 			entry.RawContext = r
 		}
 	} else {
@@ -89,7 +89,7 @@ func NewBase(line string, num uint) (Base, error) {
 					continue
 				} else if entry.RawContext == "" && part[0] == '[' {
 					entry.RewindSlurpWord()
-					if r, err := entry.EnclosedString(']'); err == nil {
+					if r, err := entry.EnclosedString(']', false); err == nil {
 						entry.RawContext = r
 						continue
 					}

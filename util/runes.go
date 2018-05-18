@@ -88,7 +88,7 @@ func (r *RuneReader) NextRune() rune {
 	return r.runes[r.next]
 }
 
-func (r *RuneReader) EnclosedString(which rune) (string, error) {
+func (r *RuneReader) EnclosedString(which rune, snip bool) (string, error) {
 	start, length, escaped := r.next, r.length, false
 	for end := start + 1; end < length; end++ {
 		switch r.runes[end] {
@@ -104,7 +104,11 @@ func (r *RuneReader) EnclosedString(which rune) (string, error) {
 					continue
 				}
 				r.start, r.next = start, end+1
-				return string(r.runes[r.start+1 : r.next-1]), nil
+				if snip {
+					return string(r.runes[r.start+1 : r.next-1]), nil
+				} else {
+					return string(r.runes[r.start:r.next]), nil
+				}
 			}
 		}
 		escaped = false
@@ -236,7 +240,7 @@ func (r *RuneReader) QuotedString() (string, error) {
 	if which != '\'' && which != '"' {
 		return "", fmt.Errorf("unexpected character in quoted string '%c'", which)
 	}
-	return r.EnclosedString(which)
+	return r.EnclosedString(which, true)
 }
 
 // Remainder() returns a string of all runes from and including
