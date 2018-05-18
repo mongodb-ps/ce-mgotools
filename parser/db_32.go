@@ -18,7 +18,7 @@ func init() {
 func (v *Version32Parser) Check(base record.Base) bool {
 	return !base.CString &&
 		base.RawSeverity != record.SeverityNone &&
-		base.RawComponent != ""
+		base.RawComponent != "" && v.isExpectedComponent(base.RawComponent)
 }
 
 func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
@@ -45,4 +45,33 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, err
 }
 func (v *Version32Parser) Version() VersionDefinition {
 	return VersionDefinition{Major: 3, Minor: 2, Binary: record.BinaryMongod}
+}
+
+func (v *Version32Parser) isExpectedComponent(c string) bool {
+	switch c {
+	case "ACCESS",
+		"ACCESSCONTROL",
+		"ASIO",
+		"BRIDGE",
+		"COMMAND",
+		"CONTROL",
+		"DEFAULT",
+		"EXECUTOR",
+		"FTDC",
+		"GEO",
+		"INDEX",
+		"JOURNAL",
+		"NETWORK",
+		"QUERY",
+		"REPL",
+		"REPLICATION",
+		"SHARDING",
+		"STORAGE",
+		"TOTAL",
+		"WRITE",
+		"-":
+		return true
+	default:
+		return false
+	}
 }

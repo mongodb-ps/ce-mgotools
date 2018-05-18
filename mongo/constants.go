@@ -12,28 +12,30 @@ type Array []interface{}
 
 // The components array contains all component strings.
 var COMPONENTS = []string{
-	"ACCESS",        // 3.0 ?
-	"ACCESSCONTROL", // 3.2 ?
-	"ASIO",          // 3.4 ?
-	"BRIDGE",        // 3.4 ?
-	"COMMAND",       // 3.x
-	"CONTROL",
-	"DEFAULT",
-	"EXECUTOR",
-	"FTDC", // 3.4 ?
-	"GEO",
-	"HEARTBEATS", // 3.2 ?
-	"INDEX",
-	"JOURNAL",
-	"NETWORK",
-	"QUERY",
-	"REPL",        // 3.0 ?
-	"REPLICATION", // 3.2 ?
-	"SHARDING",
-	"STORAGE",
-	"TOTAL",
-	"TRACKING", // 3.4 ?
-	"WRITE",
+	"ACCESS",        // 3.0, 3.2, 3.4, 3.6
+	"ACCESSCONTROL", // 3.0, 3.2, 3.4, 3.6
+	"ASIO",          // 3.2, 3.4, 3.6
+	"BRIDGE",        // 3.0, 3.2, 3.4, 3.6
+	"COMMAND",       // 3.0, 3.2, 3.4, 3.6
+	"CONTROL",       // 3.0, 3.2, 3.4, 3.6
+	"DEFAULT",       // 3.0, 3.2, 3.4, 3.6
+	"EXECUTOR",      // 3.2, 3.4, 3.6
+	"FTDC",          // 3.2, 3.4, 3.6
+	"GEO",           // 3.0, 3.2, 3.4, 3.6
+	"HEARTBEATS",    // 3.6
+	"INDEX",         // 3.0, 3.2, 3.4, 3.6
+	"JOURNAL",       // 3.0, 3.2, 3.4, 3.6
+	"NETWORK",       // 3.0, 3.2, 3.4, 3.6
+	"QUERY",         // 3.0, 3.2, 3.4, 3.6
+	"REPL",          // 3.0, 3.2, 3.4, 3.6
+	"REPL_HB",       // 3.6
+	"REPLICATION",   // 3.0, 3.2, 3.4, 3.6
+	"ROLLBACK",      // 3.6
+	"SHARDING",      // 3.0, 3.2, 3.4, 3.6
+	"STORAGE",       // 3.0, 3.2, 3.4, 3.6
+	"TOTAL",         // 3.0, 3.2, 3.4, 3.6
+	"TRACKING",      // 3.4, 3.6
+	"WRITE",         // 3.0, 3.2, 3.4, 3.6
 	"-",
 }
 

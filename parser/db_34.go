@@ -46,3 +46,32 @@ func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, err
 func (v *Version34Parser) Version() VersionDefinition {
 	return VersionDefinition{Major: 3, Minor: 4, Binary: record.BinaryMongod}
 }
+func (v *Version34Parser) isExpectedComponent(c string) bool {
+	switch c {
+	case "ACCESS",
+		"ACCESSCONTROL",
+		"ASIO",
+		"BRIDGE",
+		"COMMAND",
+		"CONTROL",
+		"DEFAULT",
+		"EXECUTOR",
+		"FTDC",
+		"GEO",
+		"INDEX",
+		"JOURNAL",
+		"NETWORK",
+		"QUERY",
+		"REPL",
+		"REPLICATION",
+		"SHARDING",
+		"STORAGE",
+		"TOTAL",
+		"TRACKING",
+		"WRITE",
+		"-":
+		return true
+	default:
+		return false
+	}
+}
