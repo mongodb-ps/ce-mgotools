@@ -33,58 +33,47 @@ type manager struct {
 	waitGroup sync.WaitGroup
 }
 
-func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, error), parsers []parser.VersionParser) manager {
-	set := make(map[parser.VersionDefinition]*logParser)
+func (m *manager) IsRejected(c parser.VersionDefinition) (bool, bool) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 
-	m := manager{
-		versions:  set,
-		rejected:  0,
-		mutex:     sync.RWMutex{},
-		output:    make(chan Result, len(set)),
-		waitGroup: sync.WaitGroup{},
-	}
-
-	for _, item := range parsers {
-		version := item.Version()
-		set[version] = &logParser{
-			Input:    make(chan record.Base),
-			Parser:   item,
-			Rejected: false,
-			Tries:    0,
-			Version:  version,
-			Wins:     0,
+	for t, r := range m.versions {
+		if c.Equals(t) {
+			return r.Rejected, true
 		}
-
-		// Create a goroutine that will continuously monitor for base objects and begin conversion once received.
-		go parseByVersion(set[version].Input, m.output, worker, *set[version], &m.waitGroup)
 	}
 
-	return m
+	return false, false
 }
 
-func parseByVersion(baseIn <-chan record.Base, entryOut chan<- Result, worker func(record.Base, parser.VersionParser) (record.Entry, error), v logParser, wg *sync.WaitGroup) {
-	wg.Add(1)
-	defer wg.Done()
+func (m *manager) Reject(test func(parser.VersionDefinition) bool) bool {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
 
-	// Continuously loop over the input channel to process log.Base objects as they arrive.
-	result := Result{Version: v.Version}
-	for base := range baseIn {
-		// Do a quick-and-dirty version check and only process against factories that may return a result.
-		result.Rejected = !v.Parser.Check(base)
-		if !result.Rejected {
-			// Run the parser against the active factory (parser).
-			entry, err := worker(base, v.Parser)
-
-			switch err.(type) {
-			case parser.VersionDateUnmatched, parser.VersionErrorUnmatched:
-				result.Rejected = true
-			default:
-				result.Entry = entry
-				result.Err = err
-			}
+	count := uint32(0)
+	for version := range m.versions {
+		if test(version) {
+			count += 1
+			m.versions[version].Rejected = true
 		}
-		// Create a result object, complete with version, entry result, and errors.
-		entryOut <- result
+	}
+
+	m.rejected += count
+	if m.rejected == uint32(len(m.versions)) {
+		for version := range m.versions {
+			m.versions[version].Rejected = false
+		}
+	}
+
+	return count > 1
+}
+
+func (m *manager) Reset() {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	for version := range m.versions {
+		m.versions[version].Rejected = false
 	}
 }
 
@@ -159,33 +148,57 @@ func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition,
 	return winner.Entry, winner.Version, winner.Err
 }
 
-func (m *manager) Reject(test func(parser.VersionDefinition) bool) bool {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, error), parsers []parser.VersionParser) manager {
+	set := make(map[parser.VersionDefinition]*logParser)
 
-	count := uint32(0)
-	for version := range m.versions {
-		if test(version) {
-			count += 1
-			m.versions[version].Rejected = true
-		}
+	m := manager{
+		versions:  set,
+		rejected:  0,
+		mutex:     sync.RWMutex{},
+		output:    make(chan Result, len(set)),
+		waitGroup: sync.WaitGroup{},
 	}
 
-	m.rejected += count
-	if m.rejected == uint32(len(m.versions)) {
-		for version := range m.versions {
-			m.versions[version].Rejected = false
+	for _, item := range parsers {
+		version := item.Version()
+		set[version] = &logParser{
+			Input:    make(chan record.Base),
+			Parser:   item,
+			Rejected: false,
+			Tries:    0,
+			Version:  version,
+			Wins:     0,
 		}
+
+		// Create a goroutine that will continuously monitor for base objects and begin conversion once received.
+		go parseByVersion(set[version].Input, m.output, worker, *set[version], &m.waitGroup)
 	}
 
-	return count > 1
+	return m
 }
 
-func (m *manager) Reset() {
-	m.mutex.Lock()
-	defer m.mutex.Unlock()
+func parseByVersion(baseIn <-chan record.Base, entryOut chan<- Result, worker func(record.Base, parser.VersionParser) (record.Entry, error), v logParser, wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
 
-	for version := range m.versions {
-		m.versions[version].Rejected = false
+	// Continuously loop over the input channel to process log.Base objects as they arrive.
+	result := Result{Version: v.Version}
+	for base := range baseIn {
+		// Do a quick-and-dirty version check and only process against factories that may return a result.
+		result.Rejected = !v.Parser.Check(base)
+		if !result.Rejected {
+			// Run the parser against the active factory (parser).
+			entry, err := worker(base, v.Parser)
+
+			switch err.(type) {
+			case parser.VersionDateUnmatched, parser.VersionErrorUnmatched:
+				result.Rejected = true
+			default:
+				result.Entry = entry
+				result.Err = err
+			}
+		}
+		// Create a result object, complete with version, entry result, and errors.
+		entryOut <- result
 	}
 }

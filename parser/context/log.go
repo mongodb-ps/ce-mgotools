@@ -13,10 +13,12 @@ import (
 type Log struct {
 	parserFactory manager
 	startupIndex  int
+	startSet      bool
 
-	Count  int
-	Errors int
-	Lines  int
+	Count      int
+	Errors     int
+	Lines      int
+	LastWinner parser.VersionDefinition
 
 	DatePreviousMonth time.Month
 	DatePreviousYear  int
@@ -28,6 +30,8 @@ type Log struct {
 	ReplicaMembers int
 	ReplicaVersion int
 
+	End      time.Time
+	Start    time.Time
 	Startup  []logStartup
 	Versions []parser.VersionDefinition
 }
@@ -43,7 +47,7 @@ type logStartup struct {
 	ShardVersion    record.MsgVersion
 }
 
-func NewLog() *Log {
+func NewLog(parsers []parser.VersionParser) *Log {
 	context := Log{
 		Startup:      []logStartup{{}},
 		startupIndex: 0,
@@ -55,13 +59,14 @@ func NewLog() *Log {
 		DateYearMissing: false,
 	}
 
-	context.parserFactory = newManager(context.baseToEntry, parser.VersionParserFactory.Get())
+	context.parserFactory = newManager(context.baseToEntry, parsers)
 	return &context
 }
 
 func (c *Log) NewEntry(base record.Base) (record.Entry, error) {
 	manager := c.parserFactory
 	entry, version, err := manager.Try(base)
+	c.LastWinner = version
 
 	if _, ok := err.(parser.VersionMessageUnmatched); err != nil && ok {
 		return record.Entry{}, err
@@ -83,6 +88,13 @@ func (c *Log) NewEntry(base record.Base) (record.Entry, error) {
 	if !c.DateYearMissing && (entry.DateYearMissing || entry.Date.Year() == 0) {
 		c.DateYearMissing = true
 		entry.Date = time.Date(time.Now().Year(), entry.Date.Month(), entry.Date.Day(), entry.Date.Hour(), entry.Date.Minute(), entry.Date.Second(), entry.Date.Nanosecond(), entry.Date.Location())
+	}
+
+	// Hold on to the start and end time for later summary.
+	c.End = entry.Date
+	if !c.startSet {
+		c.Start = entry.Date
+		c.startSet = true
 	}
 
 	if entry.Message != nil && entry.Connection == 0 {

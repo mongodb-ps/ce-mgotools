@@ -41,18 +41,6 @@ type VersionDefinition struct {
 	Binary record.Binary
 }
 
-func (v *VersionDefinition) Hash() int64 {
-	// This has function will clash if v.Major gets to be 32 bits long, but if that happens something has gone horribly
-	// wrong in the world.
-	if v.Binary == record.BinaryMongod {
-		return int64(v.Major)<<32 + int64(v.Minor)
-	} else if v.Binary == record.BinaryMongos {
-		return int64(v.Major)<<32 + int64(v.Minor) | int64(1<<63-1)
-	} else {
-		panic("unexpected binary")
-	}
-}
-
 // Compares two versions. a < b == -1, a > b == 1, a = b == 0
 func (a *VersionDefinition) Compare(b VersionDefinition) int {
 	switch {

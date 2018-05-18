@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	_ "mgotools/cmd"
 	"mgotools/cmd/factory"
@@ -80,14 +79,14 @@ func runCommand(c *cli.Context) error {
 	var (
 		commandFactory = factory.GetCommandFactory()
 		clientContext  = c.Args()
-		start          = time.Now()
+		//start          = time.Now()
 	)
 	if c.Command.Name == "" {
 		return errors.New("command required")
 	} else if cmdDefinition, ok := commandFactory.GetCommandDefinition(c.Command.Name); !ok {
 		return fmt.Errorf("unrecognized command %s", c.Command.Name)
 	} else {
-		util.Debug("Command: %s, starting: %s", c.Command.Name, time.Now())
+		//util.Debug("Command: %s, starting: %s", c.Command.Name, time.Now())
 		command, err := commandFactory.GetCommand(c.Command.Name)
 		if err != nil {
 			return err
@@ -141,7 +140,7 @@ func runCommand(c *cli.Context) error {
 		if err = factory.RunCommand(command, input, output); err != nil {
 			fmt.Println(fmt.Sprintf("Error: %s", err))
 		}
-		util.Debug("Finished at %s (%s)", time.Now(), time.Since(start).String())
+		//util.Debug("Finished at %s (%s)", time.Now(), time.Since(start).String())
 		return err
 	}
 }

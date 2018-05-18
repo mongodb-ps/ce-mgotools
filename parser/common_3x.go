@@ -28,6 +28,7 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 	if !ok || (strict && !util.ArrayBinarySearchString(op.Operation, mongo.OPERATIONS)) {
 		return nil, VersionErrorUnmatched{"unexpected operation"}
 	}
+
 	// Then for the namespace.
 	op.Namespace, ok = r.SlurpWord()
 	if strict && (!ok || !strings.ContainsRune(op.Namespace, '.')) {
@@ -44,6 +45,7 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 		}
 		op.Name = op.Name[:len(op.Name)-1]
 	}
+
 	// Parse the remaining sections in a generic pattern.
 	for param, ok := r.SlurpWord(); ok && param != ""; param, ok = r.SlurpWord() {
 		length := util.StringLength(param)

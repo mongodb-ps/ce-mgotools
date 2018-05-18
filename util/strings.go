@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode"
 	"unicode/utf8"
 	//"golang.org/x/text/unicode/norm"
 )
@@ -112,4 +113,8 @@ func IsNumeric(a string) bool {
 	}
 
 	return false
+}
+
+func IsNumericRune(r rune) bool {
+	return unicode.IsNumber(r)
 }

@@ -318,7 +318,7 @@ func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 		}
 	}
 	f.Log[inputContext.Index] = filterLog{
-		Log:            context.NewLog(),
+		Log:            context.NewLog(parser.VersionParserFactory.Get()),
 		argsBool:       inputContext.Booleans,
 		argsInt:        inputContext.Integers,
 		argsString:     inputContext.Strings,

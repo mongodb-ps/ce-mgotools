@@ -1,73 +1,119 @@
 package cmd
 
 import (
+	"bytes"
 	"math"
+	"os"
+	"sort"
 	"sync"
 
 	"mgotools/cmd/factory"
+	"mgotools/cmd/format"
 	"mgotools/mongo"
+	"mgotools/parser"
 	"mgotools/parser/context"
 	"mgotools/record"
 	"mgotools/util"
 )
 
 type commandQuery struct {
-	Name string
+	*context.Log
+	Name   string
+	Length uint64
+
+	sort string
 
 	ErrorCount uint
 	LineCount  uint
 
-	Log      *context.Log
-	Patterns map[string]*queryPattern
+	Patterns map[string]queryPattern
 }
 
 type queryLog struct {
 	//factory.BaseOptions
-	Log map[int]commandQuery
+	Log          map[int]*commandQuery
+	summaryTable *bytes.Buffer
 }
 
 type queryPattern struct {
-	Pattern       string
-	Operation     string
-	Count         int64
-	Min           int64
-	Max           int64
-	N95Percentile float64
-	Sum           int64
+	format.PatternSummary
 
 	n95Sequence float64
 	sync        sync.Mutex
 }
 
 func init() {
-	args := factory.CommandDefinition{}
+	args := factory.CommandDefinition{
+		Usage: "output statistics about query patterns",
+		Flags: []factory.CommandArgument{
+			{Name: "sort", ShortName: "s", Type: factory.String, Usage: "sort by namespace, pattern, count, min, max, 95%, or sum"},
+		},
+	}
 	init := func() (factory.Command, error) {
-		return &queryLog{Log: make(map[int]commandQuery)}, nil
+		return &queryLog{Log: make(map[int]*commandQuery), summaryTable: bytes.NewBuffer([]byte{})}, nil
 	}
 	factory.GetCommandFactory().Register("query", args, init)
 }
 
 func (s *queryLog) Finish(index int) error {
+	var host string
+	var port int
+
+	for _, startup := range s.Log[index].Startup {
+		host = startup.Hostname
+		port = startup.Port
+	}
+
+	summary := format.LogSummary{
+		Source:     s.Log[index].Name,
+		Host:       host,
+		Port:       port,
+		Start:      s.Log[index].Start,
+		End:        s.Log[index].End,
+		DateFormat: "",
+		Length:     s.Log[index].Length,
+		Version:    nil,
+		Storage:    "",
+	}
+
+	values := make([]format.PatternSummary, 0, len(s.Log))
+
+	for _, pattern := range s.Log[index].Patterns {
+		values = append(values, pattern.PatternSummary)
+	}
+
+	var sorter sortFunction = func() (string, []format.PatternSummary) {
+		return s.Log[index].sort, values
+	}
+
+	sort.Sort(sorter)
+
+	if index > 0 {
+		s.summaryTable.WriteString("\n------------------------------------------\n")
+	}
+
+	format.PrintLogSummary(summary, os.Stdout)
+	format.PrintQueryTable(values, s.summaryTable)
 	return nil
 }
 
 func (s *queryLog) Prepare(inputContext factory.InputContext) error {
-	s.Log[inputContext.Index] = commandQuery{
-		inputContext.Name,
-		0,
-		0,
-		context.NewLog(),
-		make(map[string]*queryPattern),
+	s.Log[inputContext.Index] = &commandQuery{
+		Log:      context.NewLog(parser.VersionParserFactory.Get()),
+		Name:     inputContext.Name,
+		Patterns: make(map[string]queryPattern),
+
+		sort: "sum",
+	}
+
+	if sortType, ok := inputContext.Strings["sort"]; ok {
+		s.Log[inputContext.Index].sort = sortType
 	}
 	return nil
 }
 
 func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, errors chan<- error, fatal <-chan struct{}) error {
-	var (
-		exit = false
-		lock sync.Mutex
-	)
-	wg := sync.WaitGroup{}
+	exit := false
 
 	// Wait for kill signals.
 	go func() {
@@ -75,109 +121,126 @@ func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 		exit = true
 	}()
 
-	// A function to transform to a log entry to a pattern.
-	queries := func(entry record.Entry) (string, string, int64, bool) {
-		cmd := entry.Message
-		if cmd == nil {
-			return "", "", 0, false
-		}
-		switch t := cmd.(type) {
-		case record.MsgOpCommand:
-			if query, ok := t.Command["query"].(mongo.Object); ok {
-				pattern := mongo.NewPattern(query)
-				return t.Name, pattern.String(), t.Duration, true
-			}
-		case record.MsgOpCommandLegacy:
-			if query, ok := t.Command["query"].(mongo.Object); ok {
-				pattern := mongo.NewPattern(query)
-				return t.Name, pattern.String(), t.Duration, true
-			}
-		default:
-			return "", "", 0, true
-		}
-		return "", "", 0, false
-	}
-
-	// A function to get a pattern reference in the set of possible patterns.
-	getpattern := func(op, query string, patterns map[string]*queryPattern) *queryPattern {
-		key := op + ":" + query
-		for {
-			if pattern, ok := patterns[key]; !ok {
-				lock.Lock()
-				if _, ok := patterns[key]; ok {
-					continue
-				}
-				util.Debug("adding pattern: %s", key)
-				patterns[key] = &queryPattern{
-					Operation: op,
-					Pattern:   query,
-				}
-				lock.Unlock()
-			} else {
-				return pattern
-			}
-		}
-	}
-
-	updatesummary := func(s *queryPattern, dur int64) {
-		s.sync.Lock()
-		defer s.sync.Unlock()
-		s.Count += 1
-		s.Sum += dur
-		if dur > s.Max {
-			dur = s.Max
-		}
-		if dur < s.Min {
-			s.Min = dur
-		}
-		// Calculate the 95th percentile using a moving percentile estimation.
-		// http://mjambon.com/2016-07-23-moving-percentile/
-		s.n95Sequence = math.Pow(float64(s.Sum)/float64(s.Count)-float64(dur), 2)
-		if s.Count == 1 {
-			s.N95Percentile = float64(dur)
-		} else if float64(dur) < s.N95Percentile {
-			s.N95Percentile = s.N95Percentile - (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.9
-		} else if float64(dur) > s.N95Percentile {
-			s.N95Percentile = s.N95Percentile + (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.1
-		}
-		util.Debug("updating values for %s:%s: %#v", s.Operation, s.Pattern, s)
-	}
+	accumulator := make(chan record.AccumulatorResult)
+	go record.Accumulator(in, accumulator, record.NewBase)
 
 	// A function to grab new lines and parse them.
-	parse := func() {
-		wg.Add(1)
-		defer wg.Done()
-		for line := range in {
-			if exit {
-				util.Debug("exit signal received")
-				break
-			} else if line == "" {
-				continue
+	for base := range accumulator {
+		if exit {
+			util.Debug("exit signal received")
+			break
+		}
+
+		log := s.Log[index]
+		log.LineCount += 1
+		log.Length += uint64(base.Base.Length())
+
+		if base.Error != nil || base.Base.RawMessage == "" {
+			log.ErrorCount += 1
+		} else if entry, err := log.NewEntry(base.Base); err != nil {
+			log.ErrorCount += 1
+		} else if ns, op, query, dur := group(entry); op != "" && query != "" {
+			key := ns + ":" + op + ":" + query
+			pattern, ok := log.Patterns[key]
+			if !ok {
+				pattern = queryPattern{
+					PatternSummary: format.PatternSummary{
+						Namespace: ns,
+						Operation: op,
+						Pattern:   query,
+					},
+					n95Sequence: 0,
+				}
 			}
-			//util.Debug("%s", line)
-			c := s.Log[index]
-			c.LineCount += 1
-			if base, err := record.NewBase(line, c.LineCount); err != nil {
-				c.ErrorCount += 1
-			} else if base.RawMessage == "" {
-				continue
-			} else if entry, err := c.Log.NewEntry(base); err != nil {
-				c.ErrorCount += 1
-			} else if op, query, dur, ok := queries(entry); !ok {
-				c.ErrorCount += 1
-			} else if op != "" && query != "" {
-				updatesummary(getpattern(op, query, c.Patterns), dur)
-			}
+			log.Patterns[key] = updateSummary(pattern, dur)
 		}
 	}
-	for i := 0; i < 4; i += 1 {
-		go parse()
-	}
-	// Wait for the workers to finish.
-	wg.Wait()
+
 	return nil
 }
 
 func (s *queryLog) Terminate(out chan<- string) error {
+	out <- string(s.summaryTable.String())
 	return nil
+}
+
+// A function to transform to a log entry to a pattern.
+func group(entry record.Entry) (string, string, string, int64) {
+	cmd, ok := record.MsgOpCommandBaseFromMessage(entry.Message)
+	if !ok {
+		return "", "", "", 0
+	}
+
+	op, ok := record.MsgOperationFromMessage(entry.Message)
+	if !ok || op.Operation == "" {
+		return "", "", "", 0
+	}
+
+	for _, commandType := range []string{"query", "count"} {
+		if query, ok := cmd.Command[commandType].(map[string]interface{}); ok {
+			pattern := mongo.NewPattern(query)
+			return op.Namespace, op.Operation, pattern.String(), cmd.Duration
+		}
+	}
+
+	return op.Namespace, op.Operation, "None", cmd.Duration
+}
+
+func updateSummary(s queryPattern, dur int64) queryPattern {
+	s.Count += 1
+	s.Sum += dur
+	if dur > s.Max {
+		s.Max = dur
+	}
+	if dur < s.Min {
+		s.Min = dur
+	}
+	// Calculate the 95th percentile using a moving percentile estimation.
+	// http://mjambon.com/2016-07-23-moving-percentile/
+	s.n95Sequence = math.Pow(float64(s.Sum)/float64(s.Count)-float64(dur), 2)
+	if s.Count == 1 {
+		s.N95Percentile = float64(dur)
+	} else if float64(dur) < s.N95Percentile {
+		s.N95Percentile = s.N95Percentile - (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.9
+	} else if float64(dur) > s.N95Percentile {
+		s.N95Percentile = s.N95Percentile + (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.1
+	}
+	return s
+}
+
+type sortFunction func() (string, []format.PatternSummary)
+
+func (s sortFunction) Len() int {
+	_, v := s()
+	return len(v)
+}
+
+func (s sortFunction) Less(i, j int) bool {
+	field, v := s()
+
+	switch field {
+	case "namespace":
+		return v[i].Namespace < v[j].Namespace // Ascending
+	case "pattern":
+		return v[i].Pattern < v[j].Pattern // Ascending
+	case "count":
+		return v[i].Count > v[j].Count // Descending
+	case "min":
+		return v[i].Min < v[j].Min // Ascending
+	case "max":
+		return v[i].Max > v[j].Max // Descending
+	case "mean":
+		return (v[i].Count / v[i].Sum) > (v[j].Count / v[j].Sum) // Descending
+	case "95%":
+		return v[i].N95Percentile > v[j].N95Percentile // Descending
+	default:
+		return v[i].Sum > v[j].Sum // Descending
+	}
+}
+
+func (s sortFunction) Swap(i, j int) {
+	_, v := s()
+	t := v[i]
+	v[i] = v[j]
+	v[j] = t
 }

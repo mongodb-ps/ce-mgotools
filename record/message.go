@@ -120,16 +120,35 @@ type MsgWiredTigerConfig struct {
 	String string
 }
 
-func MsgOpCommandBaseFromMessage(msg Message) (*MsgOpCommandBase, bool) {
+func MsgOpCommandBaseFromMessage(msg Message) (MsgOpCommandBase, bool) {
+	if msg == nil {
+		return MsgOpCommandBase{}, false
+	}
 	switch t := msg.(type) {
 	case MsgOpCommandBase:
-		return &t, true
+		return t, true
 	case MsgOpCommand:
-		return &t.MsgOpCommandBase, true
+		return t.MsgOpCommandBase, true
 	case MsgOpCommandLegacy:
-		return &t.MsgOpCommandBase, true
+		return t.MsgOpCommandBase, true
 	default:
-		return nil, false
+		return MsgOpCommandBase{}, false
+	}
+}
+
+func MsgOperationFromMessage(msg Message) (MsgOperation, bool) {
+	if msg == nil {
+		return MsgOperation{}, false
+	}
+	switch t := msg.(type) {
+	case MsgOperation:
+		return t, true
+	case MsgOpCommand:
+		return t.MsgOperation, true
+	case MsgOpCommandLegacy:
+		return t.MsgOperation, true
+	default:
+		return MsgOperation{}, false
 	}
 }
 

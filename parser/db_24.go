@@ -37,7 +37,9 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			r.ExpectString("query"),
 			r.ExpectString("update"):
 			// Commands or queries!
-			return parse24Command(r)
+			if msg, err := parse24Command(r); err != nil {
+				swap("count", msg.Command)
+			}
 		case r.ExpectString("insert"),
 			r.ExpectString("getmore"),
 			r.ExpectString("remove"):
@@ -59,6 +61,15 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 		}
 	}
 	return nil, VersionErrorUnmatched{Message: "version 2.4"}
+}
+
+func swap(key string, m map[string]interface{}) {
+	if _, ok := m["command"]; ok {
+		if _, ok := m[key]; ok {
+			m[key] = m["command"]
+			delete(m, "command")
+		}
+	}
 }
 
 func (v *Version24Parser) Check(base record.Base) bool {
@@ -97,7 +108,7 @@ func parse24Command(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
 	op := record.MakeMsgOpCommandLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
-	var target map[string]int = op.Counters
+	var target = op.Counters
 	for param, ok := r.SlurpWord(); ok && param != ""; param, ok = r.SlurpWord() {
 		if param[len(param)-1] == ':' {
 			param = param[:len(param)-1]
@@ -109,15 +120,21 @@ func parse24Command(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
 					return op, err
 				}
 			}
-			continue
+			// For whatever reason, numYields has a space between it and the
+			// number (e.g. "numYields: 5").
+			if !util.IsNumericRune(r.NextRune()) {
+				continue
+			} else {
+				// Re-add so the parseIntegerKeyValueErratic will succeed.
+				param = param + ":"
+			}
 		}
 		parseIntegerKeyValueErratic(param, target, &r)
 		if param == "locks(micros)" {
 			target = op.Locks
+		} else if strings.HasSuffix(param, "ms") {
+			op.Duration, _ = strconv.ParseInt(param[0:len(param)-3], 10, 64)
 		}
-	}
-	if dur, ok := r.SlurpWord(); ok && strings.HasSuffix(dur, "ms") {
-		op.Duration, _ = strconv.ParseInt(dur[0:len(dur)-3], 10, 64)
 	}
 	return op, nil
 }
@@ -148,6 +165,7 @@ func parseIntegerKeyValueErratic(param string, target map[string]int, r *util.Ru
 		if num, err := strconv.ParseInt(r.PreviewWord(1), 10, 64); err == nil {
 			if _, ok := mongo.COUNTERS[param]; ok {
 				target[mongo.COUNTERS[param]] = int(num)
+				r.SlurpWord()
 			} else {
 				panic("unexpected counter type " + param + " found")
 			}

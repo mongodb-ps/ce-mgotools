@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-
-	"mgotools/util"
 )
 
 const (
@@ -41,10 +39,8 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 			switch argument.Type {
 			case Bool:
 				argsBool[argument.Name] = input.(bool)
-				util.Debug("** Bool: %s = %v", argument.Name, argsBool[argument.Name])
 			case Int:
 				argsInt[argument.Name] = input.(int)
-				util.Debug("** Int: %s = %s", argument.Name, argsInt[argument.Name])
 			case IntFileSlice:
 				values := input.([]int)
 				switch {
@@ -55,10 +51,8 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 				default:
 					argsInt[argument.Name] = values[index]
 				}
-				util.Debug("** IntFileSlice: %s = %d", argument.Name, argsInt[argument.Name])
 			case String:
 				argsString[argument.Name] = strings.Join(input.([]string), " ")
-				util.Debug("** String: %s = %s", argument.Name, argsString[argument.Name])
 			case StringFileSlice:
 				// multiple strings apply to each log individually
 				values := input.([]string)
@@ -70,7 +64,6 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 				default:
 					argsString[argument.Name] = values[index]
 				}
-				util.Debug("** StringFileSlice: %s = %s", argument.Name, argsString[argument.Name])
 			}
 		}
 	}

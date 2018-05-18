@@ -191,17 +191,17 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 	// Wait for all input goroutines to finish.
 	processSync.Wait()
 
+	// Allow the command to finalize any pending actions.
+	if err == nil {
+		f.Terminate(outChannel)
+	}
+
 	// Finalize the output processes by closing the out channel.
 	close(outChannel)
 	close(errorChannel)
 
 	// Wait for all output goroutines to finish.
 	outputSync.Wait()
-
-	// Allow the command to finalize any pending actions.
-	if err == nil {
-		f.Terminate(outChannel)
-	}
 
 	return err
 }
@@ -219,10 +219,16 @@ func parseFile(f Command, index int, in *baseCommandFileHandle, out chan<- strin
 	go func() {
 		sync.Add(1)
 		defer sync.Done()
+
 		// Close the input file handle.
 		defer func() { in.CloseSignal <- struct{}{} }()
+
 		// Begin running the command.
 		f.ProcessLine(index, out, inputChannel, errs, fatal)
+
+		if err := f.Finish(index); err != nil {
+			errs <- err
+		}
 	}()
 
 	reader := bufio.NewReader(in.FileHandle)
@@ -242,10 +248,6 @@ func parseFile(f Command, index int, in *baseCommandFileHandle, out chan<- strin
 		errs <- scannerError
 	}
 
-	if err := f.Finish(index); err != nil {
-		errs <- err
-	}
-	util.Debug("end of parseFile (%s)", in.Name)
 	return
 }
 
