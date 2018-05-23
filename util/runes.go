@@ -140,6 +140,13 @@ func (r *RuneReader) ExpectString(a string) bool {
 	return false
 }
 
+func (r *RuneReader) Insert(c rune, pos int) {
+	r.runes = append(r.runes, 0)
+	copy(r.runes[pos+1:], r.runes[pos:])
+	r.runes[pos] = c
+	r.length += 1
+}
+
 // Length() returns the total number of runes in the rune set. This may
 // differ from the byte length in the original string.
 func (r *RuneReader) Length() int {
@@ -238,7 +245,7 @@ func (r *RuneReader) PreviewWord(count int) string {
 func (r *RuneReader) QuotedString() (string, error) {
 	which := r.NextRune()
 	if which != '\'' && which != '"' {
-		return "", fmt.Errorf("unexpected character in quoted string '%c'", which)
+		return "", fmt.Errorf("unexpected character '%c' in quoted string", which)
 	}
 	return r.EnclosedString(which, true)
 }
@@ -304,8 +311,7 @@ func (r *RuneReader) ScanForRuneWhile(match ...interface{}) (string, bool) {
 func (r *RuneReader) Seek(pos int, length int) {
 	if pos < 0 {
 		panic("negative position on seek")
-	}
-	if length < 0 {
+	} else if length < 0 {
 		panic("length cannot be less than zero")
 	} else if length == 0 {
 		r.next = pos

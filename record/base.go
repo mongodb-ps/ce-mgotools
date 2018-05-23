@@ -74,8 +74,11 @@ func NewBase(line string, num uint) (Base, error) {
 	}
 	if entry.Expect('[') {
 		// the context is first so assume the line remainder is the message
-		if r, err := entry.EnclosedString(']', false); err != nil {
+		if r, err := entry.EnclosedString(']', false); err == nil {
 			entry.RawContext = r
+		}
+		for entry.Expect(unicode.Space) {
+			entry.Next()
 		}
 	} else {
 		// the context isn't first so there is likely more available to check

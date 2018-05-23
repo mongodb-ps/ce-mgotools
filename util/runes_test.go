@@ -118,6 +118,22 @@ func TestRuneReader_ExpectString(t *testing.T) {
 	}
 }
 
+func TestRuneReader_Insert(t *testing.T) {
+	r := util.NewRuneReader("bd")
+	r.Insert('c', 1)
+	if r.String() != "bcd" {
+		t.Errorf("expected 'bcd', got '%s'", r.String())
+	}
+	r.Insert('e', 3)
+	if r.String() != "bcde" {
+		t.Errorf("expected 'bcde', got '%s'", r.String())
+	}
+	r.Insert('a', 0)
+	if r.String() != "abcde" {
+		t.Errorf("expected 'abcde', got '%s'", r.String())
+	}
+}
+
 func TestRuneReader_Next(t *testing.T) {
 	r := util.NewRuneReader("ab")
 	if c, ok := r.Next(); c != 'a' {

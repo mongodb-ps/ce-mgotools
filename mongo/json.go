@@ -45,6 +45,7 @@ func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) 
 			// End parsing when end of string reached.
 			return nil, fmt.Errorf("unexpected end of string")
 		}
+		keyOffset := r.Pos()
 		current := r.NextRune()
 		if current == '}' {
 			// End parsing and return data when closing character found.
@@ -60,17 +61,28 @@ func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) 
 				r.Next()
 				r.ChompWS()
 			}
+			valueOffset := r.Pos()
 			if data[key], err = parseValue(r, strict); err != nil {
 				return nil, err
 			}
 			if r.ChompWS().NextRune() == ',' {
 				r.Skip(1)
+				continue
 			} else if r.NextRune() == '}' {
 				r.Skip(1)
 				return data, nil
-			} else {
-				return nil, fmt.Errorf("unexpected character '%c' after value at %d", r.NextRune(), r.Pos())
+			} else if !strict && !r.EOL() {
+				// This section exists to handle unquoted string characters.
+				if _, ok := data[key].(string); ok {
+					r.Seek(valueOffset, 0)
+					if s, err := r.QuotedString(); err == nil && s == data[key] {
+						r.Insert('\\', valueOffset+len(s)+1)
+						r.Seek(keyOffset, 0)
+						continue
+					}
+				}
 			}
+			return nil, fmt.Errorf("unexpected character '%c' after value at %d", r.NextRune(), r.Pos())
 		}
 	}
 }

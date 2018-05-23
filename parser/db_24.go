@@ -37,9 +37,11 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			r.ExpectString("query"),
 			r.ExpectString("update"):
 			// Commands or queries!
-			if msg, err := parse24Command(r); err != nil {
+			msg, err := parse24Command(r)
+			if err != nil {
 				swap("count", msg.Command)
 			}
+			return msg, err
 		case r.ExpectString("insert"),
 			r.ExpectString("getmore"),
 			r.ExpectString("remove"):

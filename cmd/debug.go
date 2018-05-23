@@ -1,3 +1,5 @@
+// +build debug
+
 package cmd
 
 import (
@@ -93,7 +95,7 @@ func (d *debugLog) Prepare(c factory.InputContext) error {
 			d.versions = append(d.versions, parser.VersionDefinition{
 				Major:  parseInt(parts[0]),
 				Minor:  parseInt(parts[1]),
-				Binary: parseBinary(parts[3]),
+				Binary: parseBinary(parts[2]),
 			})
 		} else if len(parts) == 2 {
 			d.versions = append(d.versions, parser.VersionDefinition{
@@ -102,6 +104,9 @@ func (d *debugLog) Prepare(c factory.InputContext) error {
 				Binary: record.BinaryAny,
 			})
 		}
+	}
+	if len(d.versions) > 0 {
+		d.limitVersion = true
 	}
 
 	if width > 20 {
@@ -145,10 +150,10 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 	}
 
 	accumulator := make(chan record.AccumulatorResult)
+
 	go record.Accumulator(in, accumulator, record.NewBase)
 
 	logs := context.NewLog(factories)
-
 	for line := range accumulator {
 		base := line.Base
 		if d.limitLine && !d.checkLine(base.LineNumber) {
@@ -174,7 +179,7 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 				} else if err == nil && d.message && entry.Message != nil {
 					buffer("       ", d.formatObject(entry.Message))
 				} else {
-					buffer(" fail: ", "["+color.RedString(logs.LastWinner.String())+"]")
+					buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(logs.LastWinner.String()), err))
 				}
 			} else {
 				for _, versionParser := range factories {
@@ -230,7 +235,9 @@ func (d *debugLog) checkLine(current uint) bool {
 
 func (d *debugLog) checkVersion(current parser.VersionParser) bool {
 	for _, versionMatch := range d.versions {
-		if versionMatch.Equals(current.Version()) {
+		if versionMatch.Binary == record.BinaryAny && versionMatch.Compare(current.Version()) == 0 {
+			return true
+		} else if versionMatch.Equals(current.Version()) {
 			return true
 		}
 	}
@@ -343,7 +350,7 @@ func colorizeObject(a interface{}) string {
 		b.WriteRune('"')
 
 	case reflect.Float32, reflect.Float64:
-		b.WriteString(strconv.FormatFloat(m.Float(), 'f', 2, 64))
+		b.WriteString(strconv.FormatFloat(m.Float(), 'f', 1, 64))
 
 	default:
 		b.WriteString(m.String())
