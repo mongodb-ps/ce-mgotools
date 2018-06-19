@@ -37,16 +37,16 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			r.ExpectString("query"),
 			r.ExpectString("update"):
 			// Commands or queries!
-			msg, err := parse24Command(r)
-			if err != nil {
-				swap("count", msg.Command)
+			msg, err := parse24WithPayload(r)
+			if err == nil {
+				swap("count", msg.Payload)
 			}
 			return msg, err
 		case r.ExpectString("insert"),
 			r.ExpectString("getmore"),
 			r.ExpectString("remove"):
 			// Inserts!
-			return parse24Operation(r)
+			return parse24WithoutPayload(r)
 		case r.ExpectString("build index"):
 			// Look at things relating to indexes.
 			if r.ExpectString("build index done") {
@@ -66,8 +66,8 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 }
 
 func swap(key string, m map[string]interface{}) {
-	if _, ok := m["command"]; ok {
-		if _, ok := m[key]; ok {
+	if n, ok := m["command"].(map[string]interface{}); ok {
+		if _, ok := n[key]; ok {
 			m[key] = m["command"]
 			delete(m, "command")
 		}
@@ -102,7 +102,7 @@ func parse24BuildIndex(r util.RuneReader) (record.Message, error) {
 	return nil, VersionErrorUnmatched{Message: "index format unrecognized"}
 }
 
-func parse24Command(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
+func parse24WithPayload(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
 	var err error
 	// command test.$cmd command: { getlasterror: 1.0, w: 1.0 } ntoreturn:1 keyUpdates:0  reslen:67 0ms
 	// query test.foo query: { b: 1.0 } ntoreturn:0 ntoskip:0 nscanned:10 keyUpdates:0 locks(micros) r:146 nreturned:1 reslen:64 0ms
@@ -114,11 +114,11 @@ func parse24Command(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
 	for param, ok := r.SlurpWord(); ok && param != ""; param, ok = r.SlurpWord() {
 		if param[len(param)-1] == ':' {
 			param = param[:len(param)-1]
-			if op.Name == "" {
-				op.Name = param
+			if op.Command == "" {
+				op.Command = param
 			}
 			if r.Expect('{') {
-				if op.Command[param], err = mongo.ParseJsonRunes(&r, false); err != nil {
+				if op.Payload[param], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					return op, err
 				}
 			}
@@ -140,7 +140,7 @@ func parse24Command(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
 	}
 	return op, nil
 }
-func parse24Operation(r util.RuneReader) (record.Message, error) {
+func parse24WithoutPayload(r util.RuneReader) (record.Message, error) {
 	// insert test.system.indexes ninserted:1 keyUpdates:0 locks(micros) w:10527 10ms
 	op := record.MakeMsgOpCommandLegacy()
 	op.Operation, _ = r.SlurpWord()

@@ -53,6 +53,8 @@ func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) 
 			return data, nil
 		} else if key, err := parseKey(r, strict); err != nil {
 			return nil, err
+		} else if size := len(key); unicode.IsPunct(rune(key[size-1])) {
+			return nil, fmt.Errorf("unexpected character '%c' at %d", key[size-1], size)
 		} else {
 			// Skip empty white spaces before the colon.
 			if r.ChompWS().NextRune() != ':' {
@@ -149,7 +151,7 @@ func parseKey(r *util.RuneReader, strict bool) (string, error) {
 		if !checkRune(c, unicode.Letter, []rune{'$', '_'}) {
 			return "", fmt.Errorf("first character in key must be a letter, dollar sign ($), or underscore (_)")
 		}
-		for r.Expect(unicode.Letter, unicode.Number, []rune{'$', '_'}) {
+		for r.Expect(unicode.Letter, unicode.Number, []rune{'$', '_', '.'}) {
 			r.Next()
 		}
 	}
@@ -222,21 +224,27 @@ func parseDate(r *util.RuneReader) (time.Time, error) {
 	if r.CurrentWord() == "new" {
 		r.SkipWords(1)
 	}
-	var date string
-	if date, ok := r.SlurpWord(); !ok {
-		return time.Time{}, errors.New("unexpected end of string parsing date")
+	// Date(1524927048785)
+	offset := 0
+	if util.StringInsensitiveMatch(r.Peek(5), "date(") {
+		offset = 5
+	} else if util.StringInsensitiveMatch(r.Peek(8), "isodate(") {
+		offset = 8
 	} else {
-		if len(date) == 19 && util.StringInsensitiveMatch(date[:5], "date(") && date[18] == ')' {
-			if t, err := strconv.ParseInt(date[5:18], 10, 64); err != nil {
-				return time.Time{}, err
-			} else {
-
-				return time.Unix(t/1000, (t%1000)*1000000), nil
-			}
-		}
-
+		return time.Time{}, errors.New("unexpected end of string parsing date")
 	}
-	return time.Time{}, fmt.Errorf("unrecognized date string (%s)", date)
+	r.Skip(offset)
+	if date := r.Peek(13); len(date) != 13 {
+		return time.Time{}, fmt.Errorf("unrecognized date string (%s)", date)
+	} else if t, err := strconv.ParseInt(date, 10, 64); err != nil {
+		return time.Time{}, err
+	} else {
+		r.Skip(13)
+		if end, _ := r.Next(); end != ')' {
+			return time.Time{}, fmt.Errorf("unexpected character '%c' in date string at %d", end, r.Pos())
+		}
+		return time.Unix(t/1000, (t%1000)*1000000), nil
+	}
 }
 
 func parseNumber(r *util.RuneReader) (interface{}, error) {

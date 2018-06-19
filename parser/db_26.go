@@ -40,6 +40,7 @@ func (v *Version26Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			return parse26Command(r)
 		case r.ExpectString("query"),
 			r.ExpectString("getmore"),
+			r.ExpectString("geonear"),
 			r.ExpectString("insert"),
 			r.ExpectString("update"),
 			r.ExpectString("remove"):
@@ -90,10 +91,10 @@ func parse26Command(r util.RuneReader) (record.Message, error) {
 	for {
 		if param, ok := r.SlurpWord(); ok {
 			if r.Expect('{') {
-				if op.Command[param], err = mongo.ParseJsonRunes(&r, false); err != nil {
+				if op.Payload[param], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					return nil, err
 				}
-				op.Name = param
+				op.Command = param
 			} else if param == "locks(micros)" {
 				target = op.Locks
 				continue
@@ -143,14 +144,17 @@ func parse26Operation(r util.RuneReader) (record.Message, error) {
 				return nil, err
 			}
 			continue
-		} else if length := len(param); length > 1 && util.ArrayBinarySearchString(param[:length-1], mongo.OPERATIONS) {
+		} else if length := len(param); length > 1 && util.ArrayBinarySearchString(param[:length-1], mongo.OPERATION_COMMANDS) {
 			if r.EOL() {
 				return nil, VersionErrorUnmatched{"unexpected end of string"}
 			} else if r.Expect('{') {
 				// Parse JSON, found immediately after an operation.
-				if op.Command, err = mongo.ParseJsonRunes(&r, false); err != nil {
+				if op.Payload, err = mongo.ParseJsonRunes(&r, false); err != nil {
 					return nil, err
 				}
+			}
+			if op.Command == "" {
+				op.Command = param[:length-1]
 			}
 		} else if strings.ContainsRune(param, ':') {
 			// A counter (in the form of key:value) needs to be applied to the correct target.

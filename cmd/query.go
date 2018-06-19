@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"os"
 	"sort"
@@ -19,7 +20,7 @@ import (
 type commandQuery struct {
 	*context.Log
 	Name   string
-	Length uint64
+	Length int64
 
 	sort string
 
@@ -101,6 +102,7 @@ func (s *queryLog) Prepare(inputContext factory.InputContext) error {
 	s.Log[inputContext.Index] = &commandQuery{
 		Log:      context.NewLog(parser.VersionParserFactory.Get()),
 		Name:     inputContext.Name,
+		Length:   inputContext.Length,
 		Patterns: make(map[string]queryPattern),
 
 		sort: "sum",
@@ -112,12 +114,12 @@ func (s *queryLog) Prepare(inputContext factory.InputContext) error {
 	return nil
 }
 
-func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, errors chan<- error, fatal <-chan struct{}) error {
+func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, errors chan<- error, halt <-chan struct{}) error {
 	exit := false
 
 	// Wait for kill signals.
 	go func() {
-		<-fatal
+		<-halt
 		exit = true
 	}()
 
@@ -133,26 +135,29 @@ func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 
 		log := s.Log[index]
 		log.LineCount += 1
-		log.Length += uint64(base.Base.Length())
 
 		if base.Error != nil || base.Base.RawMessage == "" {
 			log.ErrorCount += 1
 		} else if entry, err := log.NewEntry(base.Base); err != nil {
 			log.ErrorCount += 1
-		} else if ns, op, query, dur := group(entry); op != "" && query != "" {
-			key := ns + ":" + op + ":" + query
-			pattern, ok := log.Patterns[key]
-			if !ok {
-				pattern = queryPattern{
-					PatternSummary: format.PatternSummary{
-						Namespace: ns,
-						Operation: op,
-						Pattern:   query,
-					},
-					n95Sequence: 0,
+		} else {
+			log.End = entry.Date
+
+			if ns, op, query, dur := group(entry); op != "" && query != "" {
+				key := ns + ":" + op + ":" + query
+				pattern, ok := log.Patterns[key]
+				if !ok {
+					pattern = queryPattern{
+						PatternSummary: format.PatternSummary{
+							Namespace: ns,
+							Operation: op,
+							Pattern:   query,
+						},
+						n95Sequence: 0,
+					}
 				}
+				log.Patterns[key] = updateSummary(pattern, dur)
 			}
-			log.Patterns[key] = updateSummary(pattern, dur)
 		}
 	}
 
@@ -176,13 +181,25 @@ func group(entry record.Entry) (string, string, string, int64) {
 		return "", "", "", 0
 	}
 
-	for _, commandType := range []string{"query", "count"} {
-		if query, ok := cmd.Command[commandType].(map[string]interface{}); ok {
-			pattern := mongo.NewPattern(query)
-			return op.Namespace, op.Operation, pattern.String(), cmd.Duration
-		}
-	}
+	switch cmd.Command {
+	case "count",
+		"find",
+		"getmore",
+		"geonear",
+		"remove",
+		"distinct":
 
+		if query, ok := parser.NormalizeQuery(cmd); ok {
+			pattern := mongo.NewPattern(query)
+			return op.Namespace, op.Operation, pattern.StringCompact(), cmd.Duration
+		}
+
+	case "aggregate",
+		"update":
+
+	default:
+		panic(fmt.Sprintf("unexpected %s in query operation at line %d", cmd.Command, entry.LineNumber))
+	}
 	return op.Namespace, op.Operation, "None", cmd.Duration
 }
 

@@ -59,7 +59,7 @@ func NewLog(parsers []parser.VersionParser) *Log {
 		DateYearMissing: false,
 	}
 
-	context.parserFactory = newManager(context.baseToEntry, parsers)
+	context.parserFactory = newManager(context.BaseToEntry, parsers)
 	return &context
 }
 
@@ -139,7 +139,7 @@ func (c *Log) NewEntry(base record.Base) (record.Entry, error) {
 	return entry, nil
 }
 
-func (c *Log) baseToEntry(base record.Base, factory parser.VersionParser) (record.Entry, error) {
+func (c *Log) BaseToEntry(base record.Base, factory parser.VersionParser) (record.Entry, error) {
 	var (
 		err error
 		out = record.Entry{Base: base, DateValid: true, Valid: true}

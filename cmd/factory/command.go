@@ -27,6 +27,7 @@ type baseCommandFileHandle struct {
 	CloseSignal chan struct{}
 	FileHandle  *os.File
 	Name        string
+	Length      int64
 }
 type BaseOptions struct {
 	DateFormat  string
@@ -41,8 +42,9 @@ type inputHandler struct {
 	sync synclib.WaitGroup
 }
 type InputContext struct {
-	Index int
-	Name  string
+	Index  int
+	Name   string
+	Length int64
 	CommandArgumentCollection
 }
 type outputHandler struct {
@@ -76,6 +78,10 @@ func (i *inputHandler) AddHandle(name string, reader *os.File, args CommandArgum
 		Closed:      false,
 		FileHandle:  reader,
 		Name:        name,
+	}
+
+	if info, err := reader.Stat(); err == nil {
+		commandFileHandle.Length = info.Size()
 	}
 
 	go commandFileHandle.closeHandler(&i.sync)
@@ -142,7 +148,7 @@ func RunCommand(f Command, in *inputHandler, out *outputHandler) error {
 
 	// Pass each file and its information to the command so it can prepare.
 	for index, handle := range in.in {
-		if err = f.Prepare(InputContext{index, handle.base.Name, handle.args}); err != nil {
+		if err = f.Prepare(InputContext{index, handle.base.Name, handle.base.Length, handle.args}); err != nil {
 			return err
 		}
 	}

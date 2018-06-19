@@ -9,9 +9,9 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	"mgotools/cmd/factory"
+	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/parser/context"
 	"mgotools/record"
@@ -20,9 +20,10 @@ import (
 )
 
 type debugLog struct {
-	json    bool
-	context bool
-	message bool
+	json       bool
+	context    bool
+	message    bool
+	patternize bool
 
 	limitLine  bool
 	lineNumber []uint
@@ -41,6 +42,7 @@ func init() {
 			{Name: "json", ShortName: "j", Type: factory.Bool, Usage: "return parsed data in JSON format"},
 			{Name: "line", ShortName: "l", Type: factory.String, Usage: "limit by line number"},
 			{Name: "message", ShortName: "m", Type: factory.Bool, Usage: "only show messages"},
+			{Name: "patternize", ShortName: "p", Type: factory.Bool, Usage: "turn queries into a pattern"},
 			{Name: "version", ShortName: "v", Type: factory.String, Usage: "assume parsing of a single version"},
 			{Name: "width", ShortName: "w", Type: factory.Int, Usage: "limit line width"},
 		},
@@ -60,6 +62,7 @@ func (d *debugLog) Prepare(c factory.InputContext) error {
 	d.context, _ = c.Booleans["context"]
 	d.json, _ = c.Booleans["json"]
 	d.message, _ = c.Booleans["message"]
+	d.patternize, _ = c.Booleans["patternize"]
 	lineArg, _ := c.Strings["line"]
 	versionArg, _ := c.Strings["version"]
 	width, _ := c.Integers["width"]
@@ -154,6 +157,11 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 	go record.Accumulator(in, accumulator, record.NewBase)
 
 	logs := context.NewLog(factories)
+	versionLogs := make(map[parser.VersionDefinition]*context.Log)
+	for _, f := range factories {
+		versionLogs[f.Version()] = context.NewLog([]parser.VersionParser{f})
+	}
+
 	for line := range accumulator {
 		base := line.Base
 		if d.limitLine && !d.checkLine(base.LineNumber) {
@@ -166,13 +174,6 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 		buffer("       ", d.formatObject(base))
 
 		if line.Error == nil {
-			entry := record.Entry{
-				Base:    base,
-				Context: strings.Trim(base.RawContext, "[]"),
-				Date:    time.Time{},
-				Valid:   true,
-			}
-
 			if d.context {
 				if entry, err := logs.NewEntry(base); err == nil && !d.message {
 					buffer("       ", d.formatObject(entry))
@@ -183,14 +184,27 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 				}
 			} else {
 				for _, versionParser := range factories {
-					msg, err := versionParser.NewLogMessage(entry)
-					messages[versionParser.Version()] = MessageResult{msg, err}
+					if pass := versionParser.Check(base); !pass {
+						buffer(" skip: ", fmt.Sprintf("[%s]", color.HiCyanString(versionParser.Version().String())))
+					} else if entry, err := versionLogs[versionParser.Version()].BaseToEntry(base, versionParser); err != nil {
+						buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(versionParser.Version().String()), err))
+					} else {
+						messages[versionParser.Version()] = MessageResult{entry.Message, err}
+					}
 				}
 
 				unmatched := make([]string, 0)
 				for v, r := range messages {
 					if r.Err == nil {
-						buffer(fmt.Sprintf("["+v.String()+"]   "), d.formatObject(r.Msg))
+						prefix := fmt.Sprintf("[" + v.String() + "]   ")
+						buffer(prefix, d.formatObject(r.Msg))
+
+						if d.patternize {
+							if b, ok := record.MsgOpCommandBaseFromMessage(r.Msg); ok && b.Payload != nil {
+								pattern := mongo.NewPattern(b.Payload)
+								buffer(prefix+color.WhiteString("--> "), pattern.String())
+							}
+						}
 					} else {
 						unmatched = append(unmatched, color.RedString(v.String()))
 					}
@@ -285,9 +299,11 @@ func colorizeObject(a interface{}) string {
 			b.WriteString(color.BlueString(m.Type().String()))
 		}
 		b.WriteRune('{')
+		count := 0
 		for n := 0; n < m.NumField(); n += 1 {
 			v := m.Field(n)
 			if v.CanInterface() {
+				count += 1
 				t := m.Type().Field(n)
 				if n > 0 {
 					b.WriteString(", ")
@@ -297,6 +313,11 @@ func colorizeObject(a interface{}) string {
 					b.WriteRune(':')
 				}
 				b.WriteString(colorizeObject(v.Interface()))
+			}
+		}
+		if count == 0 && m.NumMethod() > 0 {
+			if r := m.MethodByName("String").Call([]reflect.Value{}); len(r) > 0 {
+				b.WriteString(r[0].String())
 			}
 		}
 		b.WriteRune('}')

@@ -22,24 +22,8 @@ func (v *Version34Parser) Check(base record.Base) bool {
 }
 
 func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	r := *util.NewRuneReader(entry.RawMessage)
-	switch entry.RawComponent {
-	case "COMMAND", "WRITE":
-		if msg, err := parse3XCommand(r, true); err == nil {
-			return msg, err
-		} else if msg, err := v.ParseDDL(r, entry); err == nil {
-			return msg, nil
-		}
-	case "INDEX":
-		if r.ExpectString("build index on") {
-			return parse3XBuildIndex(r)
-		}
-	case "CONTROL":
-		return v.ParseControl(r, entry)
-	case "NETWORK":
-		return v.ParseNetwork(r, entry)
-	case "STORAGE":
-		return v.ParseStorage(r, entry)
+	if m, err := v.ParseComponent(entry); err == nil {
+		return m, nil
 	}
 	return nil, VersionErrorUnmatched{Message: "version 3.4"}
 }

@@ -4,7 +4,34 @@ import (
 	"mgotools/mongo"
 	"mgotools/record"
 	"mgotools/util"
+
+	"github.com/pkg/errors"
 )
+
+var ComponentUnmatched = errors.New("component unmatched")
+
+func (v *VersionCommon) ParseComponent(entry record.Entry) (record.Message, error) {
+	r := *entry.RuneReader
+	switch entry.RawComponent {
+	case "COMMAND", "WRITE":
+		if msg, err := parse3XCommand(r, true); err == nil {
+			return msg, err
+		} else if msg, err := v.ParseDDL(r, entry); err == nil {
+			return msg, nil
+		}
+	case "INDEX":
+		if r.ExpectString("build index on") {
+			return parse3XBuildIndex(r)
+		}
+	case "CONTROL":
+		return v.ParseControl(r, entry)
+	case "NETWORK":
+		return v.ParseNetwork(r, entry)
+	case "STORAGE":
+		return v.ParseStorage(r, entry)
+	}
+	return nil, ComponentUnmatched
+}
 
 func (v *VersionCommon) ParseControl(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	switch entry.Context {

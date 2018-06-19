@@ -23,12 +23,12 @@ func TestParseJson(t *testing.T) {
 		`{"float" : 1.5}`:                                    {"float": 1.5},
 		`{"object":{"key":"value"}}`:                         {"object": map[string]interface{}{"key": "value"}},
 		`{"object":{"key1":"value1" , "key2" : "value2" } }`: {"object": map[string]interface{}{"key1": "value1", "key2": "value2"}},
-		`{"key":[]}`:                                  {"key": []interface{}{}},
-		`{"key": ["value"]}`:                          {"key": []interface{}{"value"}},
-		`{"key":[ "value1" , "value2" ]}`:             {"key": []interface{}{"value1", "value2"}},
-		`{"key": /regex/ }`:                           {"key": Regex{"regex", ""}},
-		`{"key": /regex/i }`:                          {"key": Regex{"regex", "i"}},
-		`{"key": "this " is " incorrectly " quoted"}`: {"key": `this \" is \" incorrectly \" quoted`},
+		`{"key":[]}`:                      {"key": []interface{}{}},
+		`{"key": ["value"]}`:              {"key": []interface{}{"value"}},
+		`{"key":[ "value1" , "value2" ]}`: {"key": []interface{}{"value1", "value2"}},
+		`{"key": /regex/ }`:               {"key": Regex{"regex", ""}},
+		`{"key": /regex/i }`:              {"key": Regex{"regex", "i"}},
+		`{"key": /(?:)/i }`:               {"key": Regex{"(?:)", "i"}},
 	}
 
 	for source, target := range s1 {
@@ -46,13 +46,17 @@ func TestParseJson(t *testing.T) {
 
 	// These should only pass weak tests.
 	s2 := map[string]map[string]interface{}{
+		`{    key:"value"}`:                             {"key": "value"},
+		`{"key.key":"value"}`:                           {"key.key": "value"},
+		`{ $key: "value" }`:                             {"$key": "value"},
+		`{ key.1: "value" } `:                           {"key.1": "value"},
+		`{ key.name : "value" }`:                        {"key.name": "value"},
 		`{key:{$op:"value"}}`:                           {"key": map[string]interface{}{"$op": "value"}},
 		`{key:"value"}`:                                 {"key": "value"},
-		`{ $key: "value" }`:                             {"$key": "value"},
-		`{    key:"value"}`:                             {"key": "value"},
 		`{    "key"   :    "value"    }        `:        {"key": "value"},
 		`{"key":''}`:                                    {"key": ""},
 		`{"key": objectid(00000000000000000000000000)}`: {"key": ObjectId{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+		`{"key": "this " is " incorrectly " quoted"}`:   {"key": `this \" is \" incorrectly \" quoted`},
 	}
 
 	for source, target := range s2 {
@@ -83,6 +87,7 @@ func TestParseJson(t *testing.T) {
 		`{"key": unknown}`,
 		`{"key": -1-}`,
 		`{"key": objectid(00)}`,
+		`{key.1.:"value"}`,
 	}
 
 	for _, str := range n1 {

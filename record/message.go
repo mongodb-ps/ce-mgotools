@@ -57,11 +57,11 @@ type MsgOpIndex struct {
 }
 
 type MsgOpCommandBase struct {
-	Command     map[string]interface{}
+	Command     string
 	Counters    map[string]int
 	Duration    int64
 	Errors      []error
-	Name        string
+	Payload     map[string]interface{}
 	PlanSummary []MsgOpCommandPlanSummary
 }
 
@@ -87,6 +87,8 @@ type MsgOpCommandPlanSummary struct {
 	Type    string
 	Summary interface{}
 }
+
+type MsgQuery map[string]interface{}
 
 type MsgShutdown struct {
 	String string
@@ -155,7 +157,7 @@ func MsgOperationFromMessage(msg Message) (MsgOperation, bool) {
 func MakeMsgOpCommand() MsgOpCommand {
 	return MsgOpCommand{
 		MsgOpCommandBase: MsgOpCommandBase{
-			Command:  make(map[string]interface{}),
+			Payload:  make(map[string]interface{}),
 			Counters: make(map[string]int),
 		},
 		Locks: make(map[string]interface{}),
@@ -165,7 +167,7 @@ func MakeMsgOpCommand() MsgOpCommand {
 func MakeMsgOpCommandLegacy() MsgOpCommandLegacy {
 	return MsgOpCommandLegacy{
 		MsgOpCommandBase: MsgOpCommandBase{
-			Command:  make(map[string]interface{}),
+			Payload:  make(map[string]interface{}),
 			Counters: make(map[string]int),
 		},
 		Locks: make(map[string]int),

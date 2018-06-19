@@ -244,7 +244,7 @@ func (r *RuneReader) PreviewWord(count int) string {
 // escaped characters.
 func (r *RuneReader) QuotedString() (string, error) {
 	which := r.NextRune()
-	if which != '\'' && which != '"' {
+	if !unicode.Is(unicode.Quotation_Mark, which) {
 		return "", fmt.Errorf("unexpected character '%c' in quoted string", which)
 	}
 	return r.EnclosedString(which, true)

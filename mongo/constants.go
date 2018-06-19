@@ -80,7 +80,22 @@ var COUNTERS = map[string]string{
 	"writeConflicts":   "writeConflicts",
 }
 
-var OPERATIONS = []string{"command", "getmore", "insert", "query", "remove", "update"}
+var OPERATION_COMMANDS = []string{
+	"aggregate",
+	"command",
+	"count",
+	"distinct",
+	"find",
+	"geoNear",
+	"geonear",
+	"getMore",
+	"getmore",
+	"insert",
+	"mapreduce",
+	"query",
+	"remove",
+	"update",
+}
 
 var OPERATORS_COMPARISON = []string{
 	"$all",
@@ -96,13 +111,13 @@ var OPERATORS_COMPARISON = []string{
 	"$lt",
 	"$lte",
 	"$ne",
-	"$nin",
 	"$size",
 	"$type",
 }
 
 var OPERATORS_LOGICAL = []string{
 	"$and",
+	"$nin",
 	"$not",
 	"$nor",
 	"$or",

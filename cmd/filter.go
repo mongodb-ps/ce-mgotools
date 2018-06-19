@@ -364,7 +364,7 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 
 	// Try converting into a base MsgOpCommand object and do comparisons if the filter succeeds.
 	if cmd, ok := record.MsgOpCommandBaseFromMessage(entry.Message); ok {
-		if opts.CommandFilter != "" && !stringMatchFields(cmd.Name, opts.CommandFilter) {
+		if opts.CommandFilter != "" && !stringMatchFields(cmd.Command, opts.CommandFilter) {
 			return false
 		} else if opts.FasterFilter > 0 && time.Duration(cmd.Duration) > opts.FasterFilter {
 			return false
@@ -381,13 +381,13 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 	if cmd, ok := entry.Message.(record.MsgOpCommandLegacy); ok {
 		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
 			return false
-		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Command, opts.PatternFilter) {
+		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Payload, opts.PatternFilter) {
 			return false
 		}
 	} else if cmd, ok := entry.Message.(record.MsgOpCommand); ok {
 		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
 			return false
-		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Command, opts.PatternFilter) {
+		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Payload, opts.PatternFilter) {
 			return false
 		}
 	} else if !ok && !opts.PatternFilter.IsEmpty() {

@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bytes"
+	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
@@ -10,6 +11,34 @@ import (
 	"mgotools/record"
 	"mgotools/util"
 )
+
+func NormalizeQuery(cmd record.MsgOpCommandBase) (record.MsgQuery, bool) {
+	convert := func(m interface{}) record.MsgQuery {
+		if m != nil {
+			if n, ok := m.(record.MsgQuery); ok {
+				return n
+			}
+		}
+		return record.MsgQuery{}
+	}
+	switch cmd.Command {
+	case "count", "distinct":
+		q, ok := cmd.Payload["query"]
+		return convert(q), ok
+	case "find", "getmore", "getMore":
+		q, ok := cmd.Payload["filter"]
+		return convert(q), ok
+	case "geonear", "geoNear":
+		q, ok := cmd.Payload["query"]
+		c := convert(q)
+		if ok && c != nil {
+			c["near"], ok = cmd.Payload["near"]
+		}
+		return c, ok
+	default:
+		panic(fmt.Sprintf("unrecognzied query type during normalization: %s", cmd.Command))
+	}
+}
 
 func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 	var (
@@ -25,7 +54,7 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 	// <command> <namespace> <suboperation>: <section[:]> <pattern>[, <section[:]> <pattern>] <counters> locks:<locks> [protocol:<protocol>] [duration]
 	// Check for the operation first.
 	op.Operation, ok = r.SlurpWord()
-	if !ok || (strict && !util.ArrayBinarySearchString(op.Operation, mongo.OPERATIONS)) {
+	if !ok || (strict && !util.ArrayBinarySearchString(op.Operation, mongo.OPERATION_COMMANDS)) {
 		return nil, VersionErrorUnmatched{"unexpected operation"}
 	}
 
@@ -35,15 +64,15 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 		return nil, VersionErrorUnmatched{"unexpected namespace"}
 	} else if !strict && op.Namespace != "" && !strings.ContainsRune(op.Namespace, '.') {
 		r.RewindSlurpWord()
-		op.Name = op.Namespace
+		op.Command = op.Namespace
 		op.Namespace = ""
 	} else if strings.HasPrefix(r.PreviewWord(1), ":") {
 		// Then for the sub-operation.
-		op.Name, ok = r.SlurpWord()
-		if !ok || op.Name == "" || op.Name[len(op.Name)-1] != ':' {
+		op.Command, ok = r.SlurpWord()
+		if !ok || op.Command == "" || op.Command[len(op.Command)-1] != ':' {
 			return nil, VersionErrorUnmatched{"unexpected sub-operation"}
 		}
-		op.Name = op.Name[:len(op.Name)-1]
+		op.Command = op.Command[:len(op.Command)-1]
 	}
 
 	// Parse the remaining sections in a generic pattern.
@@ -54,15 +83,15 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 				if name != "" {
 					sectionLength := section.Meta.Len()
 					if sectionLength == 0 && section.Cmd != nil {
-						op.Command[name] = section.Cmd
+						op.Payload[name] = section.Cmd
 					} else if sectionLength > 0 && section.Cmd == nil {
 						if name == "appName" {
 							op.Agent = section.Meta.String()
 						} else {
-							op.Command[name] = section.Meta.String()
+							op.Payload[name] = section.Meta.String()
 						}
 					} else if sectionLength > 0 && section.Cmd != nil {
-						op.Command[section.Meta.String()] = section.Cmd
+						op.Payload[section.Meta.String()] = section.Cmd
 					} else {
 						panic("unexpected empty meta/cmd pairing")
 					}
@@ -71,7 +100,7 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 			} else if strings.HasPrefix(param, "locks:") {
 				r.RewindSlurpWord()
 				r.Skip(6)
-				op.Locks, _ = mongo.ParseJsonRunes(&r, false)
+				op.Locks, err = mongo.ParseJsonRunes(&r, false)
 			} else if strings.HasPrefix(param, "protocol:") {
 				op.Protocol = param[9:]
 			} else {
@@ -86,27 +115,27 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 		} else if param[0] == '{' {
 			r.RewindSlurpWord()
 			if name != "" {
-				if op.Command[name], err = mongo.ParseJsonRunes(&r, false); err != nil {
+				if op.Payload[name], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				}
 			} else if section.Meta.Len() > 0 {
-				if op.Command[section.Meta.String()], err = mongo.ParseJsonRunes(&r, false); err != nil {
+				if op.Payload[section.Meta.String()], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				}
 				section.Meta.Reset()
-			} else if op.Name != "" {
-				name = op.Name
-				if op.Command[name], err = mongo.ParseJsonRunes(&r, false); err != nil {
+			} else if op.Command != "" {
+				name = op.Command
+				if op.Payload[name], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				} else {
-					op.Name = ""
+					op.Command = ""
 				}
-			} else if _, ok := op.Command[op.Operation]; !ok {
-				if op.Command[op.Operation], err = mongo.ParseJsonRunes(&r, false); err != nil {
+			} else if _, ok := op.Payload[op.Operation]; !ok {
+				if op.Payload[op.Operation], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				}
 			} else {
-				if op.Command["unknown"], err = mongo.ParseJsonRunes(&r, false); err != nil {
+				if op.Payload["unknown"], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				}
 			}
@@ -123,9 +152,9 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 			}
 		} else if length > 2 && param[length-2:] == "ms" {
 			op.Duration, _ = strconv.ParseInt(param[:length-2], 10, 32)
-		} else if name == "command" {
-			name = param
-			op.Name = param
+		} else if util.ArrayBinarySearchString(param, mongo.OPERATION_COMMANDS) {
+			name = util.StringToLower(param)
+			op.Command = name
 		} else {
 			section.Meta.WriteString(param)
 			section.Meta.WriteRune(' ')

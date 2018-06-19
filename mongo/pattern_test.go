@@ -12,6 +12,7 @@ func TestPattern_NewPattern(t *testing.T) {
 		{"a": Object{"$in": "y"}},
 		{"a": Object{"$gt": 5}},
 		{"a": Object{"$exists": true}},
+		{"a.b": "y"},
 		{"$or": Array{Object{"a": 5}, Object{"b": 5}}},
 		{"$and": Array{Object{"$or": Array{Object{"a": 5}, Object{"b": 5}}}, Array{Object{"$or": Array{Object{"c": 5}, Object{"d": 5}}}}}},
 		{"_id": ObjectId{}},
@@ -23,9 +24,10 @@ func TestPattern_NewPattern(t *testing.T) {
 	d := []Object{
 		{"a": V{}},
 		{"a": V{}, "b": V{}},
-		{"a": Object{"$in": V{}}},
-		{"a": Object{"$gt": V{}}},
-		{"a": Object{"$exists": V{}}},
+		{"a": V{}},
+		{"a": V{}},
+		{"a": V{}},
+		{"a.b": V{}},
 		{"$or": Array{Object{"a": V{}}, Object{"b": V{}}}},
 		{"$and": Array{Object{"$or": Array{Object{"a": V{}}, Object{"b": V{}}}}, Array{Object{"$or": Array{Object{"c": V{}}, Object{"d": V{}}}}}}},
 		{"_id": V{}},
@@ -39,8 +41,8 @@ func TestPattern_NewPattern(t *testing.T) {
 	}
 
 	for i := range s {
-		if p := NewPattern(s[i]); !reflect.DeepEqual(p.pattern, d[i]) {
-			t.Errorf("pattern mismatch at %d: %#v %#v", i, s[i], d[i])
+		if p := NewPattern(s[i]); !deepEqual(p.pattern, translate(d[i]).(map[string]interface{})) {
+			t.Errorf("pattern mismatch at %d: %#v %#v", i+1, s[i], d[i])
 		}
 	}
 }
@@ -113,13 +115,13 @@ func TestPattern_String(t *testing.T) {
 		{Object{"a": Array{Array{V{}}}}, true},
 	}
 	d := []string{
-		"{ a: 1 }",
-		"{ a: 1, b: 1 }",
-		"{ a: [ 1, 1 ] }",
-		"{}",
-		"{ a: [] }",
-		"{ a: [ { b: 1 } ] }",
-		"{ a: [ [ 1 ] ] }",
+		`{ "a": 1 }`,
+		`{ "a": 1, "b": 1 }`,
+		`{ "a": 1 }`,
+		`{}`,
+		`{ "a": 1 }`,
+		`{ "a": [ { "b": 1 } ] }`,
+		`{ "a": 1 }`,
 	}
 	if len(s) != len(d) {
 		t.Fatalf("mismatch between array sizes, %d and %d", len(s), len(d))
@@ -127,6 +129,57 @@ func TestPattern_String(t *testing.T) {
 	for i := range s {
 		if s[i].String() != d[i] {
 			t.Errorf("pattern mismatch, expected '%s', got '%s'", d[i], s[i].String())
+		}
+	}
+}
+
+func TestPattern_mtools(t *testing.T) {
+	s := []Object{
+		//`{"d": {"$gt": 2, "$lt": 4}, "b": {"$gte": 3}, "c": {"$nin": [1, "foo", "bar"]}, "$or": [{"a":1}, {"b":1}] }`,
+		{
+			"d": Object{"$gt": 2, "$lt": 4}, "b": Object{"$gte": 3}, "c": Object{"$nin": Array{1, "foo", "bar"}}, "$or": Array{Object{"a": 1}, Object{"b": 1}},
+		},
+
+		//`{"a": {"$gt": 2, "$lt": 4}, "b": {"$nin": [1, 2, 3]}, "$or": [{"a":1}, {"b":1}] }`,
+		{
+			"a": Object{"$gt": 2, "$lt": 4}, "b": Object{"$nin": Array{1, 2, 3}}, "$or": Array{Object{"a": 1}, Object{"b": 1}},
+		},
+
+		//`{"a": {"$gt": 2, "$lt": 4}, "b": {"$in": [ ObjectId("1234564863acd10e5cbf5f6e"), ObjectId("1234564863acd10e5cbf5f7e") ] } }`,
+		{
+			"a": Object{"$gt": 2, "$lt": 4}, "b": Object{"$in": Array{ObjectId("1234564863acd10e5cbf5f6e"), ObjectId("1234564863acd10e5cbf5f7e")}},
+		},
+
+		//`{ "sk": -1182239108, "_id": { "$in": [ ObjectId("1234564863acd10e5cbf5f6e"), ObjectId("1234564863acd10e5cbf5f7e") ] } }`,
+		{
+			"sk": -1182239108, "_id": Object{"$in": Array{ObjectId("1234564863acd10e5cbf5f6e"), ObjectId("1234564863acd10e5cbf5f6e")}},
+		},
+
+		//`{ "a": 1, "b": { "c": 2, "d": "text" }, "e": "more test" }`,
+		{
+			"a": 1, "b": Object{"c": 2, "d": "text"}, "e": "more test",
+		},
+
+		//`{ "_id": ObjectId("528556616dde23324f233168"), "config": { "_id": 2, "host": "localhost:27017" }, "ns": "local.oplog.rs" }`,
+		{
+			"_id": ObjectId("528556616dde23324f233168"), "config": Object{"_id": 2, "host": "localhost:27017"}, "ns": "local.oplog.rs",
+		},
+	}
+
+	d := []string{
+		`{"$or": [{"a": 1}, {"b": 1}], "b": 1, "c": {"$nin": 1}, "d": 1}`,
+		`{"$or": [{"a": 1}, {"b": 1}], "a": 1, "b": {"$nin": 1}}`,
+		`{"a": 1, "b": 1}`,
+		`{"_id": 1, "sk": 1}`,
+		`{"a": 1, "b": {"c": 1, "d": 1}, "e": 1}`,
+		`{"_id": 1, "config": {"_id": 1, "host": 1}, "ns": 1}`,
+	}
+
+	for i, m := range s {
+		p := NewPattern(m)
+
+		if p.StringCompact() != d[i] {
+			t.Errorf("mismatch at %d, got '%s', expected '%s'", i, p.StringCompact(), d[i])
 		}
 	}
 }
