@@ -1,4 +1,4 @@
-package factory
+package cmd
 
 import (
 	"errors"
@@ -9,9 +9,9 @@ import (
 const (
 	Bool CommandFlag = iota
 	Int
-	IntFileSlice
+	IntSourceSlice
 	String
-	StringFileSlice
+	StringSourceSlice
 )
 
 type CommandArgument struct {
@@ -33,6 +33,7 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 		argsInt    = make(map[string]int)
 		argsString = make(map[string]string)
 	)
+
 	for _, argument := range cmd.Flags {
 		input, ok := args[argument.Name]
 		if ok {
@@ -41,7 +42,7 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 				argsBool[argument.Name] = input.(bool)
 			case Int:
 				argsInt[argument.Name] = input.(int)
-			case IntFileSlice:
+			case IntSourceSlice:
 				values := input.([]int)
 				switch {
 				case len(values) == 1:
@@ -53,7 +54,7 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 				}
 			case String:
 				argsString[argument.Name] = strings.Join(input.([]string), " ")
-			case StringFileSlice:
+			case StringSourceSlice:
 				// multiple strings apply to each log individually
 				values := input.([]string)
 				switch {
@@ -67,5 +68,6 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 			}
 		}
 	}
+
 	return CommandArgumentCollection{argsBool, argsInt, argsString}, nil
 }

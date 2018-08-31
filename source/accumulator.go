@@ -1,14 +1,48 @@
-package record
+package source
 
 import (
+	"bufio"
 	"bytes"
-)
+	"io"
+
+	"mgotools/record"
+	)
 
 const MaxBufferSize = 16777216
 
-type AccumulatorResult struct {
-	Base  Base
+type accumulator struct {
+	handle io.ReadCloser
+
+	Log *bufio.Scanner
+	Out chan accumulatorResult
+	In  chan string
+}
+
+type accumulatorResult struct {
+	Base  record.Base
 	Error error
+}
+
+func NewAccumulator(closer io.ReadCloser) *accumulator {
+	r := &accumulator{
+		handle: closer,
+
+		Log: bufio.NewScanner(closer),
+		Out: make(chan accumulatorResult),
+		In:  make(chan string),
+	}
+
+	// Begin scanning the source and send it to the input channel.
+	go func() {
+		defer close(r.In)
+
+		for r.Log.Scan() {
+			r.In <- r.Log.Text()
+		}
+	}()
+
+	go Accumulator(r.In, r.Out, newBase)
+	return r
 }
 
 // The accumulator is designed to concat multi-line entries. The log format does
@@ -19,12 +53,12 @@ type AccumulatorResult struct {
 // versions of MongoDB. However, the date in older versions is a CString.
 // Thankfully, the record.Base object contains enough information to properly
 // parse multi-line input.
-func Accumulator(in <-chan string, out chan<- AccumulatorResult, callback func(string, uint) (Base, error)) {
+func Accumulator(in <-chan string, out chan<- accumulatorResult, callback func(string, uint) (record.Base, error)) {
 	defer close(out) // Last defer called.
 
 	type accumulator struct {
 		count   int
-		last    []AccumulatorResult
+		last    []accumulatorResult
 		size    int
 		started bool
 	}
@@ -43,7 +77,7 @@ func Accumulator(in <-chan string, out chan<- AccumulatorResult, callback func(s
 
 	a := accumulator{
 		count:   0,
-		last:    make([]AccumulatorResult, 0),
+		last:    make([]accumulatorResult, 0),
 		size:    0,
 		started: false,
 	}
@@ -81,7 +115,7 @@ func Accumulator(in <-chan string, out chan<- AccumulatorResult, callback func(s
 					m, err := callback(s, a.last[0].Base.LineNumber)
 					reset(&a)
 
-					out <- AccumulatorResult{
+					out <- accumulatorResult{
 						Base:  m,
 						Error: err,
 					}
@@ -93,7 +127,7 @@ func Accumulator(in <-chan string, out chan<- AccumulatorResult, callback func(s
 
 			// Keep the last entry and output nothing (for now).
 			a.size += base.Length()
-			a.last = append(a.last, AccumulatorResult{
+			a.last = append(a.last, accumulatorResult{
 				Base:  base,
 				Error: err,
 			})
@@ -102,7 +136,7 @@ func Accumulator(in <-chan string, out chan<- AccumulatorResult, callback func(s
 				// No date line has been discovered so the log is either invalid
 				// or started in the middle of a multi-line string. Either case
 				// demands simply outputting the erratic result.
-				out <- AccumulatorResult{
+				out <- accumulatorResult{
 					Base:  base,
 					Error: err,
 				}
@@ -115,9 +149,18 @@ func Accumulator(in <-chan string, out chan<- AccumulatorResult, callback func(s
 			} else {
 				// Add each line to the accumulator array and keep track of how
 				// many line bytes are being stored.
-				a.last = append(a.last, AccumulatorResult{base, err})
+				a.last = append(a.last, accumulatorResult{base, err})
 				a.size += base.Length()
 			}
 		}
 	}
+}
+
+func (f *accumulator) Read() (record.Base, error) {
+	b := <-f.Out
+	return b.Base, b.Error
+}
+
+func (f *accumulator) Close() error {
+	return f.handle.Close()
 }

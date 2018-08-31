@@ -23,23 +23,26 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
 		// Check for control messages, which is almost everything in 2.4 that is logged at startup.
-		if msg, err := v.VersionCommon.ParseControl(r, entry); err == nil {
+		if msg, err := ParseControl(r, entry); err == nil {
 			// Most startup messages are part of control.
 			return msg, nil
-		} else if msg, err := v.VersionCommon.ParseNetwork(r, entry); err == nil {
+		} else if msg, err := ParseNetwork(r, entry); err == nil {
 			// Alternatively, we care about basic network actions like new connections being established.
 			return msg, nil
 		}
 	case entry.Connection > 0:
 		// Check for connection related messages, which is almost everything *not* related to startup messages.
 		switch {
-		case r.ExpectString("command"),
-			r.ExpectString("query"),
+		case r.ExpectString("query"),
 			r.ExpectString("update"):
 			// Commands or queries!
+			return parse24WithPayload(r)
+		case r.ExpectString("command"):
 			msg, err := parse24WithPayload(r)
-			if err == nil {
-				swap("count", msg.Payload)
+			if err != nil {
+				if t, ok := record.MsgOpCommandBaseFromMessage(msg); ok {
+					return NormalizeCommand(t), err
+				}
 			}
 			return msg, err
 		case r.ExpectString("insert"),
@@ -55,9 +58,9 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			return parse24BuildIndex(r)
 		default:
 			// Check for network connection changes.
-			if msg, err := v.ParseNetwork(r, entry); err == nil {
+			if msg, err := ParseNetwork(r, entry); err == nil {
 				return msg, nil
-			} else if msg, err := v.ParseDDL(r, entry); err == nil {
+			} else if msg, err := ParseDDL(r, entry); err == nil {
 				return msg, nil
 			}
 		}
@@ -101,7 +104,6 @@ func parse24BuildIndex(r util.RuneReader) (record.Message, error) {
 	}
 	return nil, VersionErrorUnmatched{Message: "index format unrecognized"}
 }
-
 func parse24WithPayload(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
 	var err error
 	// command test.$cmd command: { getlasterror: 1.0, w: 1.0 } ntoreturn:1 keyUpdates:0  reslen:67 0ms

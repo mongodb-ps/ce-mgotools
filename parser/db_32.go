@@ -22,7 +22,10 @@ func (v *Version32Parser) Check(base record.Base) bool {
 }
 
 func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	if m, err := v.ParseComponent(entry); err == nil {
+	if m, err := v.parse3XComponent(entry); err == nil {
+		if n, ok := m.(record.MsgOpCommand); ok {
+			return NormalizeCommand(n.MsgOpCommandBase), nil
+		}
 		return m, nil
 	}
 	return nil, VersionErrorUnmatched{Message: "version 3.2"}

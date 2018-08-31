@@ -25,7 +25,7 @@ type logVersionParserFactory struct {
 	factories []VersionParser
 }
 
-func (f *logVersionParserFactory) Get() []VersionParser {
+func (f *logVersionParserFactory) GetAll() []VersionParser {
 	return f.factories
 }
 func (f *logVersionParserFactory) Register(init func() VersionParser) {
@@ -97,4 +97,8 @@ func (v VersionDefinition) String() string {
 
 type VersionCommon struct {
 	*util.DateParser
+}
+
+func (v *VersionCommon) NewLogMessage(entry record.Entry) (record.Message, error) {
+	panic("unimplemented call to VersionCommon::NewLogMessage")
 }

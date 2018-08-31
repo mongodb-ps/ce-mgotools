@@ -1,4 +1,4 @@
-package record_test
+package source
 
 import (
 	"bufio"
@@ -32,8 +32,8 @@ func TestAccumulator_Run(tr *testing.T) {
 func testAccumulator(r accumulatorFile, t *testing.T) {
 	scanner := bufio.NewScanner(bytes.NewBufferString(r.Reader))
 
-	in, out := make(chan string), make(chan record.AccumulatorResult)
-	go record.Accumulator(in, out, record.NewBase)
+	in, out := make(chan string), make(chan accumulatorResult)
+	go Accumulator(in, out, record.NewBase)
 
 	go func() {
 		i := uint(0)

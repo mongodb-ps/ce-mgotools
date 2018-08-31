@@ -1,16 +1,18 @@
 package cmd
 
+// TODO:
+//   count by namespace
+//   group by IXSCAN
+//   group by SORT
+
 import (
 	"bytes"
-	"fmt"
 	"math"
 	"os"
 	"sort"
 	"sync"
 
-	"mgotools/cmd/factory"
 	"mgotools/cmd/format"
-	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/parser/context"
 	"mgotools/record"
@@ -18,7 +20,7 @@ import (
 )
 
 type commandQuery struct {
-	*context.Log
+	*context.Instance
 	Name   string
 	Length int64
 
@@ -44,16 +46,16 @@ type queryPattern struct {
 }
 
 func init() {
-	args := factory.CommandDefinition{
+	args := CommandDefinition{
 		Usage: "output statistics about query patterns",
-		Flags: []factory.CommandArgument{
-			{Name: "sort", ShortName: "s", Type: factory.String, Usage: "sort by namespace, pattern, count, min, max, 95%, or sum"},
+		Flags: []CommandArgument{
+			{Name: "sort", ShortName: "s", Type: String, Usage: "sort by namespace, pattern, count, min, max, 95%, or sum"},
 		},
 	}
-	init := func() (factory.Command, error) {
+	init := func() (Command, error) {
 		return &queryLog{Log: make(map[int]*commandQuery), summaryTable: bytes.NewBuffer([]byte{})}, nil
 	}
-	factory.GetCommandFactory().Register("query", args, init)
+	GetCommandFactory().Register("query", args, init)
 }
 
 func (s *queryLog) Finish(index int) error {
@@ -98,23 +100,22 @@ func (s *queryLog) Finish(index int) error {
 	return nil
 }
 
-func (s *queryLog) Prepare(inputContext factory.InputContext) error {
-	s.Log[inputContext.Index] = &commandQuery{
-		Log:      context.NewLog(parser.VersionParserFactory.Get()),
-		Name:     inputContext.Name,
-		Length:   inputContext.Length,
+func (s *queryLog) Prepare(name string, instance int, args CommandArgumentCollection) error {
+	s.Log[instance] = &commandQuery{
+		Instance: context.NewInstance(parser.VersionParserFactory.GetAll()),
+		Name:     name,
 		Patterns: make(map[string]queryPattern),
 
 		sort: "sum",
 	}
 
-	if sortType, ok := inputContext.Strings["sort"]; ok {
-		s.Log[inputContext.Index].sort = sortType
+	if sortType, ok := args.Strings["sort"]; ok {
+		s.Log[instance].sort = sortType
 	}
 	return nil
 }
 
-func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, errors chan<- error, halt <-chan struct{}) error {
+func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs commandError, halt commandHalt) {
 	exit := false
 
 	// Wait for kill signals.
@@ -123,22 +124,21 @@ func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 		exit = true
 	}()
 
-	accumulator := make(chan record.AccumulatorResult)
-	go record.Accumulator(in, accumulator, record.NewBase)
+	// Hold a configuration object for future use.
+	log := s.Log[instance]
 
 	// A function to grab new lines and parse them.
-	for base := range accumulator {
+	for base := range in {
 		if exit {
 			util.Debug("exit signal received")
 			break
 		}
 
-		log := s.Log[index]
 		log.LineCount += 1
 
-		if base.Error != nil || base.Base.RawMessage == "" {
+		if base.RawMessage == "" {
 			log.ErrorCount += 1
-		} else if entry, err := log.NewEntry(base.Base); err != nil {
+		} else if entry, err := log.NewEntry(base); err != nil {
 			log.ErrorCount += 1
 		} else {
 			log.End = entry.Date
@@ -161,7 +161,7 @@ func (s *queryLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 		}
 	}
 
-	return nil
+	return
 }
 
 func (s *queryLog) Terminate(out chan<- string) error {
@@ -181,25 +181,6 @@ func group(entry record.Entry) (string, string, string, int64) {
 		return "", "", "", 0
 	}
 
-	switch cmd.Command {
-	case "count",
-		"find",
-		"getmore",
-		"geonear",
-		"remove",
-		"distinct":
-
-		if query, ok := parser.NormalizeQuery(cmd); ok {
-			pattern := mongo.NewPattern(query)
-			return op.Namespace, op.Operation, pattern.StringCompact(), cmd.Duration
-		}
-
-	case "aggregate",
-		"update":
-
-	default:
-		panic(fmt.Sprintf("unexpected %s in query operation at line %d", cmd.Command, entry.LineNumber))
-	}
 	return op.Namespace, op.Operation, "None", cmd.Duration
 }
 

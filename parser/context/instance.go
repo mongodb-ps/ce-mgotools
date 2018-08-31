@@ -10,7 +10,7 @@ import (
 	"mgotools/util"
 )
 
-type Log struct {
+type Instance struct {
 	parserFactory manager
 	startupIndex  int
 	startSet      bool
@@ -47,8 +47,8 @@ type logStartup struct {
 	ShardVersion    record.MsgVersion
 }
 
-func NewLog(parsers []parser.VersionParser) *Log {
-	context := Log{
+func NewInstance(parsers []parser.VersionParser) *Instance {
+	context := Instance{
 		Startup:      []logStartup{{}},
 		startupIndex: 0,
 
@@ -63,7 +63,7 @@ func NewLog(parsers []parser.VersionParser) *Log {
 	return &context
 }
 
-func (c *Log) NewEntry(base record.Base) (record.Entry, error) {
+func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 	manager := c.parserFactory
 	entry, version, err := manager.Try(base)
 	c.LastWinner = version
@@ -139,7 +139,7 @@ func (c *Log) NewEntry(base record.Base) (record.Entry, error) {
 	return entry, nil
 }
 
-func (c *Log) BaseToEntry(base record.Base, factory parser.VersionParser) (record.Entry, error) {
+func (c *Instance) BaseToEntry(base record.Base, factory parser.VersionParser) (record.Entry, error) {
 	var (
 		err error
 		out = record.Entry{Base: base, DateValid: true, Valid: true}
@@ -176,6 +176,15 @@ func (c *Log) BaseToEntry(base record.Base, factory parser.VersionParser) (recor
 		// No log message exists so it cannot be further analyzed.
 		return out, parser.VersionMessageUnmatched{}
 	}
+
+	// TODO: This is a debug statement! Remove.
+	defer func() {
+		if r := recover(); r != nil {
+			util.Debug("Panic on line %d", out.LineNumber)
+			util.Debug(out.String())
+			panic(r)
+		}
+	}()
 
 	// Try parsing the remaining factories for a log message until one succeeds.
 	out.Message, _ = factory.NewLogMessage(out)

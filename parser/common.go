@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -15,6 +16,184 @@ import (
 var ErrorNoPlanSummaryFound = errors.New("no plan summary found")
 var ErrorNoStartupArgumentsFound = errors.New("no startup arguments found")
 var ErrorUnexpectedVersionFormat = errors.New("unexpected version format")
+var ErrorNetworkUnrecognized = VersionErrorUnmatched{"unrecognized network message"}
+var ErrorControlUnrecognized = VersionErrorUnmatched{Message: "unrecognized control message"}
+var ErrorDDLUnrecognized = VersionErrorUnmatched{Message: "unrecognized ddl message"}
+var ErrorMetadataUnmatched = VersionErrorUnmatched{"unexpected connection meta format"}
+var ErrorStorageUnmatched = VersionErrorUnmatched{"unrecognized storage option"}
+var ErrorComponentUnmatched = errors.New("component unmatched")
+
+func NormalizeCommand(msg record.Message) (record.Message) {
+	cmd, ok := record.MsgOpCommandBaseFromMessage(msg)
+	if !ok {
+		return cmd
+	}
+
+	switch cmd.Command {
+	case "count",
+		"find",
+		"getmore",
+		"geonear",
+		"remove",
+		"distinct":
+		if filter, ok := NormalizeQuery(*cmd); ok {
+			cmd.Namespace = cmd.Payload[cmd.Command].(string)
+			cmd.Payload = filter
+		}
+
+	case "aggregate",
+		"explain",
+		"insert",
+		"update":
+		cmd.Command = cmd.Operation
+
+	case "create":
+		if name, ok := cmd.Payload["create"].(string); ok {
+			return record.MsgCreateCollection{*cmd, name}
+		}
+
+	case "createIndexes":
+		if ns, ok := cmd.Payload["createIndexes"].(string); ok {
+			return record.MsgOpIndex{
+				MsgOperation: record.MsgOperation{
+					Namespace: ns,
+					Operation:
+					cmd.Command},
+				Properties: cmd.Payload["indexes"].(map[string]interface{})}
+		}
+
+	case "isMaster":
+	default:
+		util.Debug("%#v", cmd)
+		panic(fmt.Sprintf("unexpected %s in query operation", cmd.Command))
+	}
+
+	return msg
+}
+
+func NormalizeQuery(cmd record.MsgOpCommandBase) (record.Filter, bool) {
+	convert := func(m interface{}) record.Filter {
+		if m != nil {
+			if n, ok := m.(record.Filter); ok {
+				return n
+			}
+		}
+		return record.Filter{}
+	}
+	switch cmd.Command {
+	case "count", "distinct":
+		q, ok := cmd.Payload["query"]
+		return convert(q), ok
+	case "find", "getmore", "getMore":
+		q, ok := cmd.Payload["filter"]
+		return convert(q), ok
+	case "geonear", "geoNear":
+		q, ok := cmd.Payload["query"]
+		c := convert(q)
+		if ok && c != nil {
+			c["near"], ok = cmd.Payload["near"]
+		}
+		return c, ok
+	default:
+		panic(fmt.Sprintf("unrecognzied query type during normalization: %s", cmd.Command))
+	}
+}
+
+func ParseControl(r util.RuneReader, entry record.Entry) (record.Message, error) {
+	switch entry.Context {
+	case "initandlisten":
+		switch {
+		case r.ExpectString("build info"):
+			return record.MsgBuildInfo{BuildInfo: r.SkipWords(2).Remainder()}, nil
+		case r.ExpectString("db version"):
+			return parseVersion(r.SkipWords(2).Remainder(), "mongod")
+		case r.ExpectString("MongoDB starting"):
+			return parseStartupInfo(entry.RawMessage)
+		case r.ExpectString("OpenSSL version"):
+			return parseVersion(r.SkipWords(2).Remainder(), "OpenSSL")
+		case r.ExpectString("options"):
+			r.SkipWords(1)
+			return parseStartupOptions(r.Remainder())
+		}
+	case "signalProcessingThread":
+		if r.ExpectString("dbexit") {
+			return record.MsgShutdown{String: r.Remainder()}, nil
+		} else {
+			return record.MsgSignal{r.Remainder()}, nil
+		}
+	}
+	return nil, ErrorControlUnrecognized
+}
+
+func ParseDDL(r util.RuneReader, entry record.Entry) (record.Message, error) {
+	if entry.Connection > 0 {
+		switch {
+		case r.ExpectString("CMD: drop"):
+			if namespace, ok := r.SkipWords(2).SlurpWord(); ok {
+				return record.MsgDropCollection{namespace}, nil
+			}
+		case r.ExpectString("dropDatabase"):
+			if database, ok := r.SkipWords(1).SlurpWord(); ok {
+				if r.NextRune() == '-' {
+					r.SkipWords(1)
+				}
+				return record.MsgDropDatabase{database, r.Remainder()}, nil
+			}
+		}
+	}
+
+	return nil, ErrorDDLUnrecognized
+}
+
+func ParseNetwork(r util.RuneReader, entry record.Entry, ) (record.Message, error) {
+	if entry.Connection == 0 {
+		if r.ExpectString("connection accepted") { // connection accepted from <IP>:<PORT> #<CONN>
+			if addr, port, conn, ok := parseConnectionInit(r.SkipWords(2)); ok {
+				return record.MsgConnection{Address: addr, Port: port, Conn: conn, Opened: true}, nil
+			}
+		} else if r.ExpectString("waiting for connections") {
+			return record.MsgListening{}, nil
+		} else if entry.Context == "signalProcessingThread" {
+			return record.MsgSignal{entry.RawMessage}, nil
+		}
+	} else if entry.Connection > 0 {
+		if r.ExpectString("end connection") {
+			if addr, port, _, ok := parseConnectionInit(&r); ok {
+				return record.MsgConnection{Address: addr, Port: port, Conn: entry.Connection, Opened: false}, nil
+			}
+		} else if r.ExpectString("received client metadata from") {
+			// Skip "received client metadata" and grab connection information.
+			if addr, port, conn, ok := parseConnectionInit(r.SkipWords(3)); !ok {
+				return nil, ErrorMetadataUnmatched
+			} else {
+				if meta, err := mongo.ParseJsonRunes(&r, false); err == nil {
+					return record.MsgConnectionMeta{
+						MsgConnection: record.MsgConnection{
+							Address: addr,
+							Conn:    conn,
+							Port:    port,
+							Opened:  true},
+						Meta: meta}, nil
+				}
+			}
+		}
+	}
+
+	return nil, ErrorNetworkUnrecognized
+}
+
+func ParseStorage(r util.RuneReader, entry record.Entry) (record.Message, error) {
+	switch entry.Context {
+	case "signalProcessingThread":
+		return record.MsgSignal{entry.RawMessage}, nil
+	case "initandlisten":
+		if r.ExpectString("wiredtiger_open config") {
+			return record.MsgWiredTigerConfig{String: r.SkipWords(2).Remainder()}, nil
+		}
+	}
+
+	return nil, ErrorStorageUnmatched
+}
 
 func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 	var (

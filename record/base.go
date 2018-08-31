@@ -6,8 +6,6 @@ import (
 
 	"mgotools/mongo"
 	"mgotools/util"
-
-	"github.com/pkg/errors"
 )
 
 type Severity rune
@@ -52,69 +50,7 @@ type Base struct {
 	RawSeverity  Severity
 }
 
-var ErrorParsingDate = errors.New("unrecognized date format")
-var ErrorMissingContext = errors.New("missing context")
-
-// Generate an Entry from a line of text. This method assumes the entry is *not* JSON.
-func NewBase(line string, num uint) (Base, error) {
-	var (
-		entry = Base{RuneReader: util.NewRuneReader(line), LineNumber: num, RawSeverity: 0}
-		pos   int
-	)
-	// Check for a day in the first portion of the string, which represents version <= 2.4
-	if day := entry.PreviewWord(1); util.IsDay(day) {
-		entry.RawDate = entry.parseCDateString()
-		entry.CString = true
-	} else if entry.isISOString() {
-		entry.RawDate, _ = entry.SlurpWord()
-		entry.CString = false
-	}
-	if entry.EOL() || entry.RawDate == "" {
-		return entry, ErrorParsingDate
-	}
-	if entry.Expect('[') {
-		// the context is first so assume the line remainder is the message
-		if r, err := entry.EnclosedString(']', false); err == nil {
-			entry.RawContext = r
-		}
-		for entry.Expect(unicode.Space) {
-			entry.Next()
-		}
-	} else {
-		// the context isn't first so there is likely more available to check
-		for i := 0; i < 4; i += 1 {
-			if part, ok := entry.SlurpWord(); ok {
-				if entry.RawSeverity == SeverityNone && IsSeverity(part) {
-					entry.RawSeverity = Severity(part[0])
-					continue
-				} else if entry.RawComponent == "" && IsComponent(part) {
-					entry.RawComponent = part
-					continue
-				} else if entry.RawContext == "" && part[0] == '[' {
-					entry.RewindSlurpWord()
-					if r, err := entry.EnclosedString(']', false); err == nil {
-						entry.RawContext = r
-						continue
-					}
-				}
-				entry.RewindSlurpWord()
-				break
-			}
-		}
-	}
-
-	// All log entries for all supported versions have a context.
-	if entry.RawContext == "" {
-		return entry, ErrorMissingContext
-	}
-
-	pos = entry.Pos()
-	entry.RawMessage = entry.Remainder()
-	entry.Seek(pos, 0)
-	return entry, nil
-}
-
-func (r *Base) isISOString() bool {
+func (r *Base) IsIsoString() bool {
 	// 0000-00-00T00:00:00
 	date := []rune(r.PreviewWord(1))
 	length := len(date)
@@ -143,7 +79,7 @@ func (r *Base) isISOString() bool {
 
 // Take a parts array ([]string { "Sun", "Jan", "02", "15:04:05" }) and combined into a single element
 // ([]string { "Sun Jan 02 15:04:05" }) with all trailing elements appended to the array.
-func (r *Base) parseCDateString() string {
+func (r *Base) ParseCDateString() string {
 	var (
 		ok     = true
 		target = make([]string, 4)

@@ -58,7 +58,7 @@ func (d *debugLog) Finish(int) error {
 	return nil
 }
 
-func (d *debugLog) Prepare(c factory.InputContext) error {
+func (d *debugLog) Prepare(c factory.SourceContext) error {
 	d.context, _ = c.Booleans["context"]
 	d.json, _ = c.Booleans["json"]
 	d.message, _ = c.Booleans["message"]
@@ -126,7 +126,7 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 	}()
 
 	factories := make([]parser.VersionParser, 0)
-	for _, check := range parser.VersionParserFactory.Get() {
+	for _, check := range parser.VersionParserFactory.GetAll() {
 		if !d.limitVersion || d.checkVersion(check) {
 			factories = append(factories, check)
 		}
@@ -156,10 +156,10 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 
 	go record.Accumulator(in, accumulator, record.NewBase)
 
-	logs := context.NewLog(factories)
-	versionLogs := make(map[parser.VersionDefinition]*context.Log)
+	logs := context.NewInstance(factories)
+	versionLogs := make(map[parser.VersionDefinition]*context.Instance)
 	for _, f := range factories {
-		versionLogs[f.Version()] = context.NewLog([]parser.VersionParser{f})
+		versionLogs[f.Version()] = context.NewInstance([]parser.VersionParser{f})
 	}
 
 	for line := range accumulator {

@@ -1,11 +1,14 @@
 package cmd
 
+// TODO:
+//   filter by IXSCAN (and pattern)
+//   output w/o II
+
 import (
 	"fmt"
 	"strings"
 	"time"
 
-	"mgotools/cmd/factory"
 	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/parser/context"
@@ -16,8 +19,8 @@ import (
 )
 
 type filterCommand struct {
-	factory.BaseOptions
-	Log map[int]filterLog
+	BaseOptions
+	Instance map[int]filterInstance
 }
 
 type filterCommandOptions struct {
@@ -47,12 +50,8 @@ type filterCommandOptions struct {
 	WordFilter               string
 }
 
-type filterLog struct {
-	*context.Log
-
-	argsBool       map[string]bool
-	argsInt        map[string]int
-	argsString     map[string]string
+type filterInstance struct {
+	*context.Instance
 	commandOptions filterCommandOptions
 
 	ErrorCount uint
@@ -60,34 +59,34 @@ type filterLog struct {
 }
 
 func init() {
-	args := factory.CommandDefinition{
+	args := CommandDefinition{
 		Usage: "filters a log file",
-		Flags: []factory.CommandArgument{
-			{Name: "command", Type: factory.String, Usage: "only output log lines which are `COMMAND` of a given type. Examples: \"distinct\", \"isMaster\", \"replSetGetStatus\""},
-			{Name: "component", ShortName: "c", Type: factory.String, Usage: "find all lines matching `COMPONENT`"},
-			{Name: "context", Type: factory.StringFileSlice, Usage: "find all lines matching `CONTEXT`"},
-			{Name: "connection", ShortName: "x", Type: factory.Int, Usage: "find all lines identified as part of `CONNECTION`"},
-			{Name: "exclude", Type: factory.Bool, Usage: "exclude matching lines rather than including them"},
-			{Name: "fast", Type: factory.Int, Usage: "returns only operations faster than `FAST` milliseconds"},
-			{Name: "from", ShortName: "f", Type: factory.StringFileSlice, Usage: "ignore all entries before `DATE` (see help for date formatting)"},
-			{Name: "marker", Type: factory.StringFileSlice, Usage: "append a pre-defined marker (filename, enum, alpha, none) or custom marker (one per file) identifying the source file of each line"},
-			{Name: "message", Type: factory.Bool, Usage: "excludes all non-message portions of each line"},
-			{Name: "namespace", Type: factory.String, Usage: "filter by `NAMESPACE` so only lines matching the namespace will be returned"},
-			{Name: "pattern", ShortName: "p", Type: factory.String, Usage: "filter queries of shape `PATTERN` (only applies to queries, getmores, updates, removed)"},
-			{Name: "severity", ShortName: "i", Type: factory.String, Usage: "find all lines of `SEVERITY`"},
-			{Name: "shorten", Type: factory.Int, Usage: "reduces output by truncating log lines to `LENGTH` characters"},
-			{Name: "slow", Type: factory.Int, Usage: "returns only operations slower than `SLOW` milliseconds"},
-			{Name: "timezone", Type: factory.IntFileSlice, Usage: "timezone adjustment: add `N` minutes to the corresponding log file"},
-			{Name: "to", ShortName: "t", Type: factory.StringFileSlice, Usage: "ignore all entries after `DATE` (see help for date formatting)"},
-			{Name: "word", Type: factory.StringFileSlice, Usage: "only output lines matching `WORD`"},
+		Flags: []CommandArgument{
+			{Name: "command", Type: String, Usage: "only output log lines which are `COMMAND` of a given type. Examples: \"distinct\", \"isMaster\", \"replSetGetStatus\""},
+			{Name: "component", ShortName: "c", Type: String, Usage: "find all lines matching `COMPONENT`"},
+			{Name: "context", Type: StringSourceSlice, Usage: "find all lines matching `CONTEXT`"},
+			{Name: "connection", ShortName: "x", Type: Int, Usage: "find all lines identified as part of `CONNECTION`"},
+			{Name: "exclude", Type: Bool, Usage: "exclude matching lines rather than including them"},
+			{Name: "fast", Type: Int, Usage: "returns only operations faster than `FAST` milliseconds"},
+			{Name: "from", ShortName: "f", Type: StringSourceSlice, Usage: "ignore all entries before `DATE` (see help for date formatting)"},
+			{Name: "marker", Type: StringSourceSlice, Usage: "append a pre-defined marker (filename, enum, alpha, none) or custom marker (one per file) identifying the source file of each line"},
+			{Name: "message", Type: Bool, Usage: "excludes all non-message portions of each line"},
+			{Name: "namespace", Type: String, Usage: "filter by `NAMESPACE` so only lines matching the namespace will be returned"},
+			{Name: "pattern", ShortName: "p", Type: String, Usage: "filter queries of shape `PATTERN` (only applies to queries, getmores, updates, removed)"},
+			{Name: "severity", ShortName: "i", Type: String, Usage: "find all lines of `SEVERITY`"},
+			{Name: "shorten", Type: Int, Usage: "reduces output by truncating log lines to `LENGTH` characters"},
+			{Name: "slow", Type: Int, Usage: "returns only operations slower than `SLOW` milliseconds"},
+			{Name: "timezone", Type: IntSourceSlice, Usage: "timezone adjustment: add `N` minutes to the corresponding log file"},
+			{Name: "to", ShortName: "t", Type: StringSourceSlice, Usage: "ignore all entries after `DATE` (see help for date formatting)"},
+			{Name: "word", Type: StringSourceSlice, Usage: "only output lines matching `WORD`"},
 		},
 	}
-	init := func() (factory.Command, error) {
+	init := func() (Command, error) {
 		return &filterCommand{
-			Log: make(map[int]filterLog),
+			Instance: make(map[int]filterInstance),
 		}, nil
 	}
-	factory.GetCommandFactory().Register("filter", args, init)
+	GetCommandFactory().Register("filter", args, init)
 }
 
 func (f *filterCommand) Finish(index int) error {
@@ -95,81 +94,7 @@ func (f *filterCommand) Finish(index int) error {
 	return nil
 }
 
-func (f *filterCommand) Terminate(out chan<- string) error {
-	// Finish any
-	return nil
-}
-
-func (f *filterCommand) ProcessLine(index int, out chan<- string, in <-chan string, errs chan<- error, fatal <-chan struct{}) error {
-	accumulator := make(chan record.AccumulatorResult)
-
-	exit := 0
-	options := f.Log[index].commandOptions
-
-	go func() {
-		<-fatal
-		exit = 1
-	}()
-
-	// The accumulator is designed solve the multi-line problem. The log format
-	// does not escape multiple lines properly, causing weird problems when
-	// parsing multi-line queries. The accumulator takes in one or more
-	// record.Base objects and outputs a single record.Base object for every
-	// line.
-	go record.Accumulator(in, accumulator, record.NewBase)
-
-	// Iterate through every record.Base object provided. This is identical
-	// to iterating through every line of a log without multi-line queries.
-	for base := range accumulator {
-		if exit != 0 {
-			// Received an exit signal so immediately exit.
-			break
-		} else if base.Error != nil {
-
-		}
-
-		log := f.Log[index]
-		entry, err := f.Log[index].NewEntry(base.Base)
-
-		if err != nil {
-			log.ErrorCount += 1
-			if _, ok := err.(parser.VersionErrorUnmatched); ok {
-				errs <- err
-				continue
-			} else if log.commandOptions.argCount > 0 {
-				continue
-			}
-		}
-
-		var line string
-		if entry, modified := f.modify(entry, options); modified {
-			line = entry.String()
-		} else {
-			line = base.Base.String()
-		}
-
-		if ok := f.match(entry, f.Log[index].commandOptions); (options.InvertMatch && ok) || (!options.InvertMatch && !ok) {
-			continue
-		}
-
-		if options.MessageOutput {
-			line = entry.RawMessage
-		}
-
-		if options.MarkerOutput != "" {
-			line = options.MarkerOutput + line
-		}
-
-		if options.ShortenOutput > 0 {
-			line = entry.Prefix(options.ShortenOutput)
-		}
-
-		out <- line
-	}
-	return nil
-}
-
-func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
+func (f *filterCommand) Prepare(name string, instance int, args CommandArgumentCollection) error {
 	opts := filterCommandOptions{
 		ConnectionFilter:         -1,
 		ExecutionDurationMinimum: -1,
@@ -179,9 +104,10 @@ func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 		MessageOutput:            false,
 		ShortenOutput:            0,
 		TableScanFilter:          false,
-		argCount:                 len(inputContext.Booleans) + len(inputContext.Integers) + len(inputContext.Strings),
+		argCount:                 len(args.Booleans) + len(args.Integers) + len(args.Strings),
 	}
-	util.Debug("Options: %+v %+v %+v", inputContext.Booleans, inputContext.Integers, inputContext.Strings)
+
+	util.Debug("Options: %+v %+v %+v", args.Booleans, args.Integers, args.Strings)
 	dateParser := util.NewDateParser([]string{
 		"2006",
 		"2006-01-02",
@@ -213,7 +139,7 @@ func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 		"Jan 2 2006 15:04:05.000 MST",
 	})
 	// parse through all boolean arguments
-	for key, value := range inputContext.Booleans {
+	for key, value := range args.Booleans {
 		switch key {
 		case "exclude":
 			opts.InvertMatch = value
@@ -221,8 +147,9 @@ func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 			opts.MessageOutput = value
 		}
 	}
+
 	// parse through all integer arguments
-	for key, value := range inputContext.Integers {
+	for key, value := range args.Integers {
 		switch key {
 		case "connection":
 			if value > 0 {
@@ -250,8 +177,9 @@ func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 			opts.TimezoneModifier = time.Duration(value)
 		}
 	}
+
 	// parse through all string arguments
-	for key, value := range inputContext.Strings {
+	for key, value := range args.Strings {
 		if value == "" {
 			return fmt.Errorf("%s cannot be empty", key)
 		}
@@ -276,14 +204,14 @@ func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 			}
 		case "marker":
 			if value == "enum" {
-				opts.MarkerOutput = fmt.Sprintf("%d ", inputContext.Index)
+				opts.MarkerOutput = fmt.Sprintf("%d ", instance)
 			} else if value == "alpha" {
-				for i := 0; i < inputContext.Index/26+1; i += 1 {
-					opts.MarkerOutput = opts.MarkerOutput + string(rune(inputContext.Index%26+97))
+				for i := 0; i < instance/26+1; i += 1 {
+					opts.MarkerOutput = opts.MarkerOutput + string(rune(instance%26+97))
 				}
 				opts.MarkerOutput = opts.MarkerOutput + " "
 			} else if value == "filename" {
-				opts.MarkerOutput = inputContext.Name + " "
+				opts.MarkerOutput = name + " "
 			} else {
 				opts.MarkerOutput = value + " "
 			}
@@ -317,14 +245,73 @@ func (f *filterCommand) Prepare(inputContext factory.InputContext) error {
 			}
 		}
 	}
-	f.Log[inputContext.Index] = filterLog{
-		Log:            context.NewLog(parser.VersionParserFactory.Get()),
-		argsBool:       inputContext.Booleans,
-		argsInt:        inputContext.Integers,
-		argsString:     inputContext.Strings,
+	f.Instance[instance] = filterInstance{
+		Instance:       context.NewInstance(parser.VersionParserFactory.GetAll()),
 		commandOptions: opts,
 	}
 	return nil
+}
+
+func (f *filterCommand) Terminate(out chan<- string) error {
+	// Finish any
+	return nil
+}
+
+func (f *filterCommand) Run(instance int, out commandTarget, in commandSource, errs commandError, fatal commandHalt) {
+	exit := 0
+	options := f.Instance[instance].commandOptions
+
+	go func() {
+		<-fatal
+		exit = 1
+	}()
+
+	// Iterate through every record.Base object provided. This is identical
+	// to iterating through every line of a log without multi-line queries.
+	for base := range in {
+		if exit != 0 {
+			// Received an exit signal so immediately exit.
+			break
+		}
+
+		log := f.Instance[instance]
+		entry, err := f.Instance[instance].NewEntry(base)
+
+		if err != nil {
+			log.ErrorCount += 1
+			if _, ok := err.(parser.VersionErrorUnmatched); ok {
+				errs <- err
+				continue
+			} else if log.commandOptions.argCount > 0 {
+				continue
+			}
+		}
+
+		var line string
+		if entry, modified := f.modify(entry, options); modified {
+			line = entry.String()
+		} else {
+			line = base.String()
+		}
+
+		if ok := f.match(entry, f.Instance[instance].commandOptions); (options.InvertMatch && ok) || (!options.InvertMatch && !ok) {
+			continue
+		}
+
+		if options.MessageOutput {
+			line = entry.RawMessage
+		}
+
+		if options.MarkerOutput != "" {
+			line = options.MarkerOutput + line
+		}
+
+		if options.ShortenOutput > 0 {
+			line = entry.Prefix(options.ShortenOutput)
+		}
+
+		out <- line
+	}
 }
 
 func (f *filterCommand) Usage() string {

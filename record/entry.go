@@ -2,8 +2,7 @@ package record
 
 import (
 	"bytes"
-	"net"
-	"time"
+		"time"
 
 	"mgotools/util"
 )
@@ -27,11 +26,6 @@ type Entry struct {
 	Thread          int
 
 	Valid bool
-}
-
-type EntryEventConnectionAttributes struct {
-	Address net.IPAddr
-	Port    uint16
 }
 
 func (r *Entry) String() string {

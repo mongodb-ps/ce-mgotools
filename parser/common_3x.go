@@ -2,7 +2,6 @@ package parser
 
 import (
 	"bytes"
-	"fmt"
 	"strconv"
 	"strings"
 	"unicode"
@@ -12,34 +11,6 @@ import (
 	"mgotools/util"
 )
 
-func NormalizeQuery(cmd record.MsgOpCommandBase) (record.MsgQuery, bool) {
-	convert := func(m interface{}) record.MsgQuery {
-		if m != nil {
-			if n, ok := m.(record.MsgQuery); ok {
-				return n
-			}
-		}
-		return record.MsgQuery{}
-	}
-	switch cmd.Command {
-	case "count", "distinct":
-		q, ok := cmd.Payload["query"]
-		return convert(q), ok
-	case "find", "getmore", "getMore":
-		q, ok := cmd.Payload["filter"]
-		return convert(q), ok
-	case "geonear", "geoNear":
-		q, ok := cmd.Payload["query"]
-		c := convert(q)
-		if ok && c != nil {
-			c["near"], ok = cmd.Payload["near"]
-		}
-		return c, ok
-	default:
-		panic(fmt.Sprintf("unrecognzied query type during normalization: %s", cmd.Command))
-	}
-}
-
 func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 	var (
 		err     error
@@ -47,9 +18,9 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 		op      = record.MakeMsgOpCommand()
 		name    string
 		section struct {
-			Meta bytes.Buffer
-			Cmd  interface{}
-		}
+					Meta bytes.Buffer
+					Cmd  interface{}
+				}
 	)
 	// <command> <namespace> <suboperation>: <section[:]> <pattern>[, <section[:]> <pattern>] <counters> locks:<locks> [protocol:<protocol>] [duration]
 	// Check for the operation first.
@@ -156,8 +127,21 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 			name = util.StringToLower(param)
 			op.Command = name
 		} else {
+			if section.Meta.Len() > 0 {
+				section.Meta.WriteRune(' ')
+			}
 			section.Meta.WriteString(param)
-			section.Meta.WriteRune(' ')
+		}
+	}
+	if section.Meta.Len() > 0 {
+		if t, ok := op.Payload[op.Operation].(map[string]interface{}); ok {
+			if _, ok := t[section.Meta.String()]; ok {
+				op.Command = section.Meta.String()
+			}
+		}
+	} else if op.Command == "" {
+		if _, ok := op.Payload[op.Operation]; ok {
+			op.Command = op.Operation
 		}
 	}
 	return op, nil
@@ -180,4 +164,34 @@ func parse3XBuildIndex(r util.RuneReader) (record.Message, error) {
 		}
 	}
 	return nil, VersionErrorUnmatched{"unmatched index build"}
+}
+
+func (v *VersionCommon) parse3XComponent(entry record.Entry) (record.Message, error) {
+	r := *entry.RuneReader
+	switch entry.RawComponent {
+	case "COMMAND", "WRITE":
+		// remove, update = WRITE
+		// query, getmore = COMMAND
+		if msg, err := parse3XCommand(r, true); err == nil {
+			return msg, err
+		} else if msg, err := ParseDDL(r, entry); err == nil {
+			return msg, nil
+		}
+	case "INDEX":
+		if r.ExpectString("build index on") {
+			return parse3XBuildIndex(r)
+		}
+	case "CONTROL":
+		return ParseControl(r, entry)
+	case "NETWORK":
+		if entry.RawContext == "command" {
+			if msg, err := parse3XCommand(r, false); err != nil {
+				return msg, nil
+			}
+		}
+		return ParseNetwork(r, entry)
+	case "STORAGE":
+		return ParseStorage(r, entry)
+	}
+	return nil, ErrorComponentUnmatched
 }

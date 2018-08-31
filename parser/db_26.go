@@ -27,10 +27,10 @@ func (v *Version26Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
 		// Check for control messages, which is almost everything in 2.6 that is logged at startup.
-		if msg, err := v.VersionCommon.ParseControl(r, entry); err == nil {
+		if msg, err := ParseControl(r, entry); err == nil {
 			// Most startup messages are part of control.
 			return msg, nil
-		} else if msg, err := v.VersionCommon.ParseNetwork(r, entry); err == nil {
+		} else if msg, err := ParseNetwork(r, entry); err == nil {
 			// Alternatively, we care about basic network actions like new connections being established.
 			return msg, nil
 		}
@@ -51,9 +51,9 @@ func (v *Version26Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			return parse26BuildIndex(r)
 		default:
 			// Check for network status changes.
-			if msg, err := v.ParseNetwork(r, entry); err == nil {
+			if msg, err := ParseNetwork(r, entry); err == nil {
 				return msg, err
-			} else if msg, err := v.ParseDDL(r, entry); err == nil {
+			} else if msg, err := ParseDDL(r, entry); err == nil {
 				return msg, err
 			}
 		}
@@ -107,7 +107,7 @@ func parse26Command(r util.RuneReader) (record.Message, error) {
 			}
 		}
 	}
-	return op, nil
+	return NormalizeCommand(op.MsgOpCommandBase), nil
 }
 func parse26Operation(r util.RuneReader) (record.Message, error) {
 	// getmore test.foo cursorid:30107363235 ntoreturn:3 keyUpdates:0 numYields:0 locks(micros) r:14 nreturned:3 reslen:119 0ms
