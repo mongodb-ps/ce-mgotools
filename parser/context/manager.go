@@ -136,7 +136,7 @@ func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition,
 
 	// Check for a blank winner, meaning no versions succeeded in the attempt.
 	if winner == nil {
-		winner = &Result{Err: parser.VersionErrorUnmatched{}}
+		winner = &Result{Err: parser.ErrorVersionUnmatched{}}
 	} else {
 		m.versions[winner.Version].Wins += 1
 	}
@@ -191,7 +191,7 @@ func parseByVersion(baseIn <-chan record.Base, entryOut chan<- Result, worker fu
 			entry, err := worker(base, v.Parser)
 
 			switch err.(type) {
-			case parser.VersionDateUnmatched, parser.VersionErrorUnmatched:
+			case parser.VersionDateUnmatched, parser.ErrorVersionUnmatched:
 				result.Rejected = true
 			default:
 				result.Entry = entry

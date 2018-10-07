@@ -4,18 +4,6 @@ import (
 	"net"
 )
 
-const (
-	LOG_MESSAGE_TYPE_GENERAL    = iota
-	LOG_MESSAGE_TYPE_COMMAND
-	LOG_MESSAGE_TYPE_CONNECTION
-)
-
-type Filter map[string]interface{}
-
-func (m Filter) IsSet() bool {
-	return m != nil
-}
-
 type Message interface {
 }
 
@@ -35,73 +23,12 @@ type MsgConnectionMeta struct {
 	Meta interface{}
 }
 
-type MsgCreateCollection struct {
-	MsgOpCommandBase
-	Name string
-}
-
-type MsgDropCollection struct {
-	Namespace string
-}
-
-type MsgDropDatabase struct {
-	Database string
-	Note     string
-}
-
 type MsgEmpty struct{}
 
 type MsgListening struct{}
 
 type MsgOpenSSL struct {
 	String string
-}
-
-type MsgOperation struct {
-	Operation string
-	Namespace string
-}
-
-type MsgOpIndex struct {
-	MsgOperation
-	MsgOpPayload
-	Properties map[string]interface{}
-}
-
-type MsgOpPayload struct {
-	Command     string
-	Counters    map[string]int
-	Duration    int64
-	Errors      []error
-	Normalized  bool
-	Payload     map[string]interface{}
-	PlanSummary []MsgOpCommandPlanSummary
-}
-
-type MsgOpCommandWireProtocol struct {
-	Agent    string
-	Protocol string
-}
-
-type MsgOpCommand struct {
-	MsgOpCommandBase
-	MsgOpCommandWireProtocol
-	Locks map[string]interface{}
-}
-
-type MsgOpCommandBase struct {
-	MsgOperation
-	MsgOpPayload
-}
-
-type MsgOpCommandLegacy struct {
-	MsgOpCommandBase
-	Locks map[string]int
-}
-
-type MsgOpCommandPlanSummary struct {
-	Type    string
-	Summary interface{}
 }
 
 type MsgShutdown struct {
@@ -136,60 +63,182 @@ type MsgWiredTigerConfig struct {
 	String string
 }
 
-func MsgOpCommandBaseFromMessage(msg Message) (*MsgOpCommandBase, bool) {
+//
+// Message Commands
+//
+
+type MsgNamespace struct {
+	Namespace string
+}
+
+type MsgCollectionIndexOperation struct {
+	MsgNamespace
+	MsgPayload
+
+	Operation  string
+	Properties map[string]interface{}
+}
+
+type MsgPayload map[string]interface{}
+
+type MsgWireProtocol struct {
+	Agent    string
+	Protocol string
+}
+
+type MsgCommand struct {
+	MsgBase
+	MsgWireProtocol
+
+	Command string
+	CRUD    *MsgCRUD
+	Locks   map[string]interface{}
+	Payload MsgPayload
+}
+
+// remove, update, query, insert
+type MsgOperation struct {
+	MsgWireProtocol
+	MsgBase
+
+	CRUD      *MsgCRUD
+	Locks     map[string]interface{}
+	Operation string
+	Payload   MsgPayload
+}
+
+type MsgCommandLegacy struct {
+	MsgBase
+
+	Command string
+	CRUD    *MsgCRUD
+	Locks   map[string]int
+	Payload MsgPayload
+}
+
+type MsgOperationLegacy struct {
+	MsgBase
+
+	CRUD      *MsgCRUD
+	Locks     map[string]int
+	Operation string
+	Payload   MsgPayload
+}
+
+type MsgBase struct {
+	MsgNamespace
+
+	Counters    map[string]int
+	Duration    int64
+	Errors      []error
+	PlanSummary []MsgPlanSummary
+}
+
+type MsgFilter map[string]interface{}
+type MsgSort map[string]interface{}
+
+type MsgPlanSummary struct {
+	Type    string
+	Summary interface{}
+}
+
+type MsgCRUD struct {
+	Filter  MsgFilter
+	Sort    MsgSort
+	Comment string
+	N       int
+}
+
+func MsgBaseFromMessage(msg Message) (*MsgBase, bool) {
 	if msg == nil {
-		return &MsgOpCommandBase{}, false
+		return &MsgBase{}, false
 	}
 	switch t := msg.(type) {
-	case MsgOpCommandBase:
+	case MsgBase:
 		return &t, true
-	case MsgOpCommand:
-		return &t.MsgOpCommandBase, true
-	case MsgOpCommandLegacy:
-		return &t.MsgOpCommandBase, true
+	case MsgCommand:
+		return &t.MsgBase, true
+	case MsgCommandLegacy:
+		return &t.MsgBase, true
+	case MsgOperation:
+		return &t.MsgBase, true
+	case MsgOperationLegacy:
+		return &t.MsgBase, true
 	default:
-		return &MsgOpCommandBase{}, false
+		return &MsgBase{}, false
 	}
 }
 
-func MsgOperationFromMessage(msg Message) (MsgOperation, bool) {
+func MsgPayloadFromMessage(msg Message) (*MsgPayload, bool) {
 	if msg == nil {
-		return MsgOperation{}, false
+		return &MsgPayload{}, false
 	}
 	switch t := msg.(type) {
+	case MsgCommand:
+		return &t.Payload, true
+	case MsgCommandLegacy:
+		return &t.Payload, true
 	case MsgOperation:
-		return t, true
-	case MsgOpCommand:
-		return t.MsgOperation, true
-	case MsgOpCommandLegacy:
-		return t.MsgOperation, true
+		return &t.Payload, true
+	case MsgOperationLegacy:
+		return &t.Payload, true
 	default:
-		return MsgOperation{}, false
+		return &MsgPayload{}, false
 	}
 }
 
-func MakeMsgOpCommand() MsgOpCommand {
-	return MsgOpCommand{
-		MsgOpCommandBase: MsgOpCommandBase{
-			MsgOpPayload: MsgOpPayload{
-				Payload:    make(map[string]interface{}),
-				Counters:   make(map[string]int),
-				Normalized: false,
-			},
-		},
-		Locks: make(map[string]interface{}),
+func MsgNamespaceFromMessage(msg Message) (*MsgNamespace, bool) {
+	if msg == nil {
+		return &MsgNamespace{}, false
+	}
+	switch t := msg.(type) {
+	case MsgNamespace:
+		return &t, true
+	case MsgCommand:
+		return &t.MsgNamespace, true
+	case MsgCommandLegacy:
+		return &t.MsgNamespace, true
+	default:
+		return &MsgNamespace{}, false
 	}
 }
 
-func MakeMsgOpCommandLegacy() MsgOpCommandLegacy {
-	return MsgOpCommandLegacy{
-		MsgOpCommandBase: MsgOpCommandBase{
-			MsgOpPayload: MsgOpPayload{
-				Payload:    make(map[string]interface{}),
-				Counters:   make(map[string]int),
-				Normalized: false,
-			},
+func MakeMsgCommand() MsgCommand {
+	return MsgCommand{
+		MsgBase: MsgBase{
+			Counters: make(map[string]int),
 		},
-		Locks: make(map[string]int),
+		Payload: make(map[string]interface{}),
+		Locks:   make(map[string]interface{}),
+	}
+}
+
+func MakeMsgOperation() MsgOperation {
+	return MsgOperation{
+		MsgBase: MsgBase{
+			Counters: make(map[string]int),
+		},
+		Payload: make(map[string]interface{}),
+		Locks:   make(map[string]interface{}),
+	}
+}
+
+func MakeMsgCommandLegacy() MsgCommandLegacy {
+	return MsgCommandLegacy{
+		MsgBase: MsgBase{
+			Counters: make(map[string]int),
+		},
+		Payload: make(map[string]interface{}),
+		Locks:   make(map[string]int),
+	}
+}
+
+func MakeMsgOperationLegacy() MsgOperationLegacy {
+	return MsgOperationLegacy{
+		MsgBase: MsgBase{
+			Counters: make(map[string]int),
+		},
+		Payload: make(map[string]interface{}),
+		Locks:   make(map[string]int),
 	}
 }

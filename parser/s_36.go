@@ -12,7 +12,8 @@ type Version36SParser struct {
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version36SParser{VersionCommon{
-			util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
+			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
+			ErrorVersion: ErrorVersionUnmatched{"mongos 3.6"},
 		}}
 	})
 }
@@ -24,7 +25,7 @@ func (v *Version36SParser) Check(base record.Base) bool {
 }
 
 func (v *Version36SParser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	return logVersionSCommon.NewLogMessage(entry)
+	return logVersionSCommon.NewLogMessage(entry, v.ErrorVersion)
 }
 func (v *Version36SParser) Version() VersionDefinition {
 	return VersionDefinition{Major: 3, Minor: 6, Binary: record.BinaryMongos}

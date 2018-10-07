@@ -11,18 +11,15 @@ type Version30Parser struct {
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version30Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
+		return &Version30Parser{VersionCommon{
+			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
+			ErrorVersion: ErrorVersionUnmatched{"version 3.0"},
+		}}
 	})
 }
 
 func (v *Version30Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	if m, err := v.parse3XComponent(entry); err == nil {
-		if n, ok := m.(record.MsgOpCommand); ok {
-			return NormalizeCommand(n.MsgOpCommandBase), nil
-		}
-		return m, nil
-	}
-	return nil, VersionErrorUnmatched{"version 3.0"}
+	return v.parse3XCommonMessage(entry, v.ErrorVersion)
 }
 
 func (v *Version30Parser) Check(base record.Base) bool {

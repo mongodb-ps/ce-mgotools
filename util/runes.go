@@ -132,7 +132,7 @@ func (r *RuneReader) Expect(a ...interface{}) bool {
 }
 
 func (r *RuneReader) ExpectString(a string) bool {
-	if length := StringLength(a); length > 0 &&
+	if length := len(a); length > 0 &&
 		r.next+length <= r.length &&
 		a == string(r.runes[r.next:r.next+length]) {
 		return true

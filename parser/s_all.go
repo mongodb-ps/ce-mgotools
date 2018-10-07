@@ -1,9 +1,10 @@
 package parser
 
 import (
+	"strings"
+
 	"mgotools/record"
 	"mgotools/util"
-	"strings"
 )
 
 type VersionSCommon struct {
@@ -12,7 +13,7 @@ type VersionSCommon struct {
 
 var logVersionSCommon = VersionSCommon{}
 
-func (v *VersionSCommon) NewLogMessage(entry record.Entry) (record.Message, error) {
+func (v *VersionSCommon) NewLogMessage(entry record.Entry, err error) (record.Message, error) {
 	msg := util.NewRuneReader(entry.RawMessage)
 	preview1 := strings.TrimRight(msg.PreviewWord(1), ":")
 	preview2 := strings.TrimRight(msg.PreviewWord(2), ":")
@@ -30,5 +31,5 @@ func (v *VersionSCommon) NewLogMessage(entry record.Entry) (record.Message, erro
 			return parseStartupOptions(msg.SkipWords(1).Remainder())
 		}
 	}
-	return nil, VersionErrorUnmatched{Message: "version (s)all"}
+	return nil, err
 }

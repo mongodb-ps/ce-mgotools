@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"mgotools/cmd/format"
+	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/parser/context"
 	"mgotools/record"
@@ -141,9 +142,34 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 		} else if entry, err := log.NewEntry(base); err != nil {
 			log.ErrorCount += 1
 		} else {
-			log.End = entry.Date
+			var (
+				ns    string
+				op    string
+				query string
+				dur   int64
+			)
 
-			if ns, op, query, dur := group(entry); op != "" && query != "" {
+			log.End = entry.Date
+			if cmd, ok := entry.Message.(record.MsgCommand); ok {
+				dur = cmd.Duration
+				ns = cmd.Namespace
+				op = cmd.Command
+
+				pattern := mongo.NewPattern(cmd.Payload)
+				query = pattern.StringCompact()
+			} else if cmd, ok := entry.Message.(record.MsgCommandLegacy); ok {
+				dur = cmd.Duration
+				ns = cmd.Namespace
+				op = cmd.Command
+
+				pattern := mongo.NewPattern(cmd.Payload)
+				query = pattern.StringCompact()
+			} else {
+				// Ignore non-commands (like operations).
+				continue
+			}
+
+			if op != "" && query != "" {
 				key := ns + ":" + op + ":" + query
 				pattern, ok := log.Patterns[key]
 				if !ok {
@@ -156,6 +182,7 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 						n95Sequence: 0,
 					}
 				}
+
 				log.Patterns[key] = updateSummary(pattern, dur)
 			}
 		}
@@ -167,21 +194,6 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 func (s *queryLog) Terminate(out chan<- string) error {
 	out <- string(s.summaryTable.String())
 	return nil
-}
-
-// A function to transform to a log entry to a pattern.
-func group(entry record.Entry) (string, string, string, int64) {
-	cmd, ok := record.MsgOpCommandBaseFromMessage(entry.Message)
-	if !ok {
-		return "", "", "", 0
-	}
-
-	op, ok := record.MsgOperationFromMessage(entry.Message)
-	if !ok || op.Operation == "" {
-		return "", "", "", 0
-	}
-
-	return op.Namespace, op.Operation, "None", cmd.Duration
 }
 
 func updateSummary(s queryPattern, dur int64) queryPattern {

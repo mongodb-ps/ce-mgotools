@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -16,88 +15,11 @@ import (
 var ErrorNoPlanSummaryFound = errors.New("no plan summary found")
 var ErrorNoStartupArgumentsFound = errors.New("no startup arguments found")
 var ErrorUnexpectedVersionFormat = errors.New("unexpected version format")
-var ErrorNetworkUnrecognized = VersionErrorUnmatched{"unrecognized network message"}
-var ErrorControlUnrecognized = VersionErrorUnmatched{Message: "unrecognized control message"}
-var ErrorDDLUnrecognized = VersionErrorUnmatched{Message: "unrecognized ddl message"}
-var ErrorMetadataUnmatched = VersionErrorUnmatched{"unexpected connection meta format"}
-var ErrorStorageUnmatched = VersionErrorUnmatched{"unrecognized storage option"}
+var ErrorNetworkUnrecognized = ErrorVersionUnmatched{"unrecognized network message"}
+var ErrorControlUnrecognized = ErrorVersionUnmatched{Message: "unrecognized control message"}
+var ErrorMetadataUnmatched = ErrorVersionUnmatched{"unexpected connection meta format"}
+var ErrorStorageUnmatched = ErrorVersionUnmatched{"unrecognized storage option"}
 var ErrorComponentUnmatched = errors.New("component unmatched")
-
-func NormalizeCommand(msg record.Message) (record.Message) {
-	cmd, ok := record.MsgOpCommandBaseFromMessage(msg)
-	if !ok {
-		return cmd
-	}
-
-	switch cmd.Command {
-	case "count",
-		"find",
-		"getmore",
-		"geonear",
-		"remove",
-		"distinct":
-		if filter, ok := NormalizeQuery(*cmd); ok {
-			cmd.Namespace = cmd.Payload[cmd.Command].(string)
-			cmd.Payload = filter
-		}
-
-	case "aggregate",
-		"explain",
-		"insert",
-		"update":
-		cmd.Command = cmd.Operation
-
-	case "create":
-		if name, ok := cmd.Payload["create"].(string); ok {
-			return record.MsgCreateCollection{*cmd, name}
-		}
-
-	case "createIndexes":
-		if ns, ok := cmd.Payload["createIndexes"].(string); ok {
-			return record.MsgOpIndex{
-				MsgOperation: record.MsgOperation{
-					Namespace: ns,
-					Operation:
-					cmd.Command},
-				Properties: cmd.Payload["indexes"].(map[string]interface{})}
-		}
-
-	case "isMaster":
-	default:
-		util.Debug("%#v", cmd)
-		panic(fmt.Sprintf("unexpected %s in query operation", cmd.Command))
-	}
-
-	return msg
-}
-
-func NormalizeQuery(cmd record.MsgOpCommandBase) (record.Filter, bool) {
-	convert := func(m interface{}) record.Filter {
-		if m != nil {
-			if n, ok := m.(record.Filter); ok {
-				return n
-			}
-		}
-		return record.Filter{}
-	}
-	switch cmd.Command {
-	case "count", "distinct":
-		q, ok := cmd.Payload["query"]
-		return convert(q), ok
-	case "find", "getmore", "getMore":
-		q, ok := cmd.Payload["filter"]
-		return convert(q), ok
-	case "geonear", "geoNear":
-		q, ok := cmd.Payload["query"]
-		c := convert(q)
-		if ok && c != nil {
-			c["near"], ok = cmd.Payload["near"]
-		}
-		return c, ok
-	default:
-		panic(fmt.Sprintf("unrecognzied query type during normalization: %s", cmd.Command))
-	}
-}
 
 func ParseControl(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	switch entry.Context {
@@ -115,6 +37,7 @@ func ParseControl(r util.RuneReader, entry record.Entry) (record.Message, error)
 			r.SkipWords(1)
 			return parseStartupOptions(r.Remainder())
 		}
+
 	case "signalProcessingThread":
 		if r.ExpectString("dbexit") {
 			return record.MsgShutdown{String: r.Remainder()}, nil
@@ -125,27 +48,7 @@ func ParseControl(r util.RuneReader, entry record.Entry) (record.Message, error)
 	return nil, ErrorControlUnrecognized
 }
 
-func ParseDDL(r util.RuneReader, entry record.Entry) (record.Message, error) {
-	if entry.Connection > 0 {
-		switch {
-		case r.ExpectString("CMD: drop"):
-			if namespace, ok := r.SkipWords(2).SlurpWord(); ok {
-				return record.MsgDropCollection{namespace}, nil
-			}
-		case r.ExpectString("dropDatabase"):
-			if database, ok := r.SkipWords(1).SlurpWord(); ok {
-				if r.NextRune() == '-' {
-					r.SkipWords(1)
-				}
-				return record.MsgDropDatabase{database, r.Remainder()}, nil
-			}
-		}
-	}
-
-	return nil, ErrorDDLUnrecognized
-}
-
-func ParseNetwork(r util.RuneReader, entry record.Entry, ) (record.Message, error) {
+func ParseNetwork(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	if entry.Connection == 0 {
 		if r.ExpectString("connection accepted") { // connection accepted from <IP>:<PORT> #<CONN>
 			if addr, port, conn, ok := parseConnectionInit(r.SkipWords(2)); ok {
@@ -154,7 +57,7 @@ func ParseNetwork(r util.RuneReader, entry record.Entry, ) (record.Message, erro
 		} else if r.ExpectString("waiting for connections") {
 			return record.MsgListening{}, nil
 		} else if entry.Context == "signalProcessingThread" {
-			return record.MsgSignal{entry.RawMessage}, nil
+			return record.MsgSignal{String: entry.RawMessage}, nil
 		}
 	} else if entry.Connection > 0 {
 		if r.ExpectString("end connection") {
@@ -186,6 +89,7 @@ func ParseStorage(r util.RuneReader, entry record.Entry) (record.Message, error)
 	switch entry.Context {
 	case "signalProcessingThread":
 		return record.MsgSignal{entry.RawMessage}, nil
+
 	case "initandlisten":
 		if r.ExpectString("wiredtiger_open config") {
 			return record.MsgWiredTigerConfig{String: r.SkipWords(2).Remainder()}, nil
@@ -205,11 +109,13 @@ func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 		ip     net.IP = nil
 		ok     bool
 	)
+
 	msg.SkipWords(1) // "from"
 	partialAddress, ok := msg.SlurpWord()
 	if !ok {
 		return nil, 0, 0, false
 	}
+
 	addr = util.NewRuneReader(partialAddress)
 	length := addr.Length()
 	addr.Seek(length, 0)
@@ -219,13 +125,16 @@ func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 			break
 		}
 	}
+
 	pos := addr.Pos()
 	if buffer, ok = addr.Substr(pos, length-pos); ok {
 		port, _ = strconv.Atoi(buffer)
 	}
+
 	if part, ok := addr.Substr(0, pos-1); ok {
 		ip = net.ParseIP(part)
 	}
+
 	if msgNumber, ok := msg.SlurpWord(); ok {
 		if msgNumber[0] == '#' {
 			conn, _ = strconv.Atoi(msgNumber[1:])
@@ -236,6 +145,7 @@ func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 			conn, _ = strconv.Atoi(msgNumber[4:])
 		}
 	}
+
 	return ip, uint16(port), conn, true
 }
 
@@ -250,11 +160,12 @@ func parseIntegerKeyValue(source string, target map[string]int, limit map[string
 			}
 		}
 	}
+
 	return false
 }
 
-func parsePlanSummary(r *util.RuneReader) ([]record.MsgOpCommandPlanSummary, error) {
-	var out []record.MsgOpCommandPlanSummary
+func parsePlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
+	var out []record.MsgPlanSummary
 	for {
 		if op, ok := r.SlurpWord(); !ok {
 			// There are no words, so exit.
@@ -265,7 +176,7 @@ func parsePlanSummary(r *util.RuneReader) ([]record.MsgOpCommandPlanSummary, err
 				return nil, err
 			} else {
 				// The plan summary parsed as valid JSON, so record the operation and fall-through.
-				out = append(out, record.MsgOpCommandPlanSummary{op, summary})
+				out = append(out, record.MsgPlanSummary{op, summary})
 			}
 			if r.NextRune() != ',' {
 				// There are no other plans so exit plan summary parsing.
@@ -277,11 +188,11 @@ func parsePlanSummary(r *util.RuneReader) ([]record.MsgOpCommandPlanSummary, err
 			}
 		} else if length := len(op); length > 2 && op[length-1] == ',' {
 			// This is needed for repeated bare words (e.g. planSummary: COLLSCAN, COLLSCAN).
-			out = append(out, record.MsgOpCommandPlanSummary{op[:length-1], nil})
+			out = append(out, record.MsgPlanSummary{op[:length-1], nil})
 			continue
 		} else {
 			// Finally, the plan summary is boring and only includes a single word (e.g. COLLSCAN).
-			out = append(out, record.MsgOpCommandPlanSummary{op, nil})
+			out = append(out, record.MsgPlanSummary{op, nil})
 			break
 		}
 	}

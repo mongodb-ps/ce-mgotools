@@ -97,6 +97,7 @@ func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 		c.startSet = true
 	}
 
+	// Update index context if it is available.
 	if entry.Message != nil && entry.Connection == 0 {
 		switch msg := entry.Message.(type) {
 		case record.MsgStartupInfo:

@@ -6,7 +6,7 @@ package parser
 type VersionDateUnmatched struct{}
 type VersionMessageUnmatched struct{}
 
-type VersionErrorUnmatched struct {
+type ErrorVersionUnmatched struct {
 	Message string
 }
 
@@ -16,7 +16,7 @@ func (e VersionDateUnmatched) Error() string {
 func (e VersionMessageUnmatched) Error() string {
 	return "unmatched or empty message string"
 }
-func (e VersionErrorUnmatched) Error() string {
+func (e ErrorVersionUnmatched) Error() string {
 	if e.Message != "" {
 		return "Log message not recognized: " + e.Message
 	} else {

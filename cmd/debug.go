@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"mgotools/cmd/factory"
 	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/parser/context"
@@ -35,37 +34,37 @@ type debugLog struct {
 }
 
 func init() {
-	args := factory.CommandDefinition{
+	args := CommandDefinition{
 		Usage: "debug log lines",
-		Flags: []factory.CommandArgument{
-			{Name: "context", ShortName: "c", Type: factory.Bool, Usage: "only check the most likely result"},
-			{Name: "json", ShortName: "j", Type: factory.Bool, Usage: "return parsed data in JSON format"},
-			{Name: "line", ShortName: "l", Type: factory.String, Usage: "limit by line number"},
-			{Name: "message", ShortName: "m", Type: factory.Bool, Usage: "only show messages"},
-			{Name: "patternize", ShortName: "p", Type: factory.Bool, Usage: "turn queries into a pattern"},
-			{Name: "version", ShortName: "v", Type: factory.String, Usage: "assume parsing of a single version"},
-			{Name: "width", ShortName: "w", Type: factory.Int, Usage: "limit line width"},
+		Flags: []CommandArgument{
+			{Name: "context", ShortName: "c", Type: Bool, Usage: "only check the most likely result"},
+			{Name: "json", ShortName: "j", Type: Bool, Usage: "return parsed data in JSON format"},
+			{Name: "line", ShortName: "l", Type: String, Usage: "limit by line number"},
+			{Name: "message", ShortName: "m", Type: Bool, Usage: "only show messages"},
+			{Name: "patternize", ShortName: "p", Type: Bool, Usage: "turn queries into a pattern"},
+			{Name: "version", ShortName: "v", Type: String, Usage: "assume parsing of a single version"},
+			{Name: "width", ShortName: "w", Type: Int, Usage: "limit line width"},
 		},
 	}
-	init := func() (factory.Command, error) {
+	init := func() (Command, error) {
 		return &debugLog{}, nil
 	}
 
-	factory.GetCommandFactory().Register("debug", args, init)
+	GetCommandFactory().Register("debug", args, init)
 }
 
 func (d *debugLog) Finish(int) error {
 	return nil
 }
 
-func (d *debugLog) Prepare(c factory.SourceContext) error {
-	d.context, _ = c.Booleans["context"]
-	d.json, _ = c.Booleans["json"]
-	d.message, _ = c.Booleans["message"]
-	d.patternize, _ = c.Booleans["patternize"]
-	lineArg, _ := c.Strings["line"]
-	versionArg, _ := c.Strings["version"]
-	width, _ := c.Integers["width"]
+func (d *debugLog) Prepare(name string, instance int, args CommandArgumentCollection) error {
+	d.context, _ = args.Booleans["context"]
+	d.json, _ = args.Booleans["json"]
+	d.message, _ = args.Booleans["message"]
+	d.patternize, _ = args.Booleans["patternize"]
+	lineArg, _ := args.Strings["line"]
+	versionArg, _ := args.Strings["version"]
+	width, _ := args.Integers["width"]
 
 	for _, lineString := range strings.Split(lineArg, ",") {
 		if lineNum, err := strconv.ParseInt(lineString, 10, 64); err == nil {
@@ -118,7 +117,7 @@ func (d *debugLog) Prepare(c factory.SourceContext) error {
 	return nil
 }
 
-func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, err chan<- error, halt <-chan struct{}) error {
+func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs commandError, halt commandHalt) {
 	exit := false
 	go func() {
 		<-halt
@@ -152,18 +151,13 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 		outputBuffer = append(outputBuffer, OutputResult{s, b})
 	}
 
-	accumulator := make(chan record.AccumulatorResult)
-
-	go record.Accumulator(in, accumulator, record.NewBase)
-
 	logs := context.NewInstance(factories)
 	versionLogs := make(map[parser.VersionDefinition]*context.Instance)
 	for _, f := range factories {
 		versionLogs[f.Version()] = context.NewInstance([]parser.VersionParser{f})
 	}
 
-	for line := range accumulator {
-		base := line.Base
+	for base := range in {
 		if d.limitLine && !d.checkLine(base.LineNumber) {
 			continue
 		}
@@ -171,51 +165,47 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 		messages := make(map[parser.VersionDefinition]MessageResult)
 
 		buffer(fmt.Sprintf("%5d: ", base.LineNumber), base.String())
-		buffer("       ", d.formatObject(base))
+		//buffer("       ", d.formatObject(base))
 
-		if line.Error == nil {
-			if d.context {
-				if entry, err := logs.NewEntry(base); err == nil && !d.message {
-					buffer("       ", d.formatObject(entry))
-				} else if err == nil && d.message && entry.Message != nil {
-					buffer("       ", d.formatObject(entry.Message))
-				} else {
-					buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(logs.LastWinner.String()), err))
-				}
+		if d.context {
+			if entry, err := logs.NewEntry(base); err == nil && !d.message {
+				buffer("       ", d.formatObject(entry))
+			} else if err == nil && d.message && entry.Message != nil {
+				buffer("       ", d.formatObject(entry.Message))
 			} else {
-				for _, versionParser := range factories {
-					if pass := versionParser.Check(base); !pass {
-						buffer(" skip: ", fmt.Sprintf("[%s]", color.HiCyanString(versionParser.Version().String())))
-					} else if entry, err := versionLogs[versionParser.Version()].BaseToEntry(base, versionParser); err != nil {
-						buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(versionParser.Version().String()), err))
-					} else {
-						messages[versionParser.Version()] = MessageResult{entry.Message, err}
-					}
-				}
-
-				unmatched := make([]string, 0)
-				for v, r := range messages {
-					if r.Err == nil {
-						prefix := fmt.Sprintf("[" + v.String() + "]   ")
-						buffer(prefix, d.formatObject(r.Msg))
-
-						if d.patternize {
-							if b, ok := record.MsgOpCommandBaseFromMessage(r.Msg); ok && b.Payload != nil {
-								pattern := mongo.NewPattern(b.Payload)
-								buffer(prefix+color.WhiteString("--> "), pattern.String())
-							}
-						}
-					} else {
-						unmatched = append(unmatched, color.RedString(v.String()))
-					}
-				}
-				if len(unmatched) > 0 {
-					c := strings.Join(unmatched, ", ")
-					buffer(" fail: [", c+"]")
-				}
+				buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(logs.LastWinner.String()), err))
 			}
 		} else {
-			buffer("       ", colorizeObject(line.Error))
+			for _, versionParser := range factories {
+				if pass := versionParser.Check(base); !pass {
+					buffer(" skip: ", fmt.Sprintf("[%s]", color.HiCyanString(versionParser.Version().String())))
+				} else if entry, err := versionLogs[versionParser.Version()].BaseToEntry(base, versionParser); err != nil {
+					buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(versionParser.Version().String()), err))
+				} else {
+					messages[versionParser.Version()] = MessageResult{entry.Message, err}
+				}
+			}
+
+			unmatched := make([]string, 0)
+			for v, r := range messages {
+				if r.Err == nil {
+					prefix := fmt.Sprintf("[" + v.String() + "]   ")
+					buffer(prefix, d.formatObject(r.Msg))
+
+					if d.patternize {
+						if p, ok := record.MsgPayloadFromMessage(r.Msg); ok && p != nil {
+							pattern := mongo.NewPattern(*p)
+							buffer(prefix+color.WhiteString("--> "), pattern.String())
+						}
+					}
+				} else {
+					unmatched = append(unmatched, color.RedString(v.String()))
+				}
+			}
+			if len(unmatched) > 0 {
+				c := strings.Join(unmatched, ", ")
+				buffer(" fail: [", c+"]")
+			}
 		}
 
 		for _, r := range outputBuffer {
@@ -231,7 +221,7 @@ func (d *debugLog) ProcessLine(index int, out chan<- string, in <-chan string, e
 		out <- ""
 	}
 
-	return nil
+	return
 }
 
 func (d *debugLog) Terminate(chan<- string) error {

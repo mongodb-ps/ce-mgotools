@@ -11,28 +11,27 @@ import (
 	"mgotools/util"
 )
 
-func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
+func parse3XCommandStructure(r util.RuneReader, strict bool) (record.MsgCommand, error) {
 	var (
 		err     error
 		ok      bool
-		op      = record.MakeMsgOpCommand()
+		op      = record.MakeMsgCommand()
 		name    string
 		section struct {
-					Meta bytes.Buffer
-					Cmd  interface{}
-				}
+			Meta bytes.Buffer
+			Cmd  interface{}
+		}
 	)
-	// <command> <namespace> <suboperation>: <section[:]> <pattern>[, <section[:]> <pattern>] <counters> locks:<locks> [protocol:<protocol>] [duration]
+	// <command> <namespace> <operation>: <section[:]> <pattern>[, <section[:]> <pattern>] <counters> locks:<locks> [protocol:<protocol>] [duration]
 	// Check for the operation first.
-	op.Operation, ok = r.SlurpWord()
-	if !ok || (strict && !util.ArrayBinarySearchString(op.Operation, mongo.OPERATION_COMMANDS)) {
-		return nil, VersionErrorUnmatched{"unexpected operation"}
+	if command, _ := r.SlurpWord(); command != "command" {
+		return record.MsgCommand{}, ErrorVersionUnmatched{"unexpected command"}
 	}
 
 	// Then for the namespace.
 	op.Namespace, ok = r.SlurpWord()
 	if strict && (!ok || !strings.ContainsRune(op.Namespace, '.')) {
-		return nil, VersionErrorUnmatched{"unexpected namespace"}
+		return record.MsgCommand{}, ErrorVersionUnmatched{"unexpected namespace"}
 	} else if !strict && op.Namespace != "" && !strings.ContainsRune(op.Namespace, '.') {
 		r.RewindSlurpWord()
 		op.Command = op.Namespace
@@ -41,7 +40,7 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 		// Then for the sub-operation.
 		op.Command, ok = r.SlurpWord()
 		if !ok || op.Command == "" || op.Command[len(op.Command)-1] != ':' {
-			return nil, VersionErrorUnmatched{"unexpected sub-operation"}
+			return record.MsgCommand{}, ErrorVersionUnmatched{"unexpected sub-operation"}
 		}
 		op.Command = op.Command[:len(op.Command)-1]
 	}
@@ -101,8 +100,8 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 				} else {
 					op.Command = ""
 				}
-			} else if _, ok := op.Payload[op.Operation]; !ok {
-				if op.Payload[op.Operation], err = mongo.ParseJsonRunes(&r, false); err != nil {
+			} else if _, ok := op.Payload[op.Command]; !ok {
+				if op.Payload[op.Command], err = mongo.ParseJsonRunes(&r, false); err != nil {
 					op.Errors = append(op.Errors, err)
 				}
 			} else {
@@ -123,7 +122,7 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 			}
 		} else if length > 2 && param[length-2:] == "ms" {
 			op.Duration, _ = strconv.ParseInt(param[:length-2], 10, 32)
-		} else if util.ArrayBinarySearchString(param, mongo.OPERATION_COMMANDS) {
+		} else if util.ArrayBinarySearchString(param, mongo.COMMANDS) {
 			name = util.StringToLower(param)
 			op.Command = name
 		} else {
@@ -134,58 +133,41 @@ func parse3XCommand(r util.RuneReader, strict bool) (record.Message, error) {
 		}
 	}
 	if section.Meta.Len() > 0 {
-		if t, ok := op.Payload[op.Operation].(map[string]interface{}); ok {
+		if t, ok := op.Payload[op.Command].(map[string]interface{}); ok {
 			if _, ok := t[section.Meta.String()]; ok {
 				op.Command = section.Meta.String()
 			}
 		}
-	} else if op.Command == "" {
-		if _, ok := op.Payload[op.Operation]; ok {
-			op.Command = op.Operation
-		}
 	}
+
 	return op, nil
 }
 
-func parse3XBuildIndex(r util.RuneReader) (record.Message, error) {
-	// build index on: database.collection properties: { v: 2, key: { key1: 1.0 }, name: "name_1", ns: "database.collection" }
-	var (
-		err error
-		msg record.MsgOpIndex
-	)
-	msg.Operation = "build index"
-	msg.Namespace, _ = r.SkipWords(3).SlurpWord()
-	if r.ExpectString("properties:") {
-		r.SkipWords(1)
+func (v *VersionCommon) parse3XCommonMessage(entry record.Entry, err error) (record.Message, error) {
+	if m, err := v.parse3XComponent(entry); err == nil {
+		return m, nil
 	}
-	if r.NextRune() == '{' {
-		if msg.Properties, err = mongo.ParseJsonRunes(r.SkipWords(1), false); err != nil {
-			return msg, nil
-		}
-	}
-	return nil, VersionErrorUnmatched{"unmatched index build"}
+	return nil, err
 }
 
 func (v *VersionCommon) parse3XComponent(entry record.Entry) (record.Message, error) {
 	r := *entry.RuneReader
 	switch entry.RawComponent {
-	case "COMMAND", "WRITE":
-		// remove, update = WRITE
-		// query, getmore = COMMAND
-		if msg, err := parse3XCommand(r, true); err == nil {
+	case "COMMAND":
+		// query, getmore, insert, update = COMMAND
+		if msg, err := parse3XCommandStructure(r, true); err == nil {
 			return msg, err
-		} else if msg, err := ParseDDL(r, entry); err == nil {
-			return msg, nil
 		}
+	case "WRITE":
+		// remove, update = WRITE
+		// TODO: Figure out what to do with these writes later.
 	case "INDEX":
-		if r.ExpectString("build index on") {
-			return parse3XBuildIndex(r)
-		}
+		// TODO: Figure this out too.
 	case "CONTROL":
 		return ParseControl(r, entry)
 	case "NETWORK":
 		if entry.RawContext == "command" {
-			if msg, err := parse3XCommand(r, false); err != nil {
+			if msg, err := parse3XCommandStructure(r, false); err != nil {
 				return msg, nil
 			}
 		}

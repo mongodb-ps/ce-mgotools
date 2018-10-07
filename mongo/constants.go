@@ -44,6 +44,7 @@ var COUNTERS = map[string]string{
 	"cursorExhausted":  "cursorExhausted",
 	"cursorid":         "cursorid",
 	"docsExamined":     "docsExamined",
+	"fastmod":          "fastmod",
 	"fastmodinsert":    "fastmodinsert",
 	"exhaust":          "exhaust",
 	"fromMultiPlanner": "fromMultiPlanner",
@@ -69,18 +70,14 @@ var COUNTERS = map[string]string{
 	"planSummary":      "planSummary",
 	"numYields":        "numYields",
 	"keyUpdates":       "keyUpdates",
-	"r":                "r",
-	"R":                "r",
 	"replanned":        "replanned",
 	"reslen":           "reslen",
 	"scanAndOrder":     "scanAndOrder",
 	"upsert":           "upsert",
-	"w":                "w",
-	"W":                "w",
 	"writeConflicts":   "writeConflicts",
 }
 
-var OPERATION_COMMANDS = []string{
+var COMMANDS = []string{
 	"aggregate",
 	"command",
 	"count",

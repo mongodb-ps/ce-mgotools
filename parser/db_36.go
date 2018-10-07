@@ -11,7 +11,10 @@ type Version36Parser struct {
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version36Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL})}}
+		return &Version36Parser{VersionCommon{
+			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
+			ErrorVersion: ErrorVersionUnmatched{Message: "version 3.6"},
+		}}
 	})
 }
 
@@ -22,14 +25,9 @@ func (v *Version36Parser) Check(base record.Base) bool {
 }
 
 func (v *Version36Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	if m, err := v.parse3XComponent(entry); err == nil {
-		if n, ok := m.(record.MsgOpCommand); ok {
-			return NormalizeCommand(n.MsgOpCommandBase), nil
-		}
-		return m, nil
-	}
-	return nil, VersionErrorUnmatched{Message: "version 3.6"}
+	return v.parse3XCommonMessage(entry, v.ErrorVersion)
 }
+
 func (v *Version36Parser) Version() VersionDefinition {
 	return VersionDefinition{Major: 3, Minor: 6, Binary: record.BinaryMongod}
 }

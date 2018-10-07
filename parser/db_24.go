@@ -1,11 +1,12 @@
 package parser
 
 import (
+	"strconv"
+	"strings"
+
 	"mgotools/mongo"
 	"mgotools/record"
 	"mgotools/util"
-	"strconv"
-	"strings"
 )
 
 type Version24Parser struct {
@@ -14,7 +15,10 @@ type Version24Parser struct {
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version24Parser{VersionCommon{util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR})}}
+		return &Version24Parser{VersionCommon{
+			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR}),
+			ErrorVersion: ErrorVersionUnmatched{Message: "version 2.4"},
+		}}
 	})
 }
 
@@ -34,20 +38,25 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 		// Check for connection related messages, which is almost everything *not* related to startup messages.
 		switch {
 		case r.ExpectString("query"),
-			r.ExpectString("update"):
+			r.ExpectString("update"),
+			r.ExpectString("remove"):
 			// Commands or queries!
 			return parse24WithPayload(r)
 		case r.ExpectString("command"):
-			msg, err := parse24WithPayload(r)
+			// Commands in 2.4 don't include anything that should be converted
+			// into operations (e.g. find, update, remove, etc).
+			op, err := parse24WithPayload(r)
 			if err != nil {
-				if t, ok := record.MsgOpCommandBaseFromMessage(msg); ok {
-					return NormalizeCommand(t), err
-				}
+				cmd := record.MakeMsgCommandLegacy()
+				cmd.Command = op.Operation
+				cmd.Duration = op.Duration
+				cmd.Locks = op.Locks
+				cmd.Namespace = op.Namespace
+				cmd.Payload = op.Payload
 			}
-			return msg, err
+			return nil, err
 		case r.ExpectString("insert"),
-			r.ExpectString("getmore"),
-			r.ExpectString("remove"):
+			r.ExpectString("getmore"):
 			// Inserts!
 			return parse24WithoutPayload(r)
 		case r.ExpectString("build index"):
@@ -60,12 +69,10 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			// Check for network connection changes.
 			if msg, err := ParseNetwork(r, entry); err == nil {
 				return msg, nil
-			} else if msg, err := ParseDDL(r, entry); err == nil {
-				return msg, nil
 			}
 		}
 	}
-	return nil, VersionErrorUnmatched{Message: "version 2.4"}
+	return nil, v.ErrorVersion
 }
 
 func swap(key string, m map[string]interface{}) {
@@ -90,7 +97,7 @@ func parse24BuildIndex(r util.RuneReader) (record.Message, error) {
 	// build index database.collection { key: 1.0 }
 	var (
 		err error
-		msg record.MsgOpIndex
+		msg record.MsgCollectionIndexOperation
 	)
 	switch {
 	case r.ExpectString("build index"):
@@ -102,22 +109,22 @@ func parse24BuildIndex(r util.RuneReader) (record.Message, error) {
 			}
 		}
 	}
-	return nil, VersionErrorUnmatched{Message: "index format unrecognized"}
+	return nil, ErrorVersionUnmatched{Message: "index format unrecognized"}
 }
-func parse24WithPayload(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
+func parse24WithPayload(r util.RuneReader) (record.MsgOperationLegacy, error) {
 	var err error
 	// command test.$cmd command: { getlasterror: 1.0, w: 1.0 } ntoreturn:1 keyUpdates:0  reslen:67 0ms
 	// query test.foo query: { b: 1.0 } ntoreturn:0 ntoskip:0 nscanned:10 keyUpdates:0 locks(micros) r:146 nreturned:1 reslen:64 0ms
 	// update vcm_audit.payload.files query: { _id: ObjectId('000000000000000000000000') } update: { _id: ObjectId('000000000000000000000000') } idhack:1 nupdated:1 upsert:1 keyUpdates:0 locks(micros) w:33688 194ms
-	op := record.MakeMsgOpCommandLegacy()
+	op := record.MakeMsgOperationLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 	var target = op.Counters
 	for param, ok := r.SlurpWord(); ok && param != ""; param, ok = r.SlurpWord() {
 		if param[len(param)-1] == ':' {
 			param = param[:len(param)-1]
-			if op.Command == "" {
-				op.Command = param
+			if op.Operation == "" {
+				op.Operation = param
 			}
 			if r.Expect('{') {
 				if op.Payload[param], err = mongo.ParseJsonRunes(&r, false); err != nil {
@@ -142,9 +149,9 @@ func parse24WithPayload(r util.RuneReader) (record.MsgOpCommandLegacy, error) {
 	}
 	return op, nil
 }
-func parse24WithoutPayload(r util.RuneReader) (record.Message, error) {
+func parse24WithoutPayload(r util.RuneReader) (record.MsgOperationLegacy, error) {
 	// insert test.system.indexes ninserted:1 keyUpdates:0 locks(micros) w:10527 10ms
-	op := record.MakeMsgOpCommandLegacy()
+	op := record.MakeMsgOperationLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 	var target map[string]int = op.Counters
@@ -154,7 +161,7 @@ func parse24WithoutPayload(r util.RuneReader) (record.Message, error) {
 			continue
 		} else if param == "locks:{" {
 			// Wrong version, so exit.
-			return nil, VersionErrorUnmatched{}
+			return record.MsgOperationLegacy{}, ErrorVersionUnmatched{}
 		}
 		parseIntegerKeyValue(param, target, mongo.COUNTERS)
 	}

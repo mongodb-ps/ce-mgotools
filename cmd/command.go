@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"mgotools/record"
-	)
+)
 
 type BaseFactory interface {
 	Read() (record.Base, error)
@@ -149,14 +149,15 @@ func RunCommand(f Command, in []CommandInput, out CommandOutput) error {
 
 func parseFile(f Command, index int, in BaseFactory, out chan<- string, errs chan<- error, fatal chan struct{}, wg *sync.WaitGroup) {
 	var inputChannel = make(chan record.Base, 1024)
+	var inputWaitGroup sync.WaitGroup
 
 	// Alert the synchronization object that one of the goroutines is finished.
-	wg.Add(3)
 	defer wg.Done()
+	inputWaitGroup.Add(2)
 
 	go func() {
 		// Decrement the wait group.
-		defer wg.Done()
+		defer inputWaitGroup.Done()
 
 		for {
 			base, err := in.Read()
@@ -174,7 +175,7 @@ func parseFile(f Command, index int, in BaseFactory, out chan<- string, errs cha
 
 	// Delegate line parsing to the individual commands.
 	go func() {
-		defer wg.Done()
+		defer inputWaitGroup.Done()
 
 		// Close the input file handle.
 		defer in.Close()
@@ -188,5 +189,6 @@ func parseFile(f Command, index int, in BaseFactory, out chan<- string, errs cha
 		}
 	}()
 
+	inputWaitGroup.Wait()
 	return
 }

@@ -12,13 +12,14 @@ type Version24SParser struct {
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version24SParser{VersionCommon{
-			util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
+			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
+			ErrorVersion: ErrorVersionUnmatched{"mongos 2.4"},
 		}}
 	})
 }
 
 func (v *Version24SParser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	return logVersionSCommon.NewLogMessage(entry)
+	return logVersionSCommon.NewLogMessage(entry, v.ErrorVersion)
 }
 
 func (v *Version24SParser) Check(base record.Base) bool {

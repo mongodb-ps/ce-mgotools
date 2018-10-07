@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"mgotools/record"
-	)
+)
 
 const MaxBufferSize = 16777216
 
@@ -54,7 +54,11 @@ func NewAccumulator(closer io.ReadCloser) *accumulator {
 // Thankfully, the record.Base object contains enough information to properly
 // parse multi-line input.
 func Accumulator(in <-chan string, out chan<- accumulatorResult, callback func(string, uint) (record.Base, error)) {
-	defer close(out) // Last defer called.
+	defer func() {
+		// Last defer called.
+		out <- accumulatorResult{record.Base{}, io.EOF}
+		close(out)
+	}()
 
 	type accumulator struct {
 		count   int

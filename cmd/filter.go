@@ -279,7 +279,7 @@ func (f *filterCommand) Run(instance int, out commandTarget, in commandSource, e
 
 		if err != nil {
 			log.ErrorCount += 1
-			if _, ok := err.(parser.VersionErrorUnmatched); ok {
+			if _, ok := err.(parser.ErrorVersionUnmatched); ok {
 				errs <- err
 				continue
 			} else if log.commandOptions.argCount > 0 {
@@ -349,35 +349,38 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 		return true
 	}
 
-	// Try converting into a base MsgOpCommand object and do comparisons if the filter succeeds.
-	if cmd, ok := record.MsgOpCommandBaseFromMessage(entry.Message); ok {
-		if opts.CommandFilter != "" && !stringMatchFields(cmd.Command, opts.CommandFilter) {
-			return false
-		} else if opts.FasterFilter > 0 && time.Duration(cmd.Duration) > opts.FasterFilter {
+	// Check the command filter against the command string.
+	if opts.CommandFilter != "" && !stringMatchFields(getCmdOrOpFromMessage(entry.Message), opts.CommandFilter) {
+		return false
+	}
+
+	// Try converting into a base MsgCommand object and do comparisons if the filter succeeds.
+	if cmd, ok := record.MsgBaseFromMessage(entry.Message); ok {
+		if opts.FasterFilter > 0 && time.Duration(cmd.Duration) > opts.FasterFilter {
 			return false
 		} else if opts.SlowerFilter > 0 && time.Duration(cmd.Duration) < opts.SlowerFilter {
+			return false
+		}
+
+		// Try convergent to a MsgCommandLegacy object and compare filters based on that object type.
+		if crud, ok := entry.Message.(record.MsgCRUD); ok {
+			if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
+				return false
+			} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(getCmdOrOpFromMessage(entry.Message), crud.Filter, opts.PatternFilter) {
+				return false
+			}
+		} else if cmd, ok := entry.Message.(record.MsgCommand); ok {
+			if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
+				return false
+			} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(getCmdOrOpFromMessage(entry.Message), crud.Filter, opts.PatternFilter) {
+				return false
+			}
+		} else if !ok && !opts.PatternFilter.IsEmpty() {
 			return false
 		}
 	} else if opts.FasterFilter > 0 || opts.SlowerFilter > 0 || opts.CommandFilter != "" || opts.NamespaceFilter != "" {
 		// Return failure on any log messages that are parsed successfully but don't contain components that can be
 		// filtered based on command-style criteria.
-		return false
-	}
-
-	// Try convergent to a MsgOpCommandLegacy object and compare filters based on that object type.
-	if cmd, ok := entry.Message.(record.MsgOpCommandLegacy); ok {
-		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
-			return false
-		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Payload, opts.PatternFilter) {
-			return false
-		}
-	} else if cmd, ok := entry.Message.(record.MsgOpCommand); ok {
-		if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
-			return false
-		} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(cmd.Operation, cmd.Payload, opts.PatternFilter) {
-			return false
-		}
-	} else if !ok && !opts.PatternFilter.IsEmpty() {
 		return false
 	}
 
@@ -393,7 +396,7 @@ func (f *filterCommand) modify(entry record.Entry, options filterCommandOptions)
 	return entry, false
 }
 
-func checkQueryPattern(op string, cmd mongo.Object, check mongo.Pattern) bool {
+func checkQueryPattern(op string, cmd map[string]interface{}, check mongo.Pattern) bool {
 	for _, key := range []string{"query", "command", "update", "remove"} {
 		if query, ok := cmd[key].(map[string]interface{}); ok {
 			if check.Equals(mongo.NewPattern(query)) {
@@ -402,6 +405,21 @@ func checkQueryPattern(op string, cmd mongo.Object, check mongo.Pattern) bool {
 		}
 	}
 	return false
+}
+
+func getCmdOrOpFromMessage(msg record.Message) string {
+	switch t := msg.(type) {
+	case record.MsgOperation:
+		return t.Operation
+	case record.MsgOperationLegacy:
+		return t.Operation
+	case record.MsgCommand:
+		return t.Command
+	case record.MsgCommandLegacy:
+		return t.Command
+	default:
+		return ""
+	}
 }
 
 func stringMatchFields(value string, check string) bool {

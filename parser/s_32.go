@@ -12,7 +12,8 @@ type Version32SParser struct {
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version32SParser{VersionCommon{
-			util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
+			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
+			ErrorVersion: ErrorVersionUnmatched{"mongos 3.2"},
 		}}
 	})
 }
@@ -24,7 +25,7 @@ func (v *Version32SParser) Check(base record.Base) bool {
 }
 
 func (v *Version32SParser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	return logVersionSCommon.NewLogMessage(entry)
+	return logVersionSCommon.NewLogMessage(entry, v.ErrorVersion)
 }
 
 func (v *Version32SParser) Version() VersionDefinition {

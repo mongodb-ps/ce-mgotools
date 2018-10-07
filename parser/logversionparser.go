@@ -97,6 +97,8 @@ func (v VersionDefinition) String() string {
 
 type VersionCommon struct {
 	*util.DateParser
+
+	ErrorVersion error
 }
 
 func (v *VersionCommon) NewLogMessage(entry record.Entry) (record.Message, error) {
