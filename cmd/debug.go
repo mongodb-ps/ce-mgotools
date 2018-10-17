@@ -275,7 +275,7 @@ func colorizeObject(a interface{}) string {
 
 	switch m.Kind() {
 	case reflect.Ptr:
-		if !m.IsValid() {
+		if !m.IsValid() || m.IsNil() {
 			b.WriteString("nil")
 		} else {
 			b.WriteRune('&')
