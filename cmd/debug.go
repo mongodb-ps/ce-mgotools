@@ -19,6 +19,7 @@ import (
 )
 
 type debugLog struct {
+	highlight  string
 	json       bool
 	context    bool
 	message    bool
@@ -38,6 +39,7 @@ func init() {
 		Usage: "debug log lines",
 		Flags: []CommandArgument{
 			{Name: "context", ShortName: "c", Type: Bool, Usage: "only check the most likely result"},
+			{Name: "highlight", ShortName: "g", Type: String, Usage: "highlight specific phrases"},
 			{Name: "json", ShortName: "j", Type: Bool, Usage: "return parsed data in JSON format"},
 			{Name: "line", ShortName: "l", Type: String, Usage: "limit by line number"},
 			{Name: "message", ShortName: "m", Type: Bool, Usage: "only show messages"},
@@ -60,6 +62,7 @@ func (d *debugLog) Finish(int) error {
 func (d *debugLog) Prepare(name string, instance int, args CommandArgumentCollection) error {
 	d.context, _ = args.Booleans["context"]
 	d.json, _ = args.Booleans["json"]
+	d.highlight, _ = args.Strings["highlight"]
 	d.message, _ = args.Booleans["message"]
 	d.patternize, _ = args.Booleans["patternize"]
 	lineArg, _ := args.Strings["line"]
@@ -114,6 +117,7 @@ func (d *debugLog) Prepare(name string, instance int, args CommandArgumentCollec
 	if width > 20 {
 		d.width = width
 	}
+	d.highlight = strings.ToLower(d.highlight)
 	return nil
 }
 
@@ -148,6 +152,31 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 
 	outputBuffer := make([]OutputResult, 0)
 	buffer := func(s, b string) {
+		if d.highlight != "" {
+			var colorize func(string, string, func(string, ...interface{}) string) string
+			colorize = func(m string, h string, c func(string, ...interface{}) string) string {
+				if l := len(h); len(m) > 0 && l > 0 {
+					if pos := strings.Index(strings.ToLower(m), h); pos > -1 {
+						r := []byte(m)
+						r = append(r[:pos], r[pos+l:]...)
+						r = append(r[:pos], append([]byte(c(m[pos:pos+l])), []byte(colorize(string(r[pos:]), h, c))...)...)
+						m = string(r)
+					}
+				}
+				return m
+			}
+			s := strings.Split(d.highlight, "||")
+			c := []func(string, ...interface{}) string{
+				color.RedString,
+				color.GreenString,
+				color.CyanString,
+				color.HiMagentaString,
+			}
+			for i, v := range s {
+				b = colorize(b, v, c[i%len(c)])
+			}
+		}
+
 		outputBuffer = append(outputBuffer, OutputResult{s, b})
 	}
 
@@ -276,9 +305,9 @@ func colorizeObject(a interface{}) string {
 	switch m.Kind() {
 	case reflect.Ptr:
 		if !m.IsValid() || m.IsNil() {
-			b.WriteString("nil")
+			b.WriteString(color.HiWhiteString("nil"))
 		} else {
-			b.WriteRune('&')
+			b.WriteString(color.HiWhiteString("&"))
 			b.WriteString(colorizeObject(m.Elem().Interface()))
 		}
 
@@ -288,7 +317,7 @@ func colorizeObject(a interface{}) string {
 		} else {
 			b.WriteString(color.BlueString(m.Type().String()))
 		}
-		b.WriteRune('{')
+		b.WriteString(color.HiWhiteString("{"))
 		count := 0
 		for n := 0; n < m.NumField(); n += 1 {
 			v := m.Field(n)
@@ -310,27 +339,30 @@ func colorizeObject(a interface{}) string {
 				b.WriteString(r[0].String())
 			}
 		}
-		b.WriteRune('}')
+		b.WriteString(color.HiWhiteString("}"))
 
 	case reflect.Slice:
-		b.WriteRune('[')
+		b.WriteString(color.HiWhiteString("["))
 		for n := 0; n < m.Len(); n += 1 {
 			if n > 0 {
 				b.WriteString(", ")
 			}
 			b.WriteString(colorizeObject(m.Index(n).Interface()))
 		}
-		b.WriteRune(']')
+		b.WriteString(color.HiWhiteString("]"))
 
 	case reflect.Map:
+		if m.IsNil() {
+			b.WriteString(color.HiWhiteString("nil"))
+		}
 		for i, key := range m.MapKeys() {
 			v := m.MapIndex(key)
 			if i == 0 {
-				b.WriteString("map[")
+				b.WriteString(color.HiBlueString("map["))
 				b.WriteString(color.BlueString(key.Type().String()))
-				b.WriteRune(']')
+				b.WriteString(color.HiBlueString("]"))
 				b.WriteString(color.BlueString(v.Type().Name()))
-				b.WriteRune('{')
+				b.WriteString(color.HiBlueString("{"))
 			} else {
 				b.WriteString(", ")
 			}
@@ -338,8 +370,8 @@ func colorizeObject(a interface{}) string {
 			b.WriteString(color.YellowString(key.String()))
 			b.WriteRune(':')
 			b.WriteString(colorizeObject(v.Interface()))
+			b.WriteString(color.HiBlueString("}"))
 		}
-		b.WriteRune('}')
 
 	case reflect.Interface:
 		if m.Type().Implements(reflect.TypeOf(errorInterface).Elem()) {
