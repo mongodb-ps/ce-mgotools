@@ -77,7 +77,7 @@ var COUNTERS = map[string]string{
 	"writeConflicts":   "writeConflicts",
 }
 
-var COMMANDS = []string{
+var OPERATIONS = []string{
 	"aggregate",
 	"command",
 	"count",

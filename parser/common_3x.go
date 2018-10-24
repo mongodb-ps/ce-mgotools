@@ -86,27 +86,27 @@ func parse3XCommandStructure(r util.RuneReader, strict bool) (record.MsgCommand,
 			r.RewindSlurpWord()
 			if name != "" {
 				if op.Payload[name], err = mongo.ParseJsonRunes(&r, false); err != nil {
-					op.Errors = append(op.Errors, err)
+					return record.MsgCommand{}, err
 				}
 			} else if section.Meta.Len() > 0 {
 				if op.Payload[section.Meta.String()], err = mongo.ParseJsonRunes(&r, false); err != nil {
-					op.Errors = append(op.Errors, err)
+					return record.MsgCommand{}, err
 				}
 				section.Meta.Reset()
 			} else if op.Command != "" {
 				name = op.Command
 				if op.Payload[name], err = mongo.ParseJsonRunes(&r, false); err != nil {
-					op.Errors = append(op.Errors, err)
+					return record.MsgCommand{}, err
 				} else {
 					op.Command = ""
 				}
 			} else if _, ok := op.Payload[op.Command]; !ok {
 				if op.Payload[op.Command], err = mongo.ParseJsonRunes(&r, false); err != nil {
-					op.Errors = append(op.Errors, err)
+					return record.MsgCommand{}, err
 				}
 			} else {
 				if op.Payload["unknown"], err = mongo.ParseJsonRunes(&r, false); err != nil {
-					op.Errors = append(op.Errors, err)
+					return record.MsgCommand{}, err
 				}
 			}
 			name = ""
@@ -122,7 +122,7 @@ func parse3XCommandStructure(r util.RuneReader, strict bool) (record.MsgCommand,
 			}
 		} else if length > 2 && param[length-2:] == "ms" {
 			op.Duration, _ = strconv.ParseInt(param[:length-2], 10, 32)
-		} else if util.ArrayBinarySearchString(param, mongo.COMMANDS) {
+		} else if util.ArrayBinarySearchString(param, mongo.OPERATIONS) {
 			name = util.StringToLower(param)
 			op.Command = name
 		} else {

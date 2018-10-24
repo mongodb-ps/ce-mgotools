@@ -354,24 +354,29 @@ func colorizeObject(a interface{}) string {
 	case reflect.Map:
 		if m.IsNil() {
 			b.WriteString(color.HiWhiteString("nil"))
+			break
 		}
+
+		t := m.Type()
+		b.WriteString(color.HiBlueString("map["))
+		b.WriteString(color.BlueString(t.Key().String()))
+		b.WriteString(color.HiBlueString("]"))
+		if t.Elem().Kind() != reflect.Interface {
+			b.WriteString(color.BlueString(t.Elem().String()))
+		}
+		b.WriteString(color.HiBlueString("{"))
+
 		for i, key := range m.MapKeys() {
 			v := m.MapIndex(key)
-			if i == 0 {
-				b.WriteString(color.HiBlueString("map["))
-				b.WriteString(color.BlueString(key.Type().String()))
-				b.WriteString(color.HiBlueString("]"))
-				b.WriteString(color.BlueString(v.Type().Name()))
-				b.WriteString(color.HiBlueString("{"))
-			} else {
+			if i > 0 {
 				b.WriteString(", ")
 			}
 
 			b.WriteString(color.YellowString(key.String()))
 			b.WriteRune(':')
 			b.WriteString(colorizeObject(v.Interface()))
-			b.WriteString(color.HiBlueString("}"))
 		}
+		b.WriteString(color.HiBlueString("}"))
 
 	case reflect.Interface:
 		if m.Type().Implements(reflect.TypeOf(errorInterface).Elem()) {

@@ -1,3 +1,5 @@
+// mongo/src/mongo/db/client.cpp
+
 package parser
 
 import (
@@ -41,13 +43,14 @@ func (v *Version26Parser) NewLogMessage(entry record.Entry) (record.Message, err
 		switch {
 		case r.ExpectString("command"):
 
-			c, err := parse26Command(r)
+			c, err := v.parseCommand(r)
 			if err != nil {
 				return c, err
 			}
 
-			if crud, ok := parse26CRUD(c.Command, c.Counters, c.Payload); ok {
-				c.CRUD = &crud
+			if crud, ok := v.parseCrud(c.Command, c.Counters, c.Payload); ok {
+				crud.Message = c
+				return crud, nil
 			}
 
 			return c, nil
@@ -59,13 +62,14 @@ func (v *Version26Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			r.ExpectString("update"),
 			r.ExpectString("remove"):
 
-			m, err := parse26Operation(r)
+			m, err := v.parseOperation(r)
 			if err != nil {
 				return m, err
 			}
 
-			if crud, ok := parse26CRUD(m.Operation, m.Counters, m.Payload); ok {
-				m.CRUD = &crud
+			if crud, ok := v.parseCrud(m.Operation, m.Counters, m.Payload); ok {
+				crud.Message = m
+				return crud, nil
 			}
 
 			return m, nil
@@ -80,13 +84,13 @@ func (v *Version26Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	return nil, v.ErrorVersion
 }
 
-func (v *Version26Parser) Check(base record.Base) bool {
+func (Version26Parser) Check(base record.Base) bool {
 	return !base.CString &&
 		base.RawSeverity == 0 &&
 		base.RawComponent == ""
 }
 
-func parse26CRUD(op string, counters map[string]int, payload record.MsgPayload) (record.MsgCRUD, bool) {
+func (Version26Parser) parseCrud(op string, counters map[string]int, payload record.MsgPayload) (record.MsgCRUD, bool) {
 	if payload == nil {
 		return record.MsgCRUD{}, false
 	}
@@ -105,6 +109,7 @@ func parse26CRUD(op string, counters map[string]int, payload record.MsgPayload) 
 	}
 
 	switch op {
+	case "find":
 	case "query":
 		c := record.MsgCRUD{
 			Filter:  query,
@@ -113,11 +118,11 @@ func parse26CRUD(op string, counters map[string]int, payload record.MsgPayload) 
 		}
 
 		if query != nil {
-			c.Sort, _ = query["orderby"].(map[string]interface{})
+			c.Sort, _ = query["orderby"].(record.MsgSort)
 		}
 
 		if c.Sort != nil || c.Comment != "" {
-			if query, ok := payload["query"].(map[string]interface{}); ok {
+			if query, ok := payload["query"].(record.MsgFilter); ok {
 				c.Filter = query
 			}
 		}
@@ -125,11 +130,18 @@ func parse26CRUD(op string, counters map[string]int, payload record.MsgPayload) 
 		return c, true
 
 	case "update":
+		update, ok := payload["update"].(record.MsgUpdate)
+		if !ok || query == nil {
+			break
+		}
+
 		return record.MsgCRUD{
 			Filter:  query,
+			Update:  update,
 			Comment: comment,
 			N:       counters["mModified"],
 		}, true
+
 	case "remove":
 		return record.MsgCRUD{
 			Filter:  query,
@@ -138,71 +150,157 @@ func parse26CRUD(op string, counters map[string]int, payload record.MsgPayload) 
 		}, true
 
 	case "insert":
+		if query == nil {
+			break
+		}
+
+		id, _ := query["_id"]
 		return record.MsgCRUD{
-			Filter:  query,
+			Filter:  record.MsgFilter{"_id": id},
+			Update:  query,
 			Comment: comment,
 			N:       counters["ninserted"],
 		}, true
 
-	default:
-		return record.MsgCRUD{}, false
+	case "count":
+		if query == nil {
+			return record.MsgCRUD{}, false
+		}
+
+		fields, _ := query["fields"].(record.MsgProject)
+		return record.MsgCRUD{
+			Filter:  query,
+			Project: fields,
+		}, true
+
+	case "findandmodify":
+		fields, _ := payload["fields"].(record.MsgProject)
+		sort, _ := payload["sort"].(record.MsgSort)
+		update, _ := payload["update"].(record.MsgUpdate)
+
+		return record.MsgCRUD{
+			Filter:  query,
+			Project: fields,
+			Sort:    sort,
+			Update:  update,
+		}, true
+
+	case "geonear":
+		if near, ok := payload["near"].(map[string]interface{}); ok {
+			if _, ok := near["$near"]; !ok {
+				query["$near"] = near
+			}
+		}
+
+		return record.MsgCRUD{
+			Filter: query,
+		}, true
 	}
+
+	return record.MsgCRUD{}, false
 }
 
-func parse26Command(r util.RuneReader) (record.MsgCommandLegacy, error) {
+func (Version26Parser) parseException(r *util.RuneReader) (string, bool) {
+	start := r.Pos()
+	if exception, ok := r.ScanForRune("numYields:"); !ok {
+		r.Seek(start, 0)
+	} else {
+		// Rewind one since ScanForRune advances an extra character
+		r.Prev()
+
+		pos := strings.LastIndex(exception, " ")
+		exception = strings.TrimRight(exception[:pos], " ")
+		return exception, true
+	}
+
+	return "", false
+}
+
+func (v Version26Parser) parseCommand(r util.RuneReader) (record.MsgCommandLegacy, error) {
 	// command test.$cmd command: insert { insert: "foo", documents: [ { _id: ObjectId('59e3fdf50bae7edf962785a7'), a: 1.0 } ], ordered: true } keyUpdates:0 numYields:0 locks(micros) w:159 reslen:40 0ms
 	var err error
 	op := record.MakeMsgCommandLegacy()
 
-	if opn, ok := r.SlurpWord(); ok {
-		op.Command = opn
-	} else {
-		return record.MsgCommandLegacy{}, errors.New("operation not found")
+	if opn, ok := r.SlurpWord(); !ok || opn != "command" {
+		return record.MsgCommandLegacy{}, ErrorCommandNotFound
 	}
 
 	if ns, ok := r.SlurpWord(); ok && strings.ContainsRune(ns, '.') {
-		op.Namespace = ns
+		op.Namespace = ns[:strings.IndexRune(ns, '.')+1]
 	} else {
 		return record.MsgCommandLegacy{}, errors.New("no namespace found")
 	}
 
 	// Skip the "command:" portion, since it's irrelevant here.
-	r.SkipWords(1)
-	locks := false
+	if cmd, _ := r.SlurpWord(); cmd != "command:" {
+		return record.MsgCommandLegacy{}, ErrorCommandStructure
+	}
 
-	for {
-		if param, ok := r.SlurpWord(); ok {
-			if r.Expect('{') {
-				if op.Payload[param], err = mongo.ParseJsonRunes(&r, false); err != nil {
-					return record.MsgCommandLegacy{}, err
-				}
-				op.Command = param
-			} else if param == "locks(micros)" {
-				locks = true
-				continue
-			} else if strings.HasPrefix(param, "ms") {
-				if op.Duration, err = strconv.ParseInt(param[:len(param)-2], 10, 64); err != nil {
-					return record.MsgCommandLegacy{}, err
-				}
-			} else if (locks && !parseIntegerKeyValue(param, op.Locks, map[string]string{"r": "r", "R": "R", "w": "w", "W": "W"})) ||
-				!parseIntegerKeyValue(param, op.Counters, mongo.COUNTERS) {
-				break
+	if name, ok := r.SlurpWord(); ok {
+		op.Command = util.StringToLower(name)
+
+		if r.Expect('{') {
+			if op.Payload, err = mongo.ParseJsonRunes(&r, false); err != nil {
+				return record.MsgCommandLegacy{}, err
+			}
+			if col, ok := op.Payload[op.Command].(string); ok && col != "" {
+				op.Namespace = op.Namespace + col
 			}
 		}
 	}
-	return op, nil
+
+	for {
+		param, ok := r.SlurpWord()
+		if !ok {
+			break
+		}
+
+		switch param {
+		case "planSummary:":
+			// Plan summaries require complicated and special code, so branch off and parse for plan summaries.
+			if op.PlanSummary, err = parsePlanSummary(&r); err != nil {
+				return record.MsgCommandLegacy{}, err
+			}
+
+		case "update:":
+			if op.Payload["update"], err = mongo.ParseJsonRunes(&r, false); err != nil {
+				return record.MsgCommandLegacy{}, err
+			}
+
+		case "exception:":
+			if op.Exception, ok = v.parseException(&r); !ok {
+				return record.MsgCommandLegacy{}, errors.New("error parsing exception")
+			}
+
+		case "locks(micros)":
+			continue
+
+		default:
+			if strings.HasSuffix(param, "ms") {
+				if op.Duration, err = strconv.ParseInt(param[:len(param)-2], 10, 64); err != nil {
+					return record.MsgCommandLegacy{}, err
+				}
+				return op, nil
+			} else if !parseIntegerKeyValue(param, op.Locks, map[string]string{"r": "r", "R": "R", "w": "w", "W": "W"}) &&
+				!parseIntegerKeyValue(param, op.Counters, mongo.COUNTERS) {
+				return record.MsgCommandLegacy{}, ErrorCounterUnrecognized
+			}
+		}
+	}
+	return op, ErrorOperationStructure
 }
 
-func parse26Operation(r util.RuneReader) (record.MsgOperationLegacy, error) {
+func (v Version26Parser) parseOperation(r util.RuneReader) (record.MsgOperationLegacy, error) {
 	// getmore test.foo cursorid:30107363235 ntoreturn:3 keyUpdates:0 numYields:0 locks(micros) r:14 nreturned:3 reslen:119 0ms
 	// insert test.foo query: { _id: ObjectId('5a331671de4f2a133f17884b'), a: 2.0 } ninserted:1 keyUpdates:0 numYields:0 locks(micros) w:10 0ms
 	// remove test.foo query: { a: { $gte: 9.0 } } ndeleted:1 keyUpdates:0 numYields:0 locks(micros) w:63 0ms
 	// update test.foo query: { a: { $gte: 8.0 } } update: { $set: { b: 1.0 } } nscanned:9 nscannedObjects:9 nMatched:1 nModified:1 keyUpdates:0 numYields:0 locks(micros) w:135 0ms
 	var err error
 	op := record.MakeMsgOperationLegacy()
+
 	// Grab the operation name first.
 	if opn, ok := r.SlurpWord(); ok {
-		op.Operation = opn
+		op.Operation = util.StringToLower(opn)
 	} else {
 		return record.MsgOperationLegacy{}, ErrorVersionUnmatched{"unexpected operation"}
 	}
@@ -211,48 +309,58 @@ func parse26Operation(r util.RuneReader) (record.MsgOperationLegacy, error) {
 	} else {
 		r.RewindSlurpWord()
 	}
-	locks := false
+
 	for param, ok := r.SlurpWord(); ok; param, ok = r.SlurpWord() {
-		if strings.HasPrefix(param, "locks") {
-			if param == "locks(micros)" {
-				// Locks follow this param, so reset the target to the locks map.
-				locks = true
-				continue
-			} else {
+		switch {
+		case strings.HasPrefix(param, "locks"):
+			if param != "locks(micros)" {
 				// Wrong version.
 				return record.MsgOperationLegacy{}, ErrorVersionUnmatched{}
 			}
-		} else if param == "planSummary:" {
+
+		case param == "planSummary:":
 			// Plan summaries require complicated and special code, so branch off and parse for plan summaries.
 			if op.PlanSummary, err = parsePlanSummary(&r); err != nil {
 				return record.MsgOperationLegacy{}, err
 			}
 			continue
-		} else if length := len(param); length > 1 && util.ArrayBinarySearchString(param[:length-1], mongo.COMMANDS) {
-			if r.EOL() {
-				return record.MsgOperationLegacy{}, ErrorVersionUnmatched{"unexpected end of string"}
-			} else if r.Expect('{') {
-				// Parse JSON, found immediately after an operation.
-				if op.Payload[param[:length-1]], err = mongo.ParseJsonRunes(&r, false); err != nil {
-					return record.MsgOperationLegacy{}, err
-				}
+
+		case param == "exception:":
+			if op.Exception, ok = v.parseException(&r); !ok {
+				return record.MsgOperationLegacy{}, errors.New("error parsing exception")
 			}
-		} else if strings.ContainsRune(param, ':') {
+
+		case strings.ContainsRune(param, ':'):
 			// A counter (in the form of key:value) needs to be applied to the correct target.
-			if !locks || !parseIntegerKeyValue(param, op.Locks, map[string]string{"r": "r", "R": "R", "w": "w", "W": "W"}) {
-				parseIntegerKeyValue(param, op.Counters, mongo.COUNTERS)
+			if !parseIntegerKeyValue(param, op.Locks, map[string]string{"r": "r", "R": "R", "w": "w", "W": "W"}) &&
+				!parseIntegerKeyValue(param, op.Counters, mongo.COUNTERS) {
+				return record.MsgOperationLegacy{}, ErrorCounterUnrecognized
 			}
-		} else if strings.HasSuffix(param, "ms") {
+
+		case strings.HasSuffix(param, "ms"):
 			// Found a duration, which is also the last thing in the line.
-			op.Duration, _ = strconv.ParseInt(param[0:len(param)-3], 10, 64)
-			break
-		} else {
-			// An unexpected value means that this parser either isn't the correct version or the line is invalid.
-			return record.MsgOperationLegacy{}, ErrorVersionUnmatched{fmt.Sprintf("encountered unexpected value '%s'", param)}
+			op.Duration, _ = strconv.ParseInt(param[0:len(param)-2], 10, 64)
+			return op, nil
+
+		default:
+			if length := len(param); length > 1 && util.ArrayBinarySearchString(param[:length-1], mongo.OPERATIONS) {
+				if r.EOL() {
+					return record.MsgOperationLegacy{}, ErrorVersionUnmatched{"unexpected end of string"}
+				} else if r.Expect('{') {
+					// Parse JSON, found immediately after an operation.
+					if op.Payload[param[:length-1]], err = mongo.ParseJsonRunes(&r, false); err != nil {
+						return record.MsgOperationLegacy{}, err
+					}
+				}
+			} else {
+				// An unexpected value means that this parser either isn't the correct version or the line is invalid.
+				return record.MsgOperationLegacy{}, ErrorVersionUnmatched{fmt.Sprintf("encountered unexpected value '%s'", param)}
+			}
 		}
 	}
-	return op, nil
+
+	return op, ErrorCommandStructure
 }
-func (v *Version26Parser) Version() VersionDefinition {
+func (Version26Parser) Version() VersionDefinition {
 	return VersionDefinition{Major: 2, Minor: 6, Binary: record.BinaryMongod}
 }

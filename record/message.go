@@ -91,7 +91,6 @@ type MsgCommand struct {
 	MsgWireProtocol
 
 	Command string
-	CRUD    *MsgCRUD
 	Locks   map[string]interface{}
 	Payload MsgPayload
 }
@@ -101,7 +100,6 @@ type MsgOperation struct {
 	MsgWireProtocol
 	MsgBase
 
-	CRUD      *MsgCRUD
 	Locks     map[string]interface{}
 	Operation string
 	Payload   MsgPayload
@@ -111,7 +109,6 @@ type MsgCommandLegacy struct {
 	MsgBase
 
 	Command string
-	CRUD    *MsgCRUD
 	Locks   map[string]int
 	Payload MsgPayload
 }
@@ -119,7 +116,6 @@ type MsgCommandLegacy struct {
 type MsgOperationLegacy struct {
 	MsgBase
 
-	CRUD      *MsgCRUD
 	Locks     map[string]int
 	Operation string
 	Payload   MsgPayload
@@ -130,12 +126,14 @@ type MsgBase struct {
 
 	Counters    map[string]int
 	Duration    int64
-	Errors      []error
+	Exception   string
 	PlanSummary []MsgPlanSummary
 }
 
 type MsgFilter map[string]interface{}
+type MsgProject map[string]interface{}
 type MsgSort map[string]interface{}
+type MsgUpdate map[string]interface{}
 
 type MsgPlanSummary struct {
 	Type    string
@@ -143,10 +141,15 @@ type MsgPlanSummary struct {
 }
 
 type MsgCRUD struct {
-	Filter  MsgFilter
-	Sort    MsgSort
-	Comment string
-	N       int
+	Message
+
+	Comment     string
+	Filter      MsgFilter
+	N           int
+	PlanSummary []MsgPlanSummary
+	Project     MsgProject
+	Sort        MsgSort
+	Update      MsgUpdate
 }
 
 func MsgBaseFromMessage(msg Message) (*MsgBase, bool) {

@@ -12,14 +12,18 @@ import (
 	"github.com/pkg/errors"
 )
 
+var ErrorCommandNotFound = errors.New("command not found")
+var ErrorCommandStructure = errors.New("command structure unexpected")
+var ErrorComponentUnmatched = errors.New("component unmatched")
+var ErrorControlUnrecognized = ErrorVersionUnmatched{Message: "unrecognized control message"}
+var ErrorCounterUnrecognized = ErrorVersionUnmatched{Message: "unrecognized counter"}
+var ErrorMetadataUnmatched = ErrorVersionUnmatched{"unexpected connection meta format"}
+var ErrorNetworkUnrecognized = ErrorVersionUnmatched{"unrecognized network message"}
 var ErrorNoPlanSummaryFound = errors.New("no plan summary found")
 var ErrorNoStartupArgumentsFound = errors.New("no startup arguments found")
-var ErrorUnexpectedVersionFormat = errors.New("unexpected version format")
-var ErrorNetworkUnrecognized = ErrorVersionUnmatched{"unrecognized network message"}
-var ErrorControlUnrecognized = ErrorVersionUnmatched{Message: "unrecognized control message"}
-var ErrorMetadataUnmatched = ErrorVersionUnmatched{"unexpected connection meta format"}
+var ErrorOperationStructure = errors.New("operation structure unexpected")
 var ErrorStorageUnmatched = ErrorVersionUnmatched{"unrecognized storage option"}
-var ErrorComponentUnmatched = errors.New("component unmatched")
+var ErrorUnexpectedVersionFormat = errors.New("unexpected version format")
 
 func ParseControl(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	switch entry.Context {
