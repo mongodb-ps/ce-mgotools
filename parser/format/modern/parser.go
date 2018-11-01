@@ -1,4 +1,4 @@
-package parser
+package modern
 
 import (
 	"bytes"
@@ -7,14 +7,15 @@ import (
 	"unicode"
 
 	"mgotools/mongo"
+	"mgotools/parser/errors"
+	"mgotools/parser/format"
 	"mgotools/record"
 	"mgotools/util"
 )
 
-func parse3XCommandStructure(r util.RuneReader, strict bool) (record.MsgCommand, error) {
+func CommandStructure(r util.RuneReader, strict bool) (record.MsgCommand, error) {
 	var (
 		err     error
-		ok      bool
 		op      = record.MakeMsgCommand()
 		name    string
 		section struct {
@@ -22,27 +23,16 @@ func parse3XCommandStructure(r util.RuneReader, strict bool) (record.MsgCommand,
 			Cmd  interface{}
 		}
 	)
+
 	// <command> <namespace> <operation>: <section[:]> <pattern>[, <section[:]> <pattern>] <counters> locks:<locks> [protocol:<protocol>] [duration]
 	// Check for the operation first.
 	if command, _ := r.SlurpWord(); command != "command" {
-		return record.MsgCommand{}, ErrorVersionUnmatched{"unexpected command"}
+		return record.MsgCommand{}, errors.CommandStructure
 	}
 
-	// Then for the namespace.
-	op.Namespace, ok = r.SlurpWord()
-	if strict && (!ok || !strings.ContainsRune(op.Namespace, '.')) {
-		return record.MsgCommand{}, ErrorVersionUnmatched{"unexpected namespace"}
-	} else if !strict && op.Namespace != "" && !strings.ContainsRune(op.Namespace, '.') {
-		r.RewindSlurpWord()
-		op.Command = op.Namespace
-		op.Namespace = ""
-	} else if strings.HasPrefix(r.PreviewWord(1), ":") {
-		// Then for the sub-operation.
-		op.Command, ok = r.SlurpWord()
-		if !ok || op.Command == "" || op.Command[len(op.Command)-1] != ':' {
-			return record.MsgCommand{}, ErrorVersionUnmatched{"unexpected sub-operation"}
-		}
-		op.Command = op.Command[:len(op.Command)-1]
+	op.Namespace, op.Command, err = structuredPreamble(&r, strict)
+	if err != nil {
+		return record.MsgCommand{}, err
 	}
 
 	// Parse the remaining sections in a generic pattern.
@@ -143,37 +133,73 @@ func parse3XCommandStructure(r util.RuneReader, strict bool) (record.MsgCommand,
 	return op, nil
 }
 
-func (v *VersionCommon) parse3XCommonMessage(entry record.Entry, err error) (record.Message, error) {
-	if m, err := v.parse3XComponent(entry); err == nil {
+func messageFromComponent(entry record.Entry) (record.Message, error) {
+	r := *entry.RuneReader
+	switch entry.RawComponent {
+	case "COMMAND":
+		// query, getmore, insert, update = COMMAND
+		if msg, err := CommandStructure(r, true); err == nil {
+			return msg, err
+		}
+
+	case "WRITE":
+		// insert, remove, update = WRITE
+		if msg, err := OperationStructure(r, true); err == nil {
+			return msg, err
+		}
+
+	case "INDEX":
+		// TODO: Figure this out too.
+
+	case "CONTROL":
+		return format.Control(r, entry)
+
+	case "NETWORK":
+		if entry.RawContext == "command" {
+			if msg, err := CommandStructure(r, false); err != nil {
+				return msg, nil
+			}
+		}
+		return format.Network(r, entry)
+
+	case "STORAGE":
+		return format.Storage(r, entry)
+	}
+
+	return nil, errors.ComponentUnmatched
+}
+
+func Message(entry record.Entry, err error) (record.Message, error) {
+	if m, err := messageFromComponent(entry); err == nil {
 		return m, nil
 	}
 	return nil, err
 }
 
-func (v *VersionCommon) parse3XComponent(entry record.Entry) (record.Message, error) {
-	r := *entry.RuneReader
-	switch entry.RawComponent {
-	case "COMMAND":
-		// query, getmore, insert, update = COMMAND
-		if msg, err := parse3XCommandStructure(r, true); err == nil {
-			return msg, err
+func OperationStructure(r util.RuneReader, strict bool) (record.MsgOperation, error) {
+	panic("not implemented")
+}
+
+// Returns a namespace, command, and error given a reader. This matches the general
+// preamble structure of a command and operation. The reader advances.
+func structuredPreamble(r *util.RuneReader, strict bool) (string, string, error) {
+	// Then for the namespace.
+	ns, ok := r.SlurpWord()
+	if strict && (!ok || !strings.ContainsRune(ns, '.')) {
+		return "", "", errors.NoNamespaceFound
+	} else if !strict && ns != "" && !strings.ContainsRune(ns, '.') {
+		r.RewindSlurpWord()
+		return "", ns, nil
+	} else if strings.HasPrefix(r.PreviewWord(1), ":") {
+		// Then for the sub-operation.
+		cmd, ok := r.SlurpWord()
+		size := len(cmd)
+		if !ok || cmd == "" || cmd[size-1] != ':' {
+			return "", "", errors.OperationStructure
 		}
-	case "WRITE":
-		// remove, update = WRITE
-		// TODO: Figure out what to do with these writes later.
-	case "INDEX":
-		// TODO: Figure this out too.
-	case "CONTROL":
-		return ParseControl(r, entry)
-	case "NETWORK":
-		if entry.RawContext == "command" {
-			if msg, err := parse3XCommandStructure(r, false); err != nil {
-				return msg, nil
-			}
-		}
-		return ParseNetwork(r, entry)
-	case "STORAGE":
-		return ParseStorage(r, entry)
+
+		return ns, cmd[:size-1], nil
 	}
-	return nil, ErrorComponentUnmatched
+
+	return ns, "", nil
 }

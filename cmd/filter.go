@@ -5,6 +5,7 @@ package cmd
 //   output w/o II
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,7 +16,7 @@ import (
 	"mgotools/record"
 	"mgotools/util"
 
-	"github.com/pkg/errors"
+	parser_errors "mgotools/parser/errors"
 )
 
 type filterCommand struct {
@@ -279,7 +280,7 @@ func (f *filterCommand) Run(instance int, out commandTarget, in commandSource, e
 
 		if err != nil {
 			log.ErrorCount += 1
-			if _, ok := err.(parser.ErrorVersionUnmatched); ok {
+			if _, ok := err.(parser_errors.VersionUnmatched); ok {
 				errs <- err
 				continue
 			} else if log.commandOptions.argCount > 0 {

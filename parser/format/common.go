@@ -1,4 +1,4 @@
-package parser
+package format
 
 import (
 	"net"
@@ -6,40 +6,26 @@ import (
 	"strings"
 
 	"mgotools/mongo"
+	"mgotools/parser/errors"
 	"mgotools/record"
 	"mgotools/util"
-
-	"github.com/pkg/errors"
 )
 
-var ErrorCommandNotFound = errors.New("command not found")
-var ErrorCommandStructure = errors.New("command structure unexpected")
-var ErrorComponentUnmatched = errors.New("component unmatched")
-var ErrorControlUnrecognized = ErrorVersionUnmatched{Message: "unrecognized control message"}
-var ErrorCounterUnrecognized = ErrorVersionUnmatched{Message: "unrecognized counter"}
-var ErrorMetadataUnmatched = ErrorVersionUnmatched{"unexpected connection meta format"}
-var ErrorNetworkUnrecognized = ErrorVersionUnmatched{"unrecognized network message"}
-var ErrorNoPlanSummaryFound = errors.New("no plan summary found")
-var ErrorNoStartupArgumentsFound = errors.New("no startup arguments found")
-var ErrorOperationStructure = errors.New("operation structure unexpected")
-var ErrorStorageUnmatched = ErrorVersionUnmatched{"unrecognized storage option"}
-var ErrorUnexpectedVersionFormat = errors.New("unexpected version format")
-
-func ParseControl(r util.RuneReader, entry record.Entry) (record.Message, error) {
+func Control(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	switch entry.Context {
 	case "initandlisten":
 		switch {
 		case r.ExpectString("build info"):
 			return record.MsgBuildInfo{BuildInfo: r.SkipWords(2).Remainder()}, nil
 		case r.ExpectString("db version"):
-			return parseVersion(r.SkipWords(2).Remainder(), "mongod")
+			return Version(r.SkipWords(2).Remainder(), "mongod")
 		case r.ExpectString("MongoDB starting"):
-			return parseStartupInfo(entry.RawMessage)
+			return StartupInfo(entry.RawMessage)
 		case r.ExpectString("OpenSSL version"):
-			return parseVersion(r.SkipWords(2).Remainder(), "OpenSSL")
+			return Version(r.SkipWords(2).Remainder(), "OpenSSL")
 		case r.ExpectString("options"):
 			r.SkipWords(1)
-			return parseStartupOptions(r.Remainder())
+			return StartupOptions(r.Remainder())
 		}
 
 	case "signalProcessingThread":
@@ -49,13 +35,13 @@ func ParseControl(r util.RuneReader, entry record.Entry) (record.Message, error)
 			return record.MsgSignal{r.Remainder()}, nil
 		}
 	}
-	return nil, ErrorControlUnrecognized
+	return nil, errors.ControlUnrecognized
 }
 
-func ParseNetwork(r util.RuneReader, entry record.Entry) (record.Message, error) {
+func Network(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	if entry.Connection == 0 {
 		if r.ExpectString("connection accepted") { // connection accepted from <IP>:<PORT> #<CONN>
-			if addr, port, conn, ok := parseConnectionInit(r.SkipWords(2)); ok {
+			if addr, port, conn, ok := connectionInit(r.SkipWords(2)); ok {
 				return record.MsgConnection{Address: addr, Port: port, Conn: conn, Opened: true}, nil
 			}
 		} else if r.ExpectString("waiting for connections") {
@@ -65,13 +51,13 @@ func ParseNetwork(r util.RuneReader, entry record.Entry) (record.Message, error)
 		}
 	} else if entry.Connection > 0 {
 		if r.ExpectString("end connection") {
-			if addr, port, _, ok := parseConnectionInit(&r); ok {
+			if addr, port, _, ok := connectionInit(&r); ok {
 				return record.MsgConnection{Address: addr, Port: port, Conn: entry.Connection, Opened: false}, nil
 			}
 		} else if r.ExpectString("received client metadata from") {
 			// Skip "received client metadata" and grab connection information.
-			if addr, port, conn, ok := parseConnectionInit(r.SkipWords(3)); !ok {
-				return nil, ErrorMetadataUnmatched
+			if addr, port, conn, ok := connectionInit(r.SkipWords(3)); !ok {
+				return nil, errors.MetadataUnmatched
 			} else {
 				if meta, err := mongo.ParseJsonRunes(&r, false); err == nil {
 					return record.MsgConnectionMeta{
@@ -86,10 +72,10 @@ func ParseNetwork(r util.RuneReader, entry record.Entry) (record.Message, error)
 		}
 	}
 
-	return nil, ErrorNetworkUnrecognized
+	return nil, errors.NetworkUnrecognized
 }
 
-func ParseStorage(r util.RuneReader, entry record.Entry) (record.Message, error) {
+func Storage(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	switch entry.Context {
 	case "signalProcessingThread":
 		return record.MsgSignal{entry.RawMessage}, nil
@@ -100,10 +86,10 @@ func ParseStorage(r util.RuneReader, entry record.Entry) (record.Message, error)
 		}
 	}
 
-	return nil, ErrorStorageUnmatched
+	return nil, errors.StorageUnmatched
 }
 
-func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
+func connectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 	var (
 		addr   *util.RuneReader
 		buffer string
@@ -153,7 +139,7 @@ func parseConnectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 	return ip, uint16(port), conn, true
 }
 
-func parseIntegerKeyValue(source string, target map[string]int, limit map[string]string) bool {
+func IntegerKeyValue(source string, target map[string]int, limit map[string]string) bool {
 	if key, num, ok := util.StringDoubleSplit(source, ':'); ok && num != "" {
 		if _, ok := limit[key]; ok {
 			if count, err := strconv.ParseInt(num, 10, 64); err == nil {
@@ -168,7 +154,7 @@ func parseIntegerKeyValue(source string, target map[string]int, limit map[string
 	return false
 }
 
-func parsePlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
+func PlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
 	var out []record.MsgPlanSummary
 	for {
 		if op, ok := r.SlurpWord(); !ok {
@@ -202,12 +188,12 @@ func parsePlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
 	}
 	if len(out) == 0 {
 		// Return an error if no plans exist.
-		return nil, ErrorNoPlanSummaryFound
+		return nil, errors.NoPlanSummaryFound
 	}
 	return out, nil
 }
 
-func parseStartupInfo(msg string) (record.MsgStartupInfo, error) {
+func StartupInfo(msg string) (record.MsgStartupInfo, error) {
 	if optionsRegex, err := util.GetRegexRegistry().Compile(`([^=\s]+)=([^\s]+)`); err == nil {
 		matches := optionsRegex.FindAllStringSubmatch(msg, -1)
 		startupInfo := record.MsgStartupInfo{}
@@ -226,10 +212,10 @@ func parseStartupInfo(msg string) (record.MsgStartupInfo, error) {
 		}
 		return startupInfo, nil
 	}
-	return record.MsgStartupInfo{}, ErrorNoStartupArgumentsFound
+	return record.MsgStartupInfo{}, errors.NoStartupArgumentsFound
 }
 
-func parseStartupOptions(msg string) (record.MsgStartupOptions, error) {
+func StartupOptions(msg string) (record.MsgStartupOptions, error) {
 	opt, err := mongo.ParseJson(msg, false)
 	if err != nil {
 		return record.MsgStartupOptions{}, err
@@ -237,7 +223,7 @@ func parseStartupOptions(msg string) (record.MsgStartupOptions, error) {
 	return record.MsgStartupOptions{String: msg, Options: opt}, nil
 }
 
-func parseVersion(msg string, binary string) (record.MsgVersion, error) {
+func Version(msg string, binary string) (record.MsgVersion, error) {
 	msg = strings.TrimLeft(msg, "v")
 	version := record.MsgVersion{String: msg, Binary: binary}
 	if parts := strings.Split(version.String, "."); len(parts) >= 2 {
@@ -248,7 +234,7 @@ func parseVersion(msg string, binary string) (record.MsgVersion, error) {
 		}
 	}
 	if version.String == "" {
-		return version, ErrorUnexpectedVersionFormat
+		return version, errors.UnexpectedVersionFormat
 	}
 	return version, nil
 }

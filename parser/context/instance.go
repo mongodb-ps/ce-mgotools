@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"mgotools/parser"
+	"mgotools/parser/errors"
 	"mgotools/record"
 	"mgotools/util"
 )
@@ -68,7 +69,7 @@ func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 	entry, version, err := manager.Try(base)
 	c.LastWinner = version
 
-	if _, ok := err.(parser.VersionMessageUnmatched); err != nil && ok {
+	if err == errors.VersionMessageUnmatched {
 		return record.Entry{}, err
 	}
 
@@ -147,7 +148,7 @@ func (c *Instance) BaseToEntry(base record.Base, factory parser.VersionParser) (
 	)
 
 	if out.Date, err = factory.ParseDate(base.RawDate); err != nil {
-		return record.Entry{Valid: false}, parser.VersionDateUnmatched{}
+		return record.Entry{Valid: false}, errors.VersionDateUnmatched
 	}
 
 	// No dates matched so mark the date invalid and reset the count.
@@ -175,7 +176,7 @@ func (c *Instance) BaseToEntry(base record.Base, factory parser.VersionParser) (
 	// Check for the base message for validity and parse it.
 	if out.RawMessage == "" {
 		// No log message exists so it cannot be further analyzed.
-		return out, parser.VersionMessageUnmatched{}
+		return out, errors.VersionMessageUnmatched
 	}
 
 	// TODO: This is a debug statement! Remove.

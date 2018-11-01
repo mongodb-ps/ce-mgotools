@@ -95,12 +95,12 @@ func (v VersionDefinition) String() string {
 	return string(dst[:12-2+offset])
 }
 
-type VersionCommon struct {
+type VersionBaseParser struct {
 	*util.DateParser
 
 	ErrorVersion error
 }
 
-func (v *VersionCommon) NewLogMessage(entry record.Entry) (record.Message, error) {
-	panic("unimplemented call to VersionCommon::NewLogMessage")
+func (v *VersionBaseParser) NewLogMessage(entry record.Entry) (record.Message, error) {
+	panic("unimplemented call to VersionBaseParser::NewLogMessage")
 }

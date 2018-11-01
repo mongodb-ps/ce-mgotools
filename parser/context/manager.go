@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"mgotools/parser"
+	"mgotools/parser/errors"
 	"mgotools/record"
 	"mgotools/util"
 )
@@ -126,7 +127,7 @@ func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition,
 			versionParser.Errors += 1
 
 			// When getting a version unmatched error, check for version and always use the most recent as the winner.
-			if _, ok := attempt.Err.(parser.VersionMessageUnmatched); ok && winner.Version.Compare(attempt.Version) < 0 {
+			if attempt.Err == errors.VersionMessageUnmatched && winner.Version.Compare(attempt.Version) < 0 {
 				winner = &attempt
 			}
 
@@ -136,7 +137,7 @@ func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition,
 
 	// Check for a blank winner, meaning no versions succeeded in the attempt.
 	if winner == nil {
-		winner = &Result{Err: parser.ErrorVersionUnmatched{}}
+		winner = &Result{Err: errors.VersionUnmatched{}}
 	} else {
 		m.versions[winner.Version].Wins += 1
 	}
@@ -190,10 +191,11 @@ func parseByVersion(baseIn <-chan record.Base, entryOut chan<- Result, worker fu
 			// Run the parser against the active factory (parser).
 			entry, err := worker(base, v.Parser)
 
-			switch err.(type) {
-			case parser.VersionDateUnmatched, parser.ErrorVersionUnmatched:
+			if _, ok := err.(errors.VersionUnmatched); ok {
 				result.Rejected = true
-			default:
+			} else if err == errors.VersionDateUnmatched || err == errors.VersionMessageUnmatched {
+				result.Rejected = true
+			} else {
 				result.Entry = entry
 				result.Err = err
 			}

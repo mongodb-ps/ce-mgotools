@@ -1,19 +1,20 @@
 package parser
 
 import (
+	"mgotools/parser/errors"
 	"mgotools/record"
 	"mgotools/util"
 )
 
 type Version24SParser struct {
-	VersionCommon
+	VersionBaseParser
 }
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version24SParser{VersionCommon{
+		return &Version24SParser{VersionBaseParser{
 			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
-			ErrorVersion: ErrorVersionUnmatched{"mongos 2.4"},
+			ErrorVersion: errors.VersionUnmatched{"mongos 2.4"},
 		}}
 	})
 }
