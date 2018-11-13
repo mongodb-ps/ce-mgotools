@@ -67,16 +67,12 @@ type MsgWiredTigerConfig struct {
 // Message Commands
 //
 
-type MsgNamespace struct {
-	Namespace string
-}
-
-type MsgCollectionIndexOperation struct {
-	MsgNamespace
-	MsgPayload
-
-	Operation  string
-	Properties map[string]interface{}
+type MsgBase struct {
+	Counters    map[string]int64
+	Duration    int64
+	Exception   string
+	Namespace   string
+	PlanSummary []MsgPlanSummary
 }
 
 type MsgPayload map[string]interface{}
@@ -109,25 +105,16 @@ type MsgCommandLegacy struct {
 	MsgBase
 
 	Command string
-	Locks   map[string]int
+	Locks   map[string]int64
 	Payload MsgPayload
 }
 
 type MsgOperationLegacy struct {
 	MsgBase
 
-	Locks     map[string]int
+	Locks     map[string]int64
 	Operation string
 	Payload   MsgPayload
-}
-
-type MsgBase struct {
-	MsgNamespace
-
-	Counters    map[string]int
-	Duration    int64
-	Exception   string
-	PlanSummary []MsgPlanSummary
 }
 
 type MsgFilter map[string]interface{}
@@ -136,20 +123,20 @@ type MsgSort map[string]interface{}
 type MsgUpdate map[string]interface{}
 
 type MsgPlanSummary struct {
-	Type    string
-	Summary interface{}
+	Type string
+	Key  interface{}
 }
 
 type MsgCRUD struct {
 	Message
 
-	Comment     string
-	Filter      MsgFilter
-	N           int
-	PlanSummary []MsgPlanSummary
-	Project     MsgProject
-	Sort        MsgSort
-	Update      MsgUpdate
+	Comment  string
+	CursorId int64
+	Filter   MsgFilter
+	N        int64
+	Project  MsgProject
+	Sort     MsgSort
+	Update   MsgUpdate
 }
 
 func MsgBaseFromMessage(msg Message) (*MsgBase, bool) {
@@ -190,28 +177,13 @@ func MsgPayloadFromMessage(msg Message) (*MsgPayload, bool) {
 	}
 }
 
-func MsgNamespaceFromMessage(msg Message) (*MsgNamespace, bool) {
-	if msg == nil {
-		return &MsgNamespace{}, false
-	}
-	switch t := msg.(type) {
-	case MsgNamespace:
-		return &t, true
-	case MsgCommand:
-		return &t.MsgNamespace, true
-	case MsgCommandLegacy:
-		return &t.MsgNamespace, true
-	default:
-		return &MsgNamespace{}, false
-	}
-}
-
 func MakeMsgCommand() MsgCommand {
 	return MsgCommand{
 		MsgBase: MsgBase{
-			Counters: make(map[string]int),
+			Counters: make(map[string]int64),
 		},
-		Payload: make(map[string]interface{}),
+		Command: "",
+		Payload: make(MsgPayload),
 		Locks:   make(map[string]interface{}),
 	}
 }
@@ -219,29 +191,32 @@ func MakeMsgCommand() MsgCommand {
 func MakeMsgOperation() MsgOperation {
 	return MsgOperation{
 		MsgBase: MsgBase{
-			Counters: make(map[string]int),
+			Counters: make(map[string]int64),
 		},
-		Payload: make(map[string]interface{}),
-		Locks:   make(map[string]interface{}),
+		Operation: "",
+		Payload:   make(MsgPayload),
+		Locks:     make(map[string]interface{}),
 	}
 }
 
 func MakeMsgCommandLegacy() MsgCommandLegacy {
 	return MsgCommandLegacy{
 		MsgBase: MsgBase{
-			Counters: make(map[string]int),
+			Counters: make(map[string]int64),
 		},
-		Payload: make(map[string]interface{}),
-		Locks:   make(map[string]int),
+		Command: "",
+		Payload: make(MsgPayload),
+		Locks:   make(map[string]int64),
 	}
 }
 
 func MakeMsgOperationLegacy() MsgOperationLegacy {
 	return MsgOperationLegacy{
 		MsgBase: MsgBase{
-			Counters: make(map[string]int),
+			Counters: make(map[string]int64),
 		},
-		Payload: make(map[string]interface{}),
-		Locks:   make(map[string]int),
+		Operation: "",
+		Payload:   make(MsgPayload),
+		Locks:     make(map[string]int64),
 	}
 }

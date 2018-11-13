@@ -23,6 +23,7 @@ type debugLog struct {
 	json       bool
 	context    bool
 	message    bool
+	object     bool
 	patternize bool
 
 	limitLine  bool
@@ -43,6 +44,7 @@ func init() {
 			{Name: "json", ShortName: "j", Type: Bool, Usage: "return parsed data in JSON format"},
 			{Name: "line", ShortName: "l", Type: String, Usage: "limit by line number"},
 			{Name: "message", ShortName: "m", Type: Bool, Usage: "only show messages"},
+			{Name: "object", Type: Bool, Usage: "only show object details"},
 			{Name: "patternize", ShortName: "p", Type: Bool, Usage: "turn queries into a pattern"},
 			{Name: "version", ShortName: "v", Type: String, Usage: "assume parsing of a single version"},
 			{Name: "width", ShortName: "w", Type: Int, Usage: "limit line width"},
@@ -65,6 +67,7 @@ func (d *debugLog) Prepare(name string, instance int, args CommandArgumentCollec
 	d.highlight, _ = args.Strings["highlight"]
 	d.message, _ = args.Booleans["message"]
 	d.patternize, _ = args.Booleans["patternize"]
+	d.object, _ = args.Booleans["object"]
 	lineArg, _ := args.Strings["line"]
 	versionArg, _ := args.Strings["version"]
 	width, _ := args.Integers["width"]
@@ -193,24 +196,26 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 
 		messages := make(map[parser.VersionDefinition]MessageResult)
 
-		buffer(fmt.Sprintf("%5d: ", base.LineNumber), base.String())
-		//buffer("       ", d.formatObject(base))
+		if !d.object {
+			buffer(fmt.Sprintf("%5d: ", base.LineNumber), base.String())
+			//buffer("       ", d.formatObject(base))
+		}
 
 		if d.context {
 			if entry, err := logs.NewEntry(base); err == nil && !d.message {
 				buffer("       ", d.formatObject(entry))
 			} else if err == nil && d.message && entry.Message != nil {
 				buffer("       ", d.formatObject(entry.Message))
-			} else {
+			} else if !d.object {
 				buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(logs.LastWinner.String()), err))
 			}
 		} else {
 			for _, versionParser := range factories {
-				if pass := versionParser.Check(base); !pass {
+				if pass := versionParser.Check(base); !pass && !d.object {
 					buffer(" skip: ", fmt.Sprintf("[%s]", color.HiCyanString(versionParser.Version().String())))
-				} else if entry, err := versionLogs[versionParser.Version()].BaseToEntry(base, versionParser); err != nil {
+				} else if entry, err := versionLogs[versionParser.Version()].BaseToEntry(base, versionParser); err != nil && !d.object {
 					buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(versionParser.Version().String()), err))
-				} else {
+				} else if d.object && entry.Message != nil || !d.object {
 					messages[versionParser.Version()] = MessageResult{entry.Message, err}
 				}
 			}
@@ -227,11 +232,11 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 							buffer(prefix+color.WhiteString("--> "), pattern.String())
 						}
 					}
-				} else {
+				} else if !d.object {
 					unmatched = append(unmatched, color.RedString(v.String()))
 				}
 			}
-			if len(unmatched) > 0 {
+			if len(unmatched) > 0 && !d.object {
 				c := strings.Join(unmatched, ", ")
 				buffer(" fail: [", c+"]")
 			}
@@ -247,7 +252,9 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 		}
 
 		outputBuffer = outputBuffer[:0]
-		out <- ""
+		if !d.object {
+			out <- ""
+		}
 	}
 
 	return
@@ -294,6 +301,9 @@ var errorInterface = (*error)(nil)
 
 func colorizeObject(a interface{}) string {
 	b := bytes.Buffer{}
+	if a == nil {
+		return "nil"
+	}
 
 	var m reflect.Value
 	if _, ok := a.(reflect.Value); ok {

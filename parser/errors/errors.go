@@ -11,6 +11,7 @@ var ComponentUnmatched = errors.New("component unmatched")
 var ControlUnrecognized = VersionUnmatched{Message: "unrecognized control message"}
 var CounterUnrecognized = VersionUnmatched{Message: "unrecognized counter"}
 var MetadataUnmatched = VersionUnmatched{"unexpected connection meta format"}
+var MisplacedWordException = VersionUnmatched{"unexpected or misplaced word"}
 var NetworkUnrecognized = VersionUnmatched{"unrecognized network message"}
 var NoNamespaceFound = errors.New("no namespace found")
 var NoPlanSummaryFound = errors.New("no plan summary found")

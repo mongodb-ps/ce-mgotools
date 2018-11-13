@@ -131,6 +131,13 @@ func (r *RuneReader) Expect(a ...interface{}) bool {
 	return checkReader(r, a...)
 }
 
+func (r *RuneReader) ExpectRune(v rune) bool {
+	if r.next > r.length-1 {
+		return false
+	}
+	return r.runes[r.next] == v
+}
+
 func (r *RuneReader) ExpectString(a string) bool {
 	if length := len(a); length > 0 &&
 		r.next+length <= r.length &&

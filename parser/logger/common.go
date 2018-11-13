@@ -1,4 +1,4 @@
-package format
+package logger
 
 import (
 	"net"
@@ -137,60 +137,6 @@ func connectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 	}
 
 	return ip, uint16(port), conn, true
-}
-
-func IntegerKeyValue(source string, target map[string]int, limit map[string]string) bool {
-	if key, num, ok := util.StringDoubleSplit(source, ':'); ok && num != "" {
-		if _, ok := limit[key]; ok {
-			if count, err := strconv.ParseInt(num, 10, 64); err == nil {
-				target[key] = int(count)
-				return true
-			} else {
-				panic(err)
-			}
-		}
-	}
-
-	return false
-}
-
-func PlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
-	var out []record.MsgPlanSummary
-	for {
-		if op, ok := r.SlurpWord(); !ok {
-			// There are no words, so exit.
-			break
-		} else if r.NextRune() == '{' {
-			if summary, err := mongo.ParseJsonRunes(r, false); err != nil {
-				// The plan summary did not parse as valid JSON so exit.
-				return nil, err
-			} else {
-				// The plan summary parsed as valid JSON, so record the operation and fall-through.
-				out = append(out, record.MsgPlanSummary{op, summary})
-			}
-			if r.NextRune() != ',' {
-				// There are no other plans so exit plan summary parsing.
-				break
-			} else {
-				// There are more plans, so continue to run by repeating the for loop.
-				r.Next()
-				continue
-			}
-		} else if length := len(op); length > 2 && op[length-1] == ',' {
-			// This is needed for repeated bare words (e.g. planSummary: COLLSCAN, COLLSCAN).
-			out = append(out, record.MsgPlanSummary{op[:length-1], nil})
-			continue
-		} else {
-			// Finally, the plan summary is boring and only includes a single word (e.g. COLLSCAN).
-			out = append(out, record.MsgPlanSummary{op, nil})
-			break
-		}
-	}
-	if len(out) == 0 {
-		// Return an error if no plans exist.
-		return nil, errors.NoPlanSummaryFound
-	}
-	return out, nil
 }
 
 func StartupInfo(msg string) (record.MsgStartupInfo, error) {

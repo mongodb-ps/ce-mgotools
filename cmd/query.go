@@ -42,8 +42,9 @@ type queryLog struct {
 type queryPattern struct {
 	format.PatternSummary
 
-	n95Sequence float64
-	sync        sync.Mutex
+	cursorId int64
+	p95      []int64
+	sync     sync.Mutex
 }
 
 func init() {
@@ -83,6 +84,17 @@ func (s *queryLog) Finish(index int) error {
 	values := make([]format.PatternSummary, 0, len(s.Log))
 
 	for _, pattern := range s.Log[index].Patterns {
+		sort.Slice(pattern.p95, func(i, j int) bool { return pattern.p95[i] > pattern.p95[j] })
+
+		if len(pattern.p95) > 1 {
+			index := float64(len(pattern.p95)) * 0.05
+			if math.Floor(index) == index {
+				pattern.PatternSummary.N95Percentile = (float64(pattern.p95[int(index)-1] + pattern.p95[int(index)])) / 2
+			} else {
+				pattern.PatternSummary.N95Percentile = float64(pattern.p95[int(index)])
+			}
+		}
+
 		values = append(values, pattern.PatternSummary)
 	}
 
@@ -150,28 +162,60 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 			)
 
 			log.End = entry.Date
-			if cmd, ok := entry.Message.(record.MsgCommand); ok {
+			crud, ok := entry.Message.(record.MsgCRUD)
+			if !ok {
+				// Ignore non-CRUD operations for query purposes.
+				continue
+			}
+
+			pattern := mongo.NewPattern(crud.Filter)
+			query = pattern.StringCompact()
+
+			switch cmd := crud.Message.(type) {
+			case record.MsgCommand:
 				dur = cmd.Duration
 				ns = cmd.Namespace
 				op = cmd.Command
 
-				pattern := mongo.NewPattern(cmd.Payload)
-				query = pattern.StringCompact()
-			} else if cmd, ok := entry.Message.(record.MsgCommandLegacy); ok {
+			case record.MsgCommandLegacy:
 				dur = cmd.Duration
 				ns = cmd.Namespace
 				op = cmd.Command
 
-				pattern := mongo.NewPattern(cmd.Payload)
-				query = pattern.StringCompact()
-			} else {
-				// Ignore non-commands (like operations).
+			case record.MsgOperation:
+				dur = cmd.Duration
+				ns = cmd.Namespace
+				op = cmd.Operation
+
+			case record.MsgOperationLegacy:
+				dur = cmd.Duration
+				ns = cmd.Namespace
+				op = cmd.Operation
+
+			default:
+				// Returned something completely unexpected so ignore the line.
+				continue
+			}
+
+			op = util.StringToLower(op)
+
+			switch op {
+			case "find":
+			case "count":
+			case "update":
+			case "getmore":
+			case "remove":
+			case "findandmodify":
+			case "geonear":
+
+			default:
 				continue
 			}
 
 			if op != "" && query != "" {
 				key := ns + ":" + op + ":" + query
 				pattern, ok := log.Patterns[key]
+
 				if !ok {
 					pattern = queryPattern{
 						PatternSummary: format.PatternSummary{
@@ -179,7 +223,7 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 							Operation: op,
 							Pattern:   query,
 						},
-						n95Sequence: 0,
+						p95: make([]int64, 0, 16*1024*1024),
 					}
 				}
 
@@ -199,22 +243,27 @@ func (s *queryLog) Terminate(out chan<- string) error {
 func updateSummary(s queryPattern, dur int64) queryPattern {
 	s.Count += 1
 	s.Sum += dur
+	s.p95 = append(s.p95, dur)
+
 	if dur > s.Max {
 		s.Max = dur
 	}
 	if dur < s.Min {
 		s.Min = dur
 	}
+
 	// Calculate the 95th percentile using a moving percentile estimation.
 	// http://mjambon.com/2016-07-23-moving-percentile/
-	s.n95Sequence = math.Pow(float64(s.Sum)/float64(s.Count)-float64(dur), 2)
-	if s.Count == 1 {
-		s.N95Percentile = float64(dur)
-	} else if float64(dur) < s.N95Percentile {
-		s.N95Percentile = s.N95Percentile - (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.9
-	} else if float64(dur) > s.N95Percentile {
-		s.N95Percentile = s.N95Percentile + (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.1
-	}
+	/*
+		s.n95Sequence = math.Pow(float64(s.Sum)/float64(s.Count)-float64(dur), 2)
+		if s.Count == 1 {
+			s.N95Percentile = float64(dur)
+		} else if float64(dur) < s.N95Percentile {
+			s.N95Percentile = s.N95Percentile - (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.9
+		} else if float64(dur) > s.N95Percentile {
+			s.N95Percentile = s.N95Percentile + (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.1
+		}
+	*/
 	return s
 }
 

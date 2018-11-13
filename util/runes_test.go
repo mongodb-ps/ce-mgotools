@@ -1,9 +1,10 @@
 package util_test
 
 import (
-	"mgotools/util"
 	"testing"
 	"unicode"
+
+	"mgotools/util"
 )
 
 func TestNewRuneReaderEmpty(t *testing.T) {
@@ -97,6 +98,27 @@ func TestRuneReader_Expect(t *testing.T) {
 	if r.Expect("") {
 		t.Error("Expect w/ empty string succeeded unexpectedly")
 	}
+}
+
+func TestRuneReader_ExpectRune(t *testing.T) {
+
+	if r := util.NewRuneReader("ab"); !r.ExpectRune('a') {
+		t.Errorf("ExpectRune failed at 'a'")
+	} else if r.ExpectRune('b') {
+		t.Errorf("ExpectRune failed by returning 'b'")
+	}
+
+	if r := util.NewRuneReader(""); r.ExpectRune('a') {
+		t.Errorf("ExpectRune failed by returning 'a'")
+	}
+
+	r := util.NewRuneReader("ab")
+	r.SlurpWord()
+
+	if r.ExpectRune('b') {
+		t.Errorf("ExpectRune failed by returning 'b' after slurp")
+	}
+
 }
 
 func TestRuneReader_ExpectString(t *testing.T) {

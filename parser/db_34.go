@@ -2,7 +2,6 @@ package parser
 
 import (
 	"mgotools/parser/errors"
-	"mgotools/parser/format/modern"
 	"mgotools/record"
 	"mgotools/util"
 )
@@ -27,7 +26,7 @@ func (v *Version34Parser) Check(base record.Base) bool {
 }
 
 func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	return modern.Message(entry, v.ErrorVersion)
+	panic("Not yet implemented")
 }
 
 func (v *Version34Parser) Version() VersionDefinition {

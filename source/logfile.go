@@ -68,7 +68,7 @@ func newBase(line string, num uint) (record.Base, error) {
 	if base.EOL() || base.RawDate == "" {
 		return base, ErrorParsingDate
 	}
-	if base.Expect('[') {
+	if base.ExpectRune('[') {
 		// the context is first so assume the line remainder is the message
 		if r, err := base.EnclosedString(']', false); err == nil {
 			base.RawContext = r

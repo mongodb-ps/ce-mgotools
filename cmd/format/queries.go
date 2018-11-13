@@ -55,7 +55,7 @@ func PrintQueryTable(patterns []PatternSummary, out io.Writer) {
 				strconv.FormatInt(pattern.Count, 10),
 				strconv.FormatInt(pattern.Min, 10),
 				strconv.FormatInt(pattern.Max, 10),
-				strconv.FormatFloat(float64(pattern.Sum/pattern.Count), 'f', 1, 64),
+				strconv.FormatFloat(float64(pattern.Sum/pattern.Count), 'f', 0, 64),
 				strconv.FormatFloat(pattern.N95Percentile, 'f', 1, 64),
 				strconv.FormatInt(pattern.Sum, 10),
 			})
