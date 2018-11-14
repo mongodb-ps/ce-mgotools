@@ -19,11 +19,14 @@ type RuneReader struct {
 // Generates a RuneReader from a string.
 func NewRuneReader(a string) *RuneReader {
 	r := []rune(a)
+	s, l := 0, len(r)
+	for ; s < l && unicode.IsSpace(r[s]); s += 1 {
+	}
 	return &RuneReader{
 		runes:  r,
-		length: len(r),
-		start:  0,
-		next:   0,
+		length: l,
+		start:  s,
+		next:   s,
 	}
 }
 
@@ -227,11 +230,10 @@ func (r *RuneReader) PreviewWord(count int) string {
 		end   = start
 	)
 	for words := 0; words < count; words += 1 {
-		for end += 1; end < r.length && !unicode.Is(unicode.Space, r.runes[end]); end += 1 {
+		for end += 1; end < r.length && !unicode.IsSpace(r.runes[end]); end += 1 {
 		}
 		end += 1
 	}
-	trimLeftRunes(r, unicode.Space)
 	return runeRange(r, start, end-1)
 }
 
@@ -278,7 +280,7 @@ func (r *RuneReader) Reset() {
 func (r *RuneReader) RewindSlurpWord() {
 	r.next = r.start
 	for r.start -= 1; r.start > 0; r.start -= 1 {
-		if unicode.Is(unicode.Space, r.runes[r.start]) {
+		if unicode.IsSpace(r.runes[r.start]) {
 			r.start += 1
 			break
 		}
@@ -309,7 +311,11 @@ func (r *RuneReader) ScanForRuneWhile(match ...interface{}) (string, bool) {
 	}
 	for ; r.next < r.length; r.next += 1 {
 		if !checkReader(r, match...) {
-			return runeRange(r, r.start, r.next), true
+			if m := runeRange(r, r.start, r.next); m != "" {
+				return m, true
+			} else {
+				return "", false
+			}
 		}
 	}
 	return string(r.runes[r.start:]), true
@@ -346,10 +352,10 @@ func (r *RuneReader) Skip(length int) *RuneReader {
 }
 
 func (r *RuneReader) SkipWords(count int) *RuneReader {
-	for ; count > 0 && r.next < r.length; r.next += 1 {
-		if unicode.IsSpace(r.runes[r.next]) {
-			trimLeftRunes(r, unicode.Space)
-			count -= 1
+	for ; count > 0 && r.next < r.length; count -= 1 {
+		for ; r.next < r.length && !unicode.IsSpace(r.runes[r.next]); r.next += 1 {
+		}
+		for ; r.next < r.length && unicode.IsSpace(r.runes[r.next]); r.next += 1 {
 		}
 	}
 	r.start = r.next
@@ -358,7 +364,6 @@ func (r *RuneReader) SkipWords(count int) *RuneReader {
 
 func (r *RuneReader) MultiSlurpWord(count int) []string {
 	var out []string
-	r.start = r.next
 	for i := 0; i < count; i += 1 {
 		if word, ok := r.SlurpWord(); ok {
 			out = append(out, word)
@@ -375,7 +380,7 @@ func (r *RuneReader) SlurpWord() (string, bool) {
 	}
 	r.start = r.next
 	for r.next += 1; r.next <= r.length; r.next += 1 {
-		if unicode.Is(unicode.Space, r.runes[r.next-1]) {
+		if unicode.IsSpace(r.runes[r.next-1]) {
 			if r.start == r.next-1 {
 				if r.start < r.length && r.runes[r.start] == ' ' {
 					r.start += 1
@@ -385,8 +390,12 @@ func (r *RuneReader) SlurpWord() (string, bool) {
 			break
 		}
 	}
-	trimLeftRunes(r, unicode.Space)
-	return runeRange(r, r.start, r.next-1), true
+	m := runeRange(r, r.start, r.next-1)
+	if m != "" {
+		return m, true
+	} else {
+		return m, false
+	}
 }
 
 func (r *RuneReader) String() string {
@@ -466,10 +475,5 @@ func runeRange(r *RuneReader, start int, end int) string {
 		panic("start is more than end")
 	} else {
 		return string(r.runes[start:end])
-	}
-}
-
-func trimLeftRunes(r *RuneReader, table *unicode.RangeTable) {
-	for ; r.start < r.length && unicode.Is(table, r.runes[r.start]); r.start += 1 {
 	}
 }

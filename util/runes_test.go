@@ -1,11 +1,37 @@
 package util_test
 
 import (
+	"math/rand"
+	"strings"
 	"testing"
 	"unicode"
 
 	"mgotools/util"
 )
+
+func BenchmarkRuneReader_SlurpWord(b *testing.B) {
+	// Seed with a static variable to get the same randomness every run.
+	rand.Seed(1)
+
+	s := strings.Builder{}
+	m := "abcdefghijklmnopqrstuvwxyz"
+	for i := 0; i < b.N; i += 1 {
+		c := rand.Intn(20)
+
+		for j := 0; j < c; j += 1 {
+			p := rand.Intn(26)
+			s.WriteRune(rune(m[p]))
+		}
+
+		s.WriteRune(' ')
+	}
+
+	b.ResetTimer()
+	r := util.NewRuneReader(s.String())
+	for i := 0; i < b.N; i += 1 {
+		r.SlurpWord()
+	}
+}
 
 func TestNewRuneReaderEmpty(t *testing.T) {
 	r := util.NewRuneReader("")
@@ -342,6 +368,16 @@ func TestRuneReader_SkipWords(t *testing.T) {
 	if r.Pos() != 16 {
 		t.Errorf("Expected 16, got %d", r.Pos())
 	}
+
+	r = util.NewRuneReader("a  b   c")
+	r.SkipWords(1)
+	if r.Pos() != 3 {
+		t.Errorf("Expected 3, got %d", r.Pos())
+	} else if !r.ExpectString("b") {
+		t.Errorf("Did not get 'b'")
+	} else if !r.SkipWords(1).ExpectString("c") {
+		t.Errorf("Did not get 'c'")
+	}
 }
 
 func TestRuneReader_String(t *testing.T) {
@@ -398,6 +434,17 @@ func TestRuneReader_SlurpWord(t *testing.T) {
 	if word, ok := msg.SlurpWord(); word != "" && !ok {
 		t.Errorf("Got '%s', expected !ok", word)
 	}
+	msg = util.NewRuneReader("  a  b  c  ")
+	if word, ok := msg.SlurpWord(); !ok || word != "a" {
+		t.Errorf("Got '%s', expected 'a'", word)
+	} else if word, ok := msg.SlurpWord(); !ok || word != "b" {
+		t.Errorf("Got '%s', expected 'b'", word)
+	} else if word, ok := msg.SlurpWord(); !ok || word != "c" {
+		t.Errorf("Got '%s', expected 'c'", word)
+	} else if word, ok := msg.SlurpWord(); ok || word != "" {
+		t.Errorf("Got '%s', expected nothing.", word)
+	}
+
 	msg = util.NewRuneReader("a { x: xyz }  word a   xyz ")
 	expect = []string{"a", "{", "x:", "xyz", "}", "word", "a", "xyz"}
 	for i := 0; i < len(expect); i++ {
