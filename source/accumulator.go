@@ -8,27 +8,41 @@ import (
 	"mgotools/record"
 )
 
+const OutputBuffer = 128
 const MaxBufferSize = 16777216
 
+type AccumulatorReadCloser interface {
+	io.ReadCloser
+	NewBase(string, uint) (record.Base, error)
+}
+
 type accumulator struct {
-	handle io.ReadCloser
+	io.Closer
+
+	eof   bool
+	next  record.Base
+	error error
 
 	Log *bufio.Scanner
 	Out chan accumulatorResult
 	In  chan string
 }
 
+var _ io.ReadCloser = (*accumulator)(nil)
+var _ record.BaseFactory = (*accumulator)(nil)
+
 type accumulatorResult struct {
 	Base  record.Base
 	Error error
 }
 
-func NewAccumulator(closer io.ReadCloser) *accumulator {
+func NewAccumulator(handle AccumulatorReadCloser) *accumulator {
 	r := &accumulator{
-		handle: closer,
+		Closer: handle,
+		eof:    false,
 
-		Log: bufio.NewScanner(closer),
-		Out: make(chan accumulatorResult),
+		Log: bufio.NewScanner(handle),
+		Out: make(chan accumulatorResult, OutputBuffer),
 		In:  make(chan string),
 	}
 
@@ -41,7 +55,7 @@ func NewAccumulator(closer io.ReadCloser) *accumulator {
 		}
 	}()
 
-	go Accumulator(r.In, r.Out, newBase)
+	go Accumulator(r.In, r.Out, handle.NewBase)
 	return r
 }
 
@@ -56,30 +70,29 @@ func NewAccumulator(closer io.ReadCloser) *accumulator {
 func Accumulator(in <-chan string, out chan<- accumulatorResult, callback func(string, uint) (record.Base, error)) {
 	defer func() {
 		// Last defer called.
-		out <- accumulatorResult{record.Base{}, io.EOF}
 		close(out)
 	}()
 
-	type accumulator struct {
+	type accumulatorCounter struct {
 		count   int
 		last    []accumulatorResult
 		size    int
 		started bool
 	}
 
-	reset := func(a *accumulator) {
+	reset := func(a *accumulatorCounter) {
 		a.last = a.last[:0]
 		a.size = 0
 	}
 
-	flush := func(a *accumulator) {
+	flush := func(a *accumulatorCounter) {
 		for _, r := range a.last {
 			out <- r
 		}
 		reset(a)
 	}
 
-	a := accumulator{
+	a := accumulatorCounter{
 		count:   0,
 		last:    make([]accumulatorResult, 0),
 		size:    0,
@@ -88,6 +101,7 @@ func Accumulator(in <-chan string, out chan<- accumulatorResult, callback func(s
 
 	defer flush(&a)
 	lineNumber := uint(0)
+
 	for line := range in {
 		lineNumber += 1
 		base, err := callback(line, lineNumber)
@@ -160,11 +174,43 @@ func Accumulator(in <-chan string, out chan<- accumulatorResult, callback func(s
 	}
 }
 
-func (f *accumulator) Read() (record.Base, error) {
-	b := <-f.Out
-	return b.Base, b.Error
+// Implement a reader that returns a byte array of the most current accumulated
+// line.
+func (f *accumulator) Read(p []byte) (n int, err error) {
+	if f.eof {
+		return 0, f.error
+	}
+	s := []byte(f.next.String())
+	l := len(s)
+
+	if l > cap(p) {
+		panic("buffer too small for next set of results")
+	}
+
+	copy(p, s)
+	return l, nil
+}
+
+func (f *accumulator) Next() bool {
+	if f.eof {
+		return false
+	}
+
+	b, ok := <-f.Out
+	f.next = b.Base
+	f.error = b.Error
+
+	if !ok {
+		f.eof = true
+		return false
+	}
+	return true
+}
+
+func (f *accumulator) Get() (record.Base, error) {
+	return f.next, f.error
 }
 
 func (f *accumulator) Close() error {
-	return f.handle.Close()
+	return f.Closer.Close()
 }

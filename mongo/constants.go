@@ -3,8 +3,10 @@
 // anything not already contained in the standard go release.
 package mongo
 
-type Object map[string]interface{}
-type Array []interface{}
+import "mgotools/util"
+
+type Object = map[string]interface{}
+type Array = []interface{}
 
 // The constant arrays that follow should *ALWAYS* be in sorted binary order. A lot of methods expect these arrays
 // to be pre-sorted so they can be used with binary searches for fast array comparison. Failure to put these arrays
@@ -141,3 +143,19 @@ var OPERATORS_EXPRESSION = []string{
 
 // The severities variable contains all severities encountered in MongoDB.
 var SEVERITIES = []string{"D", "E", "F", "I", "W"}
+
+// IsComponent checks a string value against the possible components array.
+func IsComponent(value string) bool {
+	return util.ArrayMatchString(COMPONENTS, value)
+}
+
+// IsContext checks for a bracketed string ([<string>])
+func IsContext(value string) bool {
+	length := util.StringLength(value)
+	return length > 2 && value[0] == '[' && value[length-1] == ']'
+}
+
+// IsSeverity checks a string value against the severities array.
+func IsSeverity(value string) bool {
+	return util.StringLength(value) == 1 && util.ArrayMatchString(SEVERITIES, value)
+}

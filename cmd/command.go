@@ -12,11 +12,6 @@ import (
 	"mgotools/record"
 )
 
-type BaseFactory interface {
-	Read() (record.Base, error)
-	Close() error
-}
-
 type commandSource <-chan record.Base
 type commandTarget chan<- string
 type commandError chan<- error
@@ -26,7 +21,7 @@ type CommandInput struct {
 	Arguments CommandArgumentCollection
 	Name      string
 	Length    int64
-	Reader    BaseFactory
+	Reader    record.BaseFactory
 }
 
 type CommandOutput struct {
@@ -127,8 +122,18 @@ func RunCommand(f Command, in []CommandInput, out CommandOutput) error {
 
 	// Finally, a new goroutine is needed for each individual input file handle.
 	for i := 0; i < count; i += 1 {
-		// Start a goroutine to wait each input file handle to finish processing.
-		go parseFile(f, i, in[i].Reader, outChannel, errorChannel, fatal, &processSync)
+		go func(index int) {
+			// Signal that this file is complete.
+			defer processSync.Done()
+
+			// Start a goroutine to wait each input file handle to finish processing.
+			parseFile(f, index, in[index].Reader, outChannel, errorChannel, fatal)
+
+			// Collect any final errors and send them along.
+			if err := f.Finish(index); err != nil {
+				errorChannel <- err
+			}
+		}(i)
 	}
 
 	// Wait for all input goroutines to finish.
@@ -147,24 +152,25 @@ func RunCommand(f Command, in []CommandInput, out CommandOutput) error {
 	return nil
 }
 
-func parseFile(f Command, index int, in BaseFactory, out chan<- string, errs chan<- error, fatal chan struct{}, wg *sync.WaitGroup) {
+func parseFile(f Command, index int, in record.BaseFactory, out chan<- string, errs chan<- error, fatal chan struct{}) {
 	var inputChannel = make(chan record.Base, 1024)
 	var inputWaitGroup sync.WaitGroup
 
-	// Alert the synchronization object that one of the goroutines is finished.
-	defer wg.Done()
+	// Count the number of goroutines that must complete before returning.
 	inputWaitGroup.Add(2)
 
 	go func() {
 		// Decrement the wait group.
 		defer inputWaitGroup.Done()
 
-		for {
-			base, err := in.Read()
+		// Close channels that will no longer be used after this method
+		// exists (and signal any pending goroutines).
+		defer close(inputChannel)
+
+		for in.Next() {
+			base, err := in.Get()
 			if err == io.EOF {
-				// Close channels that will no longer be used after this method exists (and signal any pending goroutines).
-				close(inputChannel)
-				return
+				panic("eof error received before channel close")
 			} else if err != nil {
 				errs <- err
 			} else {
@@ -182,13 +188,9 @@ func parseFile(f Command, index int, in BaseFactory, out chan<- string, errs cha
 
 		// Begin running the command.
 		f.Run(index, out, inputChannel, errs, fatal)
-
-		// Collect any final errors and send them along.
-		if err := f.Finish(index); err != nil {
-			errs <- err
-		}
 	}()
 
+	// Wait for both goroutines to complete.
 	inputWaitGroup.Wait()
 	return
 }

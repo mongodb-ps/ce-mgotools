@@ -1,10 +1,11 @@
 package mongo
 
 import (
-	"mgotools/util"
 	"reflect"
 	"testing"
 	"time"
+
+	"mgotools/util"
 )
 
 func TestParseJson(t *testing.T) {
@@ -14,6 +15,7 @@ func TestParseJson(t *testing.T) {
 		`{"key":"value"}`:                                    {"key": "value"},
 		`{"$key":"value"}`:                                   {"$key": "value"},
 		`{    "key"   :    "value"    }`:                     {"key": "value"},
+		`{    "key"   :    "value"    }        `:             {"key": "value"},
 		`{"key1":"value","key2":"value"}`:                    {"key1": "value", "key2": "value"},
 		`{"key1" : "value" , "key2" : "value" }`:             {"key1": "value", "key2": "value"},
 		`{"key":true}`:                                       {"key": true},
@@ -53,7 +55,6 @@ func TestParseJson(t *testing.T) {
 		`{ key.name : "value" }`:                        {"key.name": "value"},
 		`{key:{$op:"value"}}`:                           {"key": map[string]interface{}{"$op": "value"}},
 		`{key:"value"}`:                                 {"key": "value"},
-		`{    "key"   :    "value"    }        `:        {"key": "value"},
 		`{"key":''}`:                                    {"key": ""},
 		`{"key": objectid(00000000000000000000000000)}`: {"key": ObjectId{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
 		`{"key": "this " is " incorrectly " quoted"}`:   {"key": `this \" is \" incorrectly \" quoted`},
@@ -143,6 +144,27 @@ func TestParseNumber(t *testing.T) {
 		if c, err := parseNumber(util.NewRuneReader(s)); c != v || err != nil {
 			t.Errorf("Parsing number '%s' (%T %v) returned %T %v: %s", s, v, v, c, c, err)
 		}
+	}
+}
+
+func TestParseJsonRunes(t *testing.T) {
+	r := util.NewRuneReader("{a:1}")
+	if s, err := ParseJsonRunes(r, false); err != nil || !reflect.DeepEqual(s, map[string]interface{}{"a": 1}) {
+		t.Errorf("Rune parsing failed, returned: %#v", s)
+	}
+
+	r = util.NewRuneReader("{a:1}x")
+	if s, err := ParseJsonRunes(r, false); err != nil || !reflect.DeepEqual(s, map[string]interface{}{"a": 1}) {
+		t.Errorf("Rune parsing failed, returned: %#v", s)
+	} else if !r.ExpectRune('x') {
+		t.Errorf("Expected 'x', got '%s'", r.Peek(1))
+	}
+
+	r = util.NewRuneReader("{a:1} x")
+	if s, err := ParseJsonRunes(r, false); err != nil || !reflect.DeepEqual(s, map[string]interface{}{"a": 1}) {
+		t.Errorf("Rune parsing failed, returned: %#v", s)
+	} else if !r.ExpectRune('x') {
+		t.Errorf("Expected 'x', got '%s'", r.Peek(1))
 	}
 }
 

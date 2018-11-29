@@ -69,11 +69,11 @@ func ArrayMatchString(a []string, match string) bool {
 	return false
 }
 func StringDoubleSplit(s string, d rune) (string, string, bool) {
-	for i, c := range s {
-		if c == d {
-			return s[0:i], s[i+1:], true
-		}
+	pos := strings.IndexRune(s, d)
+	if pos > -1 {
+		return s[0:pos], s[pos+1:], true
 	}
+
 	return s, "", false
 }
 

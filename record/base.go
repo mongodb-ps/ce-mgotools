@@ -4,20 +4,12 @@ import (
 	"strings"
 	"unicode"
 
-	"mgotools/mongo"
 	"mgotools/util"
 )
 
 type Severity rune
 
 const SeverityNone = Severity(0)
-
-func (s Severity) String() string {
-	if s == SeverityNone {
-		s = '-'
-	}
-	return string(s)
-}
 
 type Binary uint32
 
@@ -27,15 +19,10 @@ const (
 	BinaryMongos
 )
 
-func (b Binary) String() string {
-	switch b {
-	case BinaryMongod:
-		return "mongod"
-	case BinaryMongos:
-		return "mongos"
-	default:
-		return "unknown"
-	}
+type BaseFactory interface {
+	Next() bool
+	Get() (Base, error)
+	Close() error
 }
 
 type Base struct {
@@ -48,6 +35,24 @@ type Base struct {
 	RawContext   string
 	RawMessage   string
 	RawSeverity  Severity
+}
+
+func (s Severity) String() string {
+	if s == SeverityNone {
+		s = '-'
+	}
+	return string(s)
+}
+
+func (b Binary) String() string {
+	switch b {
+	case BinaryMongod:
+		return "mongod"
+	case BinaryMongos:
+		return "mongos"
+	default:
+		return "unknown"
+	}
 }
 
 func (r *Base) IsIsoString() bool {
@@ -99,20 +104,4 @@ func (r *Base) ParseCDateString() string {
 	}
 
 	return strings.Join(target, " ")
-}
-
-// IsComponent checks a string value against the possible components array.
-func IsComponent(value string) bool {
-	return util.ArrayMatchString(mongo.COMPONENTS, value)
-}
-
-// IsContext checks for a bracketed string ([<string>])
-func IsContext(value string) bool {
-	length := util.StringLength(value)
-	return length > 2 && value[0] == '[' && value[length-1] == ']'
-}
-
-// IsSeverity checks a string value against the severities array.
-func IsSeverity(value string) bool {
-	return util.StringLength(value) == 1 && util.ArrayMatchString(mongo.SEVERITIES, value)
 }

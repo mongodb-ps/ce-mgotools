@@ -79,7 +79,8 @@ func (r *RuneReader) CurrentWord() string {
 	if r.start >= r.length {
 		return ""
 	}
-	return runeRange(r, r.start, r.next)
+	s, _ := runeRange(r, r.start, r.next)
+	return s
 }
 
 // NextRune() returns the next rune to be parsed, i.e. the rune
@@ -234,7 +235,9 @@ func (r *RuneReader) PreviewWord(count int) string {
 		}
 		end += 1
 	}
-	return runeRange(r, start, end-1)
+
+	s, _ := runeRange(r, start, end-1)
+	return s
 }
 
 // QuotedString() returns a string between two quote or double quote
@@ -268,7 +271,8 @@ func (r *RuneReader) Remainder() string {
 	}
 	r.start = r.next
 	r.next = r.length
-	return runeRange(r, r.start, r.next)
+	s, _ := runeRange(r, r.start, r.next)
+	return s
 }
 
 // Reset() returns the _start_ and _end_ pointers to the beginning
@@ -298,7 +302,7 @@ func (r *RuneReader) ScanForRune(match ...interface{}) (string, bool) {
 	for ; r.next < r.length; r.next += 1 {
 		if checkReader(r, match...) {
 			r.next += 1
-			return runeRange(r, r.start, r.next), true
+			return runeRange(r, r.start, r.next)
 		}
 	}
 	return string(r.runes[r.start:]), false
@@ -311,11 +315,7 @@ func (r *RuneReader) ScanForRuneWhile(match ...interface{}) (string, bool) {
 	}
 	for ; r.next < r.length; r.next += 1 {
 		if !checkReader(r, match...) {
-			if m := runeRange(r, r.start, r.next); m != "" {
-				return m, true
-			} else {
-				return "", false
-			}
+			return runeRange(r, r.start, r.next)
 		}
 	}
 	return string(r.runes[r.start:]), true
@@ -390,12 +390,7 @@ func (r *RuneReader) SlurpWord() (string, bool) {
 			break
 		}
 	}
-	m := runeRange(r, r.start, r.next-1)
-	if m != "" {
-		return m, true
-	} else {
-		return m, false
-	}
+	return runeRange(r, r.start, r.next-1)
 }
 
 func (r *RuneReader) String() string {
@@ -464,16 +459,16 @@ func checkReader(r *RuneReader, a ...interface{}) bool {
 	return false
 }
 
-func runeRange(r *RuneReader, start int, end int) string {
+func runeRange(r *RuneReader, start int, end int) (string, bool) {
 	if start == end || start >= r.length {
-		return ""
+		return "", false
 	} else if start == end-1 {
-		return string(r.runes[start])
+		return string(r.runes[start]), true
 	} else if end > r.length {
-		return string(r.runes[start:r.length])
+		return string(r.runes[start:r.length]), true
 	} else if start > end {
 		panic("start is more than end")
 	} else {
-		return string(r.runes[start:end])
+		return string(r.runes[start:end]), true
 	}
 }

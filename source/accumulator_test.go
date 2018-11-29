@@ -3,9 +3,8 @@ package source
 import (
 	"bufio"
 	"bytes"
+	"io"
 	"testing"
-
-	"mgotools/record"
 )
 
 type accumulatorFile struct {
@@ -33,7 +32,7 @@ func testAccumulator(r accumulatorFile, t *testing.T) {
 	scanner := bufio.NewScanner(bytes.NewBufferString(r.Reader))
 
 	in, out := make(chan string), make(chan accumulatorResult)
-	go Accumulator(in, out, record.NewBase)
+	go Accumulator(in, out, Log{}.NewBase)
 
 	go func() {
 		i := uint(0)
@@ -47,6 +46,9 @@ func testAccumulator(r accumulatorFile, t *testing.T) {
 
 	i := int(0)
 	for m := range out {
+		if m.Error == io.EOF {
+			break
+		}
 		if i >= len(r.Expected) {
 			t.Errorf("Too many results found")
 			return
@@ -62,20 +64,6 @@ func testAccumulator(r accumulatorFile, t *testing.T) {
 	if i < len(r.Expected) {
 		t.Errorf("Too few lines returned, %d of %d", i, len(r.Expected))
 	}
-}
-
-var fileInvalid = accumulatorFile{
-	Reader: `line 1
-line 2
-line 3
-line 4`,
-
-	Expected: []string{
-		"line 1",
-		"line 2",
-		"line 3",
-		"line 4",
-	},
 }
 
 var fileIso1Valid = accumulatorFile{
@@ -109,5 +97,19 @@ newlines
 done." } } planSummary: IXSCAN { c: 1 } keysExamined:0 docsExamined:0 cursorExhausted:1 numYields:0 nreturned:0 reslen:81 locks:{ Global: { acquireCount: { r: 2 } }, MMAPV1Journal: { acquireCount: { r: 1 } }, Database: { acquireCount: { r: 1 } }, Collection: { acquireCount: { R: 1 } } } protocol:op_command 0ms`,
 		`2018-01-16T15:00:44.572-0800 I COMMAND  [conn1] command test.$cmd command: isMaster { isMaster: 1.0, forShell: 1.0 } numYields:0 reslen:174 locks:{} protocol:op_command 0ms`,
 		`2018-01-16T15:00:44.573-0800 I COMMAND  [conn1] command test.foo command: explain { explain: { find: "foo", filter: { b: 1.0 } }, verbosity: "queryPlanner" } numYields:0 reslen:381 locks:{ Global: { acquireCount: { r: 2 } }, MMAPV1Journal: { acquireCount: { r: 1 } }, Database: { acquireCount: { r: 1 } }, Collection: { acquireCount: { R: 1 } } } protocol:op_command 0ms`,
+	},
+}
+
+var fileInvalid = accumulatorFile{
+	Reader: `line 1
+line 2
+line 3
+line 4`,
+
+	Expected: []string{
+		"line 1",
+		"line 2",
+		"line 3",
+		"line 4",
 	},
 }

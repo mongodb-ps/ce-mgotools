@@ -19,6 +19,7 @@ var NoStartupArgumentsFound = errors.New("no startup arguments found")
 var OperationStructure = errors.New("operation structure unexpected")
 var StorageUnmatched = VersionUnmatched{"unrecognized storage option"}
 var UnexpectedExceptionFormat = errors.New("error parsing exception")
+var UnexpectedEOL = errors.New("unexpected end of line")
 var UnexpectedVersionFormat = errors.New("unexpected version format")
 
 /*

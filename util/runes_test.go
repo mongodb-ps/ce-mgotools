@@ -9,6 +9,35 @@ import (
 	"mgotools/util"
 )
 
+func BenchmarkRuneReader_Skip(b *testing.B) {
+	r := util.NewRuneReader("abc def xyz")
+
+	b.Run("SkipWords1", func(b *testing.B) {
+		for i := 0; i < b.N; i += 1 {
+			r.Seek(0, 0)
+			r.SkipWords(1)
+			r.SkipWords(1)
+			r.SkipWords(1)
+		}
+	})
+
+	b.Run("SkipWords3", func(b *testing.B) {
+		for i := 0; i < b.N; i += 1 {
+			r.Seek(0, 0)
+			r.SkipWords(3)
+		}
+	})
+
+	b.Run("SlurpWord", func(b *testing.B) {
+		for i := 0; i < b.N; i += 1 {
+			r.Seek(0, 0)
+			r.SlurpWord()
+			r.SlurpWord()
+			r.SlurpWord()
+		}
+	})
+}
+
 func BenchmarkRuneReader_SlurpWord(b *testing.B) {
 	// Seed with a static variable to get the same randomness every run.
 	rand.Seed(1)

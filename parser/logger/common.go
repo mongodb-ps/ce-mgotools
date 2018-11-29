@@ -32,7 +32,7 @@ func Control(r util.RuneReader, entry record.Entry) (record.Message, error) {
 		if r.ExpectString("dbexit") {
 			return record.MsgShutdown{String: r.Remainder()}, nil
 		} else {
-			return record.MsgSignal{r.Remainder()}, nil
+			return record.MsgSignal{String: r.Remainder()}, nil
 		}
 	}
 	return nil, errors.ControlUnrecognized

@@ -43,8 +43,9 @@ func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
 		}
 		return V{}
 	}
+
 	for key := range s {
-		switch t := translate(s[key]).(type) {
+		switch t := s[key].(type) {
 		case map[string]interface{}:
 			if !expr || util.ArrayInsensitiveMatchString(OPERATORS_COMPARISON, key) {
 				s[key] = compress(createPattern(t, true))
@@ -53,6 +54,7 @@ func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
 			} else {
 				s[key] = V{}
 			}
+
 		case []interface{}:
 			if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) {
 				s[key] = createArray(t, false)
@@ -61,6 +63,7 @@ func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
 			} else {
 				s[key] = V{}
 			}
+
 		default:
 			s[key] = V{}
 		}
@@ -78,22 +81,31 @@ func createString(p *Pattern, compact bool) string {
 		var buffer = bytes.NewBufferString("[")
 		total := len(array)
 		v := 0
+
 		if !compact && total > 0 {
 			buffer.WriteRune(' ')
 		}
+
 		for index := 0; index < total; index += 1 {
-			switch t := array[index].(type) {
+			r := array[index]
+			switch t := r.(type) {
 			case []interface{}:
 				r := arr(t)
 				if r == "1" {
 					v += 1
 				}
+
 				buffer.WriteString(r)
+
 			case map[string]interface{}:
 				buffer.WriteString(obj(t))
+
 			case V:
 				buffer.WriteRune('1')
 				v += 1
+
+			default:
+				panic(fmt.Sprintf("unexpected type %T in pattern", r))
 			}
 			if index < total-1 {
 				buffer.WriteString(", ")
@@ -125,20 +137,25 @@ func createString(p *Pattern, compact bool) string {
 			buffer.WriteString(key)
 			buffer.WriteRune('"')
 			buffer.WriteString(": ")
+
 			switch t := object[key].(type) {
 			case []interface{}:
 				buffer.WriteString(arr(t))
+
 			case map[string]interface{}:
 				buffer.WriteString(obj(t))
+
 			case V:
 				buffer.WriteRune('1')
 			}
+
 			if count < total {
 				buffer.WriteString(", ")
 			} else if !compact {
 				buffer.WriteRune(' ')
 			}
 		}
+
 		buffer.WriteRune('}')
 		return buffer.String()
 	}
@@ -149,7 +166,7 @@ func createArray(t []interface{}, expr bool) interface{} {
 	size := len(t)
 	v := 0
 	for i := 0; i < size; i += 1 {
-		switch t2 := translate(t[i]).(type) {
+		switch t2 := t[i].(type) {
 		case map[string]interface{}:
 			t[i] = createPattern(t2, true)
 		case []interface{}:
@@ -180,7 +197,7 @@ func deepEqual(ax, bx map[string]interface{}) bool {
 	}
 	var f func(a, b interface{}) bool
 	f = func(a, b interface{}) bool {
-		switch t := translate(a).(type) {
+		switch t := a.(type) {
 		case map[string]interface{}:
 			if s, ok := b.(map[string]interface{}); !ok {
 				return false
@@ -206,7 +223,7 @@ func deepEqual(ax, bx map[string]interface{}) bool {
 			}
 			return true
 		default:
-			panic(fmt.Sprintf("unexpected type in pattern: %#v", t))
+			panic(fmt.Sprintf("unexpected type %T in pattern", t))
 		}
 	}
 	for key := range ax {
@@ -215,17 +232,6 @@ func deepEqual(ax, bx map[string]interface{}) bool {
 		}
 	}
 	return true // len(a) == len(b) == 0
-}
-
-func translate(n interface{}) interface{} {
-	switch t := n.(type) {
-	case Object:
-		return func(i map[string]interface{}) map[string]interface{} { return i }(t)
-	case Array:
-		return func(i []interface{}) []interface{} { return i }(t)
-	default:
-		return n
-	}
 }
 
 // A custom sorting algorithm to keep keys starting with _ before $, and $

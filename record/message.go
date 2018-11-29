@@ -77,25 +77,21 @@ type MsgBase struct {
 
 type MsgPayload map[string]interface{}
 
-type MsgWireProtocol struct {
-	Agent    string
-	Protocol string
-}
-
 type MsgCommand struct {
 	MsgBase
-	MsgWireProtocol
 
-	Command string
-	Locks   map[string]interface{}
-	Payload MsgPayload
+	Agent    string
+	Command  string
+	Locks    map[string]interface{}
+	Payload  MsgPayload
+	Protocol string
 }
 
 // remove, update, query, insert
 type MsgOperation struct {
-	MsgWireProtocol
 	MsgBase
 
+	Agent     string
 	Locks     map[string]interface{}
 	Operation string
 	Payload   MsgPayload

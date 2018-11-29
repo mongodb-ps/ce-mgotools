@@ -25,14 +25,14 @@ func init() {
 }
 
 func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	r := *util.NewRuneReader(entry.RawMessage)
+	r := util.NewRuneReader(entry.RawMessage)
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
 		// Check for control messages, which is almost everything in 2.4 that is logged at startup.
-		if msg, err := logger.Control(r, entry); err == nil {
+		if msg, err := logger.Control(*r, entry); err == nil {
 			// Most startup messages are part of control.
 			return msg, nil
-		} else if msg, err := logger.Network(r, entry); err == nil {
+		} else if msg, err := logger.Network(*r, entry); err == nil {
 			// Alternatively, we care about basic network actions like new connections being established.
 			return msg, nil
 		}
@@ -49,12 +49,7 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 				return nil, err
 			}
 
-			if c, ok := logger.Crud(op.Operation, op.Counters, op.Payload); ok {
-				c.Message = op
-				return c, nil
-			}
-
-			return op, err
+			return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
 		case r.ExpectString("command"):
 			// Commands in 2.4 don't include anything that should be converted
@@ -69,12 +64,7 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 				cmd.Locks = op.Locks
 				cmd.Payload = op.Payload
 
-				if c, ok := logger.Crud(op.Operation, op.Counters, op.Payload); ok {
-					c.Message = cmd
-					return c, nil
-				}
-
-				return cmd, err
+				return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 			}
 
 		case r.ExpectString("insert"):
@@ -87,16 +77,11 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 				return nil, err
 			}
 
-			if c, ok := logger.Crud(op.Operation, op.Counters, op.Payload); ok {
-				c.Message = op
-				return c, nil
-			}
-
-			return op, nil
+			return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
 		default:
 			// Check for network connection changes.
-			if msg, err := logger.Network(r, entry); err == nil {
+			if msg, err := logger.Network(*r, entry); err == nil {
 				return msg, nil
 			}
 		}
@@ -114,7 +99,7 @@ func (v *Version24Parser) Version() VersionDefinition {
 	return VersionDefinition{Major: 2, Minor: 4, Binary: record.BinaryMongod}
 }
 
-func (v Version24Parser) parse24WithPayload(r util.RuneReader, command bool) (record.MsgOperationLegacy, error) {
+func (v Version24Parser) parse24WithPayload(r *util.RuneReader, command bool) (record.MsgOperationLegacy, error) {
 	// command test.$cmd command: { getlasterror: 1.0, w: 1.0 } ntoreturn:1 keyUpdates:0  reslen:67 0ms
 	// query test.foo query: { b: 1.0 } ntoreturn:0 ntoskip:0 nscanned:10 keyUpdates:0 locks(micros) r:146 nreturned:1 reslen:64 0ms
 	// update vcm_audit.payload.files query: { _id: ObjectId('000000000000000000000000') } update: { _id: ObjectId('000000000000000000000000') } idhack:1 nupdated:1 upsert:1 keyUpdates:0 locks(micros) w:33688 194ms
@@ -123,7 +108,7 @@ func (v Version24Parser) parse24WithPayload(r util.RuneReader, command bool) (re
 	op.Namespace, _ = r.SlurpWord()
 
 	var target = op.Counters
-	for param, ok := r.SlurpWord(); ok && param != ""; param, ok = r.SlurpWord() {
+	for param, ok := r.SlurpWord(); ok; param, ok = r.SlurpWord() {
 		if param[len(param)-1] == ':' {
 			param = param[:len(param)-1]
 			if op.Operation == "" {
@@ -139,7 +124,7 @@ func (v Version24Parser) parse24WithPayload(r util.RuneReader, command bool) (re
 
 					r.RewindSlurpWord()
 				}
-				if payload, err := mongo.ParseJsonRunes(&r, false); err != nil {
+				if payload, err := mongo.ParseJsonRunes(r, false); err != nil {
 					return op, err
 				} else if command {
 					op.Payload = payload
@@ -156,7 +141,7 @@ func (v Version24Parser) parse24WithPayload(r util.RuneReader, command bool) (re
 				param = param + ":"
 			}
 		}
-		v.parseIntegerKeyValueErratic(param, target, &r)
+		v.parseIntegerKeyValueErratic(param, target, r)
 		if param == "locks(micros)" {
 			target = op.Locks
 		} else if strings.HasSuffix(param, "ms") {
@@ -166,13 +151,13 @@ func (v Version24Parser) parse24WithPayload(r util.RuneReader, command bool) (re
 
 	return op, nil
 }
-func (Version24Parser) parse24WithoutPayload(r util.RuneReader) (record.MsgOperationLegacy, error) {
+func (Version24Parser) parse24WithoutPayload(r *util.RuneReader) (record.MsgOperationLegacy, error) {
 	// insert test.system.indexes ninserted:1 keyUpdates:0 locks(micros) w:10527 10ms
 	op := record.MakeMsgOperationLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 	target := op.Counters
-	for param, ok := r.SlurpWord(); ok && param != ""; param, ok = r.SlurpWord() {
+	for param, ok := r.SlurpWord(); ok; param, ok = r.SlurpWord() {
 		if param == "locks(micros)" {
 			target = op.Locks
 			continue

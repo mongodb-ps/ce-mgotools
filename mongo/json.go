@@ -50,6 +50,7 @@ func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) 
 		if current == '}' {
 			// End parsing and return data when closing character found.
 			r.Skip(1)
+			r.ChompWS()
 			return data, nil
 		} else if key, err := parseKey(r, strict); err != nil {
 			return nil, err
@@ -72,6 +73,7 @@ func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) 
 				continue
 			} else if r.NextRune() == '}' {
 				r.Skip(1)
+				r.ChompWS()
 				return data, nil
 			} else if !strict && !r.EOL() {
 				// This section exists to handle unquoted string characters.

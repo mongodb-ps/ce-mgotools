@@ -120,12 +120,15 @@ func runCommand(c *cli.Context) error {
 			if err != nil {
 				return err
 			}
+
 			fileCount = 1
+			stdio, err := source.NewLog(os.Stdin)
+
 			input = append(input, cmd.CommandInput{
 				Arguments: args,
 				Name:      "stdin",
 				Length:    int64(0),
-				Reader:    source.NewAccumulator(os.Stdin),
+				Reader:    source.NewAccumulator(stdio),
 			})
 		}
 
@@ -152,12 +155,17 @@ func runCommand(c *cli.Context) error {
 				return err
 			}
 
+			logfile, err := source.NewLog(file)
+			if err != nil {
+				return err
+			}
+
 			fileCount += 1
 			input = append(input, cmd.CommandInput{
 				Arguments: args,
 				Name:      filepath.Base(path),
 				Length:    size,
-				Reader:    source.NewAccumulator(file),
+				Reader:    source.NewAccumulator(logfile),
 			})
 		}
 

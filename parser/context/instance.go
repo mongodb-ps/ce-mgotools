@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/parser/errors"
 	"mgotools/record"
@@ -162,7 +163,7 @@ func (c *Instance) BaseToEntry(base record.Base, factory parser.VersionParser) (
 		base.RawDate = base.RawDate[:10] + " " + strconv.Itoa(util.DATE_YEAR+c.DateRollover) + base.RawDate[10:]
 	}
 
-	if util.StringLength(out.RawContext) > 2 && record.IsContext(out.RawContext) {
+	if util.StringLength(out.RawContext) > 2 && mongo.IsContext(out.RawContext) {
 		out.Context = out.RawContext[1 : util.StringLength(out.RawContext)-1]
 		length := util.StringLength(out.Context)
 

@@ -53,12 +53,7 @@ func (v *Version26Parser) NewLogMessage(entry record.Entry) (record.Message, err
 				return c, err
 			}
 
-			if crud, ok := logger.Crud(c.Command, c.Counters, c.Payload); ok {
-				crud.Message = c
-				return crud, nil
-			}
-
-			return c, nil
+			return logger.CrudOrMessage(c, c.Command, c.Counters, c.Payload), nil
 
 		case r.ExpectString("query"),
 			r.ExpectString("getmore"),
@@ -124,7 +119,7 @@ func (Version26Parser) command(r *util.RuneReader) (record.MsgCommandLegacy, err
 		}
 
 		if !counters {
-			if ok, err := logger.SectionsStatic(param, &cmd.MsgBase, cmd.Payload, r); err != nil {
+			if ok, err := logger.StringSections(param, &cmd.MsgBase, cmd.Payload, r); err != nil {
 				return record.MsgCommandLegacy{}, nil
 			} else if ok {
 				continue
@@ -181,7 +176,7 @@ func (Version26Parser) operation(r *util.RuneReader) (record.MsgOperationLegacy,
 	}
 
 	for param, ok := r.SlurpWord(); ok; param, ok = r.SlurpWord() {
-		if ok, err := logger.SectionsStatic(param, &op.MsgBase, op.Payload, r); err != nil {
+		if ok, err := logger.StringSections(param, &op.MsgBase, op.Payload, r); err != nil {
 			return op, err
 		} else if ok {
 			continue

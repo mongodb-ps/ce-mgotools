@@ -1,9 +1,6 @@
 package parser
 
 import (
-	"strconv"
-	"strings"
-
 	"mgotools/mongo"
 	"mgotools/parser/errors"
 	"mgotools/parser/logger"
@@ -13,14 +10,44 @@ import (
 
 type Version30Parser struct {
 	VersionBaseParser
+	counters    map[string]string
+	versionFlag bool
 }
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version30Parser{VersionBaseParser: VersionBaseParser{
-			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
-			ErrorVersion: errors.VersionUnmatched{"version 3.0"},
-		}}
+		return &Version30Parser{
+			VersionBaseParser: VersionBaseParser{
+				DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
+				ErrorVersion: errors.VersionUnmatched{"version 3.0"},
+			},
+
+			counters: map[string]string{
+				"cursorid":        "cursorid",
+				"ntoreturn":       "ntoreturn",
+				"ntoskip":         "ntoskip",
+				"exhaust":         "exhaust",
+				"nscanned":        "keysExamined",
+				"nscannedObjects": "docsExamined",
+				"idhack":          "idhack",
+				"scanAndOrder":    "scanAndOrder",
+				"nmoved":          "nmoved",
+				"nMatched":        "nmatched",
+				"nModified":       "nmodified",
+				"ninserted":       "ninserted",
+				"ndeleted":        "ndeleted",
+				"fastmod":         "fastmod",
+				"fastmodinsert":   "fastmodinsert",
+				"upsert":          "upsert",
+				"keyUpdates":      "keyUpdates",
+				"writeConflicts":  "writeConflicts",
+				"nreturned":       "nreturned",
+				"numYields":       "numYields",
+				"reslen":          "reslend",
+			},
+
+			versionFlag: true,
+		}
 	})
 }
 
@@ -49,64 +76,37 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (record.Message, err
 }
 
 func (v *Version30Parser) Check(base record.Base) bool {
-	return !base.CString &&
+	return v.versionFlag && !base.CString &&
 		base.RawSeverity != record.SeverityNone &&
 		v.expectedComponents(base.RawComponent)
 }
 
-func (Version30Parser) command(r *util.RuneReader) (record.MsgCommand, error) {
-	var err error
-	cmd := record.MakeMsgCommand()
-
-	if c, n, o, err := logger.Preamble(r); err != nil {
+func (v *Version30Parser) command(r *util.RuneReader) (record.MsgCommand, error) {
+	cmd, err := logger.CommandPreamble(r)
+	if err != nil {
 		return record.MsgCommand{}, err
-	} else if c != "command" {
-		return record.MsgCommand{}, errors.CommandStructure
-	} else {
-		cmd.Command = o
-		cmd.Namespace = n
-
-		// Command is optional (but common), so if it doesn't exist then the
-		// next thing on the line will be "planSummary:"
-		if o != "command" {
-			r.RewindSlurpWord()
-		} else if op, ok := r.SlurpWord(); !ok {
-			return record.MsgCommand{}, errors.CommandStructure
-		} else {
-			cmd.Command = op
-			if cmd.Payload, err = mongo.ParseJsonRunes(r, false); err != nil {
-				return record.MsgCommand{}, err
-			}
-		}
-
-		cmd.Namespace = logger.NamespaceReplace(cmd.Command, cmd.Payload, cmd.Namespace)
 	}
 
-	for {
-		param, ok := r.SlurpWord()
-		if !ok {
-			break
+	err = logger.MidLoop(r, "locks:", &cmd.MsgBase, cmd.Counters, cmd.Payload, v.counters)
+	if err != nil {
+		if err == errors.CounterUnrecognized {
+			v.versionFlag = false
+			err = errors.VersionUnmatched{Message: "counter unrecognized"}
 		}
-
-		if ok, err := logger.SectionsStatic(param, &cmd.MsgBase, cmd.Payload, r); ok {
-			continue
-		} else if err != nil {
-			return record.MsgCommand{}, nil
-		} else if size := len(param); size > 6 && param[:6] == "locks:" {
-			// Break the counter for loop and process lock information.
-			r.RewindSlurpWord()
-			r.Skip(6)
-			break
-		} else if strings.ContainsRune(param, ':') && !logger.IntegerKeyValue(param, cmd.Counters, mongo.COUNTERS) {
-			return record.MsgCommand{}, errors.CounterUnrecognized
-		}
+		return record.MsgCommand{}, err
 	}
 
-	if cmd.Locks, err = mongo.ParseJsonRunes(r, false); err != nil {
+	cmd.Locks, err = logger.Locks(r)
+	if err != nil {
 		return record.MsgCommand{}, err
-	} else if word, ok := r.SlurpWord(); !ok || !strings.HasSuffix(word, "ms") {
-		return record.MsgCommand{}, errors.CommandStructure
-	} else if cmd.Duration, err = strconv.ParseInt(word[:len(word)-2], 10, 64); err != nil {
+	}
+
+	cmd.Duration, err = logger.Duration(r)
+	if err != nil {
+		r.RewindSlurpWord()
+		if r.ExpectString("protocol:") {
+			v.versionFlag = false
+		}
 		return record.MsgCommand{}, err
 	}
 
@@ -121,24 +121,15 @@ func (v Version30Parser) crud(command bool, r *util.RuneReader) (record.Message,
 			return nil, err
 		}
 
-		if crud, ok := logger.Crud(c.Command, c.Counters, c.Payload); ok {
-			crud.Message = c
-			return crud, nil
-		}
+		return logger.CrudOrMessage(c, c.Command, c.Counters, c.Payload), nil
 
-		return c, err
 	} else {
 		o, err := v.operation(r)
 		if err != nil {
 			return nil, err
 		}
 
-		if crud, ok := logger.Crud(o.Operation, o.Counters, o.Payload); ok {
-			crud.Message = o
-			return crud, nil
-		}
-
-		return o, nil
+		return logger.CrudOrMessage(o, o.Operation, o.Counters, o.Payload), nil
 	}
 }
 
@@ -168,78 +159,30 @@ func (v *Version30Parser) expectedComponents(c string) bool {
 	}
 }
 
-func (Version30Parser) operation(r *util.RuneReader) (record.MsgOperation, error) {
-	op := record.MakeMsgOperation()
+func (v Version30Parser) operation(r *util.RuneReader) (record.MsgOperation, error) {
+	op, err := logger.OperationPreamble(r)
+	if err != nil {
+		return op, err
+	}
 
-	if c, n, _, err := logger.Preamble(r); err != nil {
+	err = logger.MidLoop(r, "locks:", &op.MsgBase, op.Counters, op.Payload, v.counters)
+	if err != nil {
 		return record.MsgOperation{}, err
-	} else {
-		// Rewind the operation name so it can be parsed in the next section.
-		r.RewindSlurpWord()
-
-		op.Operation = c
-		op.Namespace = n
+	} else if !util.ArrayBinarySearchString(op.Operation, mongo.OPERATIONS) {
+		return record.MsgOperation{}, errors.OperationStructure
 	}
 
-	for param, ok := r.SlurpWord(); ok; param, ok = r.SlurpWord() {
-		if ok, err := logger.SectionsStatic(param, &op.MsgBase, op.Payload, r); err != nil {
-			return record.MsgOperation{}, err
-		} else if ok {
-			continue
-		}
-
-		switch {
-		case strings.HasPrefix(param, "locks:"):
-			// The parameter is actually "locks:{", so rewind (which accounts
-			// for spaces) and skip to the curly bracket.
-			r.RewindSlurpWord()
-			r.Skip(6)
-
-			if locks, err := mongo.ParseJsonRunes(r, false); err != nil {
-				return op, errors.OperationStructure
-			} else {
-				op.Locks = locks
-			}
-
-			// Immediately following the locks section is time.
-			param, ok := r.SlurpWord()
-			if !ok {
-				continue
-			}
-
-			if !strings.HasSuffix(param, "ms") {
-				return record.MsgOperation{}, errors.OperationStructure
-			}
-
-			// Found a duration, which is also the last thing in the line.
-			op.Duration, _ = strconv.ParseInt(param[0:len(param)-2], 10, 64)
-			return op, nil
-
-		case strings.ContainsRune(param, ':'):
-			// A counter (in the form of key:value) needs to be applied to the correct target.
-			if !logger.IntegerKeyValue(param, op.Counters, mongo.COUNTERS) {
-				return record.MsgOperation{}, errors.CounterUnrecognized
-			}
-
-		default:
-			if length := len(param); length > 1 && util.ArrayBinarySearchString(param[:length-1], mongo.OPERATIONS) {
-				if r.EOL() {
-					return record.MsgOperation{}, errors.OperationStructure
-				}
-
-				// Parse JSON, found immediately after an operation.
-				var err error
-				if op.Payload[param[:length-1]], err = mongo.ParseJsonRunes(r, false); err != nil {
-					return record.MsgOperation{}, err
-				}
-			} else {
-				// An unexpected value means that this parser either isn't the correct version or the line is invalid.
-				return record.MsgOperation{}, errors.OperationStructure
-			}
-		}
+	op.Locks, err = logger.Locks(r)
+	if err != nil {
+		return record.MsgOperation{}, err
 	}
 
-	return record.MsgOperation{}, errors.VersionUnmatched{}
+	op.Duration, err = logger.Duration(r)
+	if err != nil {
+		return record.MsgOperation{}, err
+	}
+
+	return op, nil
 }
 
 func (v *Version30Parser) Version() VersionDefinition {

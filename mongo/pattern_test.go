@@ -14,7 +14,7 @@ func TestPattern_NewPattern(t *testing.T) {
 		{"a": Object{"$exists": true}},
 		{"a.b": "y"},
 		{"$or": Array{Object{"a": 5}, Object{"b": 5}}},
-		{"$and": Array{Object{"$or": Array{Object{"a": 5}, Object{"b": 5}}}, Array{Object{"$or": Array{Object{"c": 5}, Object{"d": 5}}}}}},
+		{"$and": Array{Object{"$or": Array{Object{"a": 5}, Object{"b": 5}}}, Object{"$or": Array{Object{"c": 5}, Object{"d": 5}}}}},
 		{"_id": ObjectId{}},
 		{"a": Object{"$in": Array{5, 5, 5}}},
 		{"a": Object{"$elemMatch": Object{"b": 5, "c": Object{"$gte": 5}}}},
@@ -29,11 +29,11 @@ func TestPattern_NewPattern(t *testing.T) {
 		{"a": V{}},
 		{"a.b": V{}},
 		{"$or": Array{Object{"a": V{}}, Object{"b": V{}}}},
-		{"$and": Array{Object{"$or": Array{Object{"a": V{}}, Object{"b": V{}}}}, Array{Object{"$or": Array{Object{"c": V{}}, Object{"d": V{}}}}}}},
+		{"$and": Array{Object{"$or": Array{Object{"a": V{}}, Object{"b": V{}}}}, Object{"$or": Array{Object{"c": V{}}, Object{"d": V{}}}}}},
 		{"_id": V{}},
-		{"a": Object{"$in": V{}}},
-		{"a": Object{"$elemMatch": Object{"b": V{}, "c": Object{"$gte": V{}}}}},
-		{"a": Object{"$geoWithin": Object{"$center": Array{V{}, V{}}}}},
+		{"a": V{}},
+		{"a": Object{"$elemMatch": Object{"b": V{}, "c": V{}}}},
+		{"a": Object{"$geoWithin": Object{"$center": V{}}}},
 		{"a": Object{"$geoWithin": Object{"$geometry": Object{"a": V{}, "b": V{}}}}},
 	}
 	if len(s) != len(d) {
@@ -41,8 +41,8 @@ func TestPattern_NewPattern(t *testing.T) {
 	}
 
 	for i := range s {
-		if p := NewPattern(s[i]); !deepEqual(p.pattern, translate(d[i]).(map[string]interface{})) {
-			t.Errorf("pattern mismatch at %d: %#v %#v", i+1, s[i], d[i])
+		if p := NewPattern(s[i]); !deepEqual(p.pattern, d[i]) {
+			t.Errorf("pattern mismatch at %d:\n\t\t%#v\n\t\t%#v", i+1, d[i], s[i])
 		}
 	}
 }
@@ -128,7 +128,7 @@ func TestPattern_String(t *testing.T) {
 	}
 	for i := range s {
 		if s[i].String() != d[i] {
-			t.Errorf("pattern mismatch, expected '%s', got '%s'", d[i], s[i].String())
+			t.Errorf("pattern mismatch (%d), expected '%s', got '%s'", i, d[i], s[i].String())
 		}
 	}
 }
@@ -222,7 +222,7 @@ func BenchmarkPattern_MatchEquals(b *testing.B) {
 }
 func BenchmarkPattern_MatchString(b *testing.B) {
 	match := NewPattern(Object{"a": Array{Object{"a": 1}, Object{"b": 1}, Object{"c": 1}}})
-	var strings []string = make([]string, len(patterns))
+	var strings = make([]string, len(patterns))
 	size := len(patterns)
 	for i := 0; i < size; i += 1 {
 		strings[i] = patterns[i].String()
