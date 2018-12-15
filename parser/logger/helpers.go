@@ -80,9 +80,31 @@ func Crud(op string, counters map[string]int64, payload record.MsgPayload) (reco
 		return record.MsgCRUD{}, false
 	}
 
-	comment, _ := payload["$comment"].(string)
+	filter, ok := payload["query"].(map[string]interface{})
+	if !ok {
+		// Newer versions do not contain a string prefixed section after an
+		// operation and therefore will not have a wrapper around the query
+		// and update portions.
+		filter, _ = payload["q"].(map[string]interface{})
+	}
+
+	changes, ok := payload["update"].(map[string]interface{})
+	if !ok {
+		// Similar to query above, newer versions do not contain a string
+		// section before an update so a secondary check is necessary.
+		changes, _ = payload["u"].(map[string]interface{})
+	}
+
 	cursorId, _ := counters["cursorid"]
-	query, ok := payload["query"].(map[string]interface{})
+	comment, _ := payload["$comment"].(string)
+	if comment == "" {
+		comment, _ = filter["$comment"].(string)
+		delete(filter, "$comment")
+	}
+
+	if _, explain := filter["$explain"]; explain {
+		delete(filter, "$explain")
+	}
 
 	delete(payload, "$maxScan")
 	delete(payload, "$returnKey")
@@ -90,119 +112,38 @@ func Crud(op string, counters map[string]int64, payload record.MsgPayload) (reco
 	delete(payload, "$snapshot")
 	delete(payload, "$maxTimeMS")
 
-	if ok {
-		if comment == "" {
-			comment, _ = query["$comment"].(string)
-			delete(query, "$comment")
-		}
-
-		if _, explain := query["$explain"]; explain {
-			delete(query, "$explain")
-		}
-		if len(query) == 1 {
-			// Dollar operators may have existed but don't anymore, so remove
-			// the superfluous "query" layer.
-			if _, ok := query["query"]; ok {
-				query, ok = query["query"].(map[string]interface{})
-			}
+	if len(filter) == 1 {
+		// Dollar operators may have existed but don't anymore, so remove
+		// the superfluous "query" layer.
+		if _, ok := filter["query"]; ok {
+			filter, ok = filter["query"].(map[string]interface{})
 		}
 	}
 
 	switch util.StringToLower(op) {
+	case "find":
+		return find(comment, cursorId, counters, payload)
+
 	case "query":
-		if query == nil {
-			// "query" operations can exist without a filter that skip directly
-			// to a plan summary. An empty filter should be returned.
-			query = make(record.MsgFilter)
-		}
-
-		c := record.MsgCRUD{
-			Comment:  comment,
-			CursorId: cursorId,
-			Filter:   query,
-			N:        counters["nreturned"],
-		}
-
-		c.Sort, _ = query["orderby"].(map[string]interface{})
-		if c.Sort != nil || c.Comment != "" {
-			if query, ok := query["query"].(map[string]interface{}); ok {
-				c.Filter = query
-			}
-		}
-
-		return c, true
+		return query(comment, cursorId, counters, filter)
 
 	case "update":
-		update, ok := payload["update"].(map[string]interface{})
-		if !ok || query == nil {
-			break
-		}
-
-		return record.MsgCRUD{
-			Comment: comment,
-			Filter:  query,
-			Update:  update,
-			N:       counters["nModified"],
-		}, true
+		return update(comment, counters, filter, changes)
 
 	case "remove":
-		return record.MsgCRUD{
-			Filter:  query,
-			Comment: comment,
-			N:       counters["ndeleted"],
-		}, true
+		return remove(comment, counters, filter)
 
 	case "insert":
-		if query == nil {
-			break
-		}
-
-		id, _ := query["_id"]
-		return record.MsgCRUD{
-			Filter:  record.MsgFilter{"_id": id},
-			Update:  query,
-			Comment: comment,
-			N:       counters["ninserted"],
-		}, true
+		return insert(comment, counters)
 
 	case "count":
-		if query == nil {
-			return record.MsgCRUD{}, false
-		}
-
-		fields, _ := payload["fields"].(map[string]interface{})
-		return record.MsgCRUD{
-			Filter:  query,
-			Project: fields,
-		}, true
+		return count(filter, payload)
 
 	case "findandmodify":
-		fields, _ := payload["fields"].(map[string]interface{})
-		sort, _ := payload["sort"].(map[string]interface{})
-		update, _ := payload["update"].(map[string]interface{})
-
-		return record.MsgCRUD{
-			CursorId: cursorId,
-			Filter:   query,
-			Project:  fields,
-			Sort:     sort,
-			Update:   update,
-		}, true
+		return findAndModify(cursorId, counters, filter, payload)
 
 	case "geonear":
-		if near, ok := payload["near"].(map[string]interface{}); ok {
-			if _, ok := near["$near"]; !ok {
-				if query == nil {
-					query = make(map[string]interface{})
-				}
-				query["$near"] = near
-			}
-		}
-
-		return record.MsgCRUD{
-			CursorId: cursorId,
-			Filter:   query,
-		}, true
+		return geoNear(cursorId, filter, payload)
 
 	case "getmore":
 		return record.MsgCRUD{CursorId: cursorId}, true
@@ -211,9 +152,30 @@ func Crud(op string, counters map[string]int64, payload record.MsgPayload) (reco
 	return record.MsgCRUD{}, false
 }
 
+func cleanQueryWithoutSort(c *record.MsgCRUD, query map[string]interface{}) {
+	c.Sort, _ = query["orderby"].(map[string]interface{})
+	if c.Sort != nil || c.Comment != "" {
+		if query, ok := query["query"].(map[string]interface{}); ok {
+			c.Filter = query
+		}
+	}
+}
+
+func count(query map[string]interface{}, payload record.MsgPayload) (record.MsgCRUD, bool) {
+	if query == nil {
+		return record.MsgCRUD{}, false
+	}
+
+	fields, _ := payload["fields"].(map[string]interface{})
+	return record.MsgCRUD{
+		Filter:  query,
+		Project: fields,
+	}, true
+}
+
 // A simple function that reduces CRUD checks and returns to a one-liner.
-func CrudOrMessage(obj record.Message, cmd string, counters map[string]int64, payload record.MsgPayload) record.Message {
-	if crud, ok := Crud(cmd, counters, payload); ok {
+func CrudOrMessage(obj record.Message, term string, counters map[string]int64, payload record.MsgPayload) record.Message {
+	if crud, ok := Crud(term, counters, payload); ok {
 		crud.Message = obj
 		return crud
 	}
@@ -235,6 +197,16 @@ func Duration(r *util.RuneReader) (int64, error) {
 	} else {
 		return dur, nil
 	}
+}
+
+func insert(comment string, counters map[string]int64) (record.MsgCRUD, bool) {
+	crud := record.MsgCRUD{
+		Update:  nil,
+		Comment: comment,
+		N:       counters["ninserted"],
+	}
+
+	return crud, true
 }
 
 func IntegerKeyValue(source string, target map[string]int64, limit map[string]string) bool {
@@ -272,6 +244,54 @@ func Exception(r *util.RuneReader) (string, bool) {
 	}
 
 	return "", false
+}
+
+func find(comment string, cursorId int64, counters map[string]int64, payload map[string]interface{}) (record.MsgCRUD, bool) {
+	filter, ok := payload["filter"].(map[string]interface{})
+	if !ok {
+		return record.MsgCRUD{}, false
+	}
+
+	c := record.MsgCRUD{
+		Comment:  comment,
+		CursorId: cursorId,
+		Filter:   filter,
+		N:        counters["nreturned"],
+	}
+
+	cleanQueryWithoutSort(&c, filter)
+	return c, true
+}
+
+func findAndModify(cursorId int64, counters map[string]int64, query map[string]interface{}, payload record.MsgPayload) (record.MsgCRUD, bool) {
+	fields, _ := payload["fields"].(map[string]interface{})
+	sort, _ := payload["sort"].(map[string]interface{})
+	update, _ := payload["update"].(map[string]interface{})
+
+	return record.MsgCRUD{
+		CursorId: cursorId,
+		Filter:   query,
+		N:        counters["nModified"],
+		Project:  fields,
+		Sort:     sort,
+		Update:   update,
+	}, true
+}
+
+func geoNear(cursorId int64, query map[string]interface{}, payload record.MsgPayload) (record.MsgCRUD, bool) {
+	if near, ok := payload["near"].(map[string]interface{}); ok {
+		if _, ok := near["$near"]; !ok {
+			if query == nil {
+				query = make(map[string]interface{})
+			}
+			query["$near"] = near
+		}
+	}
+
+	return record.MsgCRUD{
+		CursorId: cursorId,
+		Filter:   query,
+	}, true
 }
 
 func Locks(r *util.RuneReader) (map[string]interface{}, error) {
@@ -328,8 +348,13 @@ func NamespaceReplace(c string, p record.MsgPayload, n string) string {
 	return n
 }
 
+// Operations have a different syntax but output similar information. This
+// method processes lines that are typically WRITE.
 func OperationPreamble(r *util.RuneReader) (record.MsgOperation, error) {
 	op := record.MakeMsgOperation()
+	// Grab the operation and namespace. Ignore the third portion of the
+	// preamble because the reader will be rewound.
+
 	if c, n, _, err := Preamble(r); err != nil {
 		return record.MsgOperation{}, err
 	} else {
@@ -434,12 +459,38 @@ func Protocol(r *util.RuneReader) (string, error) {
 	}
 
 	word, _ := r.SlurpWord()
-	_, prot, ok := util.StringDoubleSplit(word, ':')
-	if !ok {
+	if len(word) < 10 {
 		return "", errors.UnexpectedEOL
 	}
+	return word[9:], nil
+}
 
-	return prot, nil
+func query(comment string, cursorId int64, counters map[string]int64, query map[string]interface{}) (record.MsgCRUD, bool) {
+	// Before all operations were translated to "commands" in the log.
+	if query == nil {
+		// "query" operations can exist without a filter that skip directly
+		// to a plan summary. An empty filter should be returned.
+		query = make(record.MsgFilter)
+	}
+
+	c := record.MsgCRUD{
+		Comment:  comment,
+		CursorId: cursorId,
+		Filter:   query,
+		N:        counters["nreturned"],
+	}
+
+	cleanQueryWithoutSort(&c, query)
+
+	return c, true
+}
+
+func remove(comment string, counters map[string]int64, filter map[string]interface{}) (record.MsgCRUD, bool) {
+	return record.MsgCRUD{
+		Filter:  filter,
+		Comment: comment,
+		N:       counters["ndeleted"],
+	}, true
 }
 
 func StringSections(term string, base *record.MsgBase, payload record.MsgPayload, r *util.RuneReader) (ok bool, err error) {
@@ -475,4 +526,14 @@ func StringSections(term string, base *record.MsgBase, payload record.MsgPayload
 	}
 
 	return ok, nil
+}
+
+func update(comment string, counters map[string]int64, filter map[string]interface{}, update map[string]interface{}) (record.MsgCRUD, bool) {
+	crud := record.MsgCRUD{
+		Comment: comment,
+		Filter:  filter,
+		Update:  update,
+		N:       counters["nModified"],
+	}
+	return crud
 }

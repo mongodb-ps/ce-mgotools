@@ -291,7 +291,7 @@ func (r *RuneReader) RewindSlurpWord() {
 	}
 }
 
-// ScanForRune(_match_) searches the rune set for the occurance of _match_ and
+// ScanForRune(_match_) searches the rune set for the occurrence of _match_ and
 // returns the string up to and including _match_. The _start_ pointer is
 // reset and the _end_ pointer advances until it encounters _match_ or reaches
 // the the last rune in the rune set. If no _match_ is found, the entire rune

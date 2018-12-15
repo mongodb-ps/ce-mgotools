@@ -201,10 +201,19 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 			value = false
 		case "null":
 			value = nil
+		case "MaxKey":
+			value = MaxKey{}
+		case "MinKey":
+			value = MinKey{}
+		case "undefined":
+			value = Undefined{}
 		default:
 			length := util.StringLength(word)
 			if length == 36 && word[:8] == "objectid" {
 				value, err = parseObjectId(word, strict)
+			} else if length == 5 && word[:5] == "dbref" {
+				r.Prev()
+				value, err = parseDbRef(r)
 			} else if length == 3 && word == "new" {
 				value, err = parseDate(r)
 			} else {
@@ -246,6 +255,34 @@ func parseDate(r *util.RuneReader) (time.Time, error) {
 			return time.Time{}, fmt.Errorf("unexpected character '%c' in date string at %d", end, r.Pos())
 		}
 		return time.Unix(t/1000, (t%1000)*1000000), nil
+	}
+}
+
+func parseDbRef(r *util.RuneReader) (Ref, error) {
+	if !r.ExpectString("DBRef(") {
+		return Ref{}, fmt.Errorf("unexpected word at %d", r.Pos())
+	}
+
+	ref := Ref{}
+	r.Skip(6)
+	if id, err := r.QuotedString(); err != nil {
+		return Ref{}, err
+	} else {
+		ref.Name = id
+	}
+
+	// Skip ", "
+	r.Skip(2)
+	if oid, ok := r.ScanForRune(')'); !ok {
+		return Ref{}, fmt.Errorf("unexpected end of string")
+	} else if l := len(oid); l != 25 {
+		return Ref{}, fmt.Errorf("unexpected OID format")
+	} else {
+		ref.Id, ok = NewObjectId([]byte(oid[:24]))
+		if !ok {
+			return Ref{}, fmt.Errorf("cannot translate from hex to objectid")
+		}
+		return ref, nil
 	}
 }
 
@@ -328,8 +365,8 @@ func parseDataType(m map[string]interface{}) interface{} {
 				return Regex{m["$regex"].(string), m["$options"].(string)}
 			}
 		} else if _, ok := m["$ref"].(string); ok {
-			if _, ok := m["$id"]; ok {
-				return Ref{m["$ref"].(string), m["$id"]}
+			if _, ok := m["$id"].(string); ok {
+				return Ref{m["$ref"].(string), ObjectId(m["$id"].(string))}
 			}
 		}
 	}

@@ -62,7 +62,7 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	case "COMMAND":
 		// query, getmore, insert, update = COMMAND
 		cmd, err := v.command(r)
-		if err == nil {
+		if err != nil {
 			return cmd, err
 		}
 
@@ -71,14 +71,11 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	case "WRITE":
 		// insert, remove, update = WRITE
 		op, err := v.operation(r)
-		if err == nil {
+		if err != nil {
 			return op, err
 		}
 
 		return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
-
-	case "INDEX":
-		// TODO: Figure this out too.
 
 	case "CONTROL":
 		return logger.Control(r, entry)
@@ -110,6 +107,10 @@ func (v Version32Parser) command(reader util.RuneReader) (record.MsgCommand, err
 	cmd, err := logger.CommandPreamble(r)
 	if err != nil {
 		return record.MsgCommand{}, err
+	} else if cmd.Agent != "" {
+		// Version 3.2 does not provide an agent string.
+		v.versionFlag = false
+		return record.MsgCommand{}, v.ErrorVersion
 	}
 
 	err = logger.MidLoop(r, "locks:", &cmd.MsgBase, cmd.Counters, cmd.Payload, v.counters)

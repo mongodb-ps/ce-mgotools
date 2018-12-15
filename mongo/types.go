@@ -1,12 +1,12 @@
 package mongo
 
 import (
+	"encoding/hex"
 	"time"
 )
 
 type MaxKey struct{}
 type MinKey struct{}
-type ObjectId []byte
 type Timestamp time.Time
 type Undefined struct{}
 
@@ -22,5 +22,18 @@ type Regex struct {
 
 type Ref struct {
 	Name string
-	Id   interface{}
+	Id   ObjectId
+}
+
+type ObjectId []byte
+
+func NewObjectId(s []byte) (ObjectId, bool) {
+	var d = make([]byte, 24, 24)
+	if len(s) != 24 {
+		return nil, false
+	} else if l, err := hex.Decode(d, s); l != 12 || err != nil {
+		return nil, false
+	} else {
+		return ObjectId(d), true
+	}
 }

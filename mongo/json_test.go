@@ -1,6 +1,7 @@
 package mongo
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 	"time"
@@ -121,6 +122,39 @@ func TestParseDataType(t *testing.T) {
 		if reflect.DeepEqual(c, v) {
 			t.Errorf("Extended type conversion at %d failed (%T %v, %T %v)", index, v, v, c, c)
 		}
+	}
+}
+
+func TestParseDbRef(t *testing.T) {
+	ref, err := parseDbRef(util.NewRuneReader("DBRef('test', 0123456789abcdef01234567)"))
+	tid, _ := NewObjectId([]byte("0123456789abcdef01234567"))
+	if err != nil || ref.Name != "test" || !bytes.Equal(ref.Id, tid) {
+		t.Errorf("Expected (test, 012345678901234567890123), got (%s, %s) %s", ref.Name, ref.Id, err)
+	}
+
+	_, err = parseDbRef(util.NewRuneReader("ObjectId()"))
+	if err == nil {
+		t.Errorf("Expected DBRef error, got none")
+	}
+
+	ref, err = parseDbRef(util.NewRuneReader("DBRef(xyz, 012345678901234567890123)"))
+	if err == nil {
+		t.Errorf("Expected DBRef error, got none")
+	}
+
+	ref, err = parseDbRef(util.NewRuneReader("DBRef('test', 01234567890123456789012"))
+	if err == nil {
+		t.Errorf("Expected DBRef error, got none")
+	}
+
+	ref, err = parseDbRef(util.NewRuneReader("DBRef('test', 0123456789012345678901234)"))
+	if err == nil {
+		t.Errorf("Expected DBRef error, got none")
+	}
+
+	ref, err = parseDbRef(util.NewRuneReader("DBRef('test', abcdefg/:`0123456789012345)"))
+	if err == nil {
+		t.Errorf("Expected DBRef error, got none")
 	}
 }
 

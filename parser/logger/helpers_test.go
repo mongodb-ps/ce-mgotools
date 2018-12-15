@@ -124,6 +124,11 @@ func TestPreamble(t *testing.T) {
 		t.Errorf("Expected 'test', got %s (err: %s)", ns, err)
 	}
 
+	cmd, ns, op, err = Preamble(util.NewRuneReader("update test.$cmd query:"))
+	if cmd != "update" || ns != "test.$cmd" || op != "query" || err != nil {
+		t.Errorf("Values differ (%s, %s, %s, %s)", cmd, ns, op, err)
+	}
+
 	cmd, ns, op, err = Preamble(util.NewRuneReader("command test.$cmd appName: \"agent\" command:"))
 	if cmd != "command" || ns != "test.$cmd" || op != "appName" || err != nil {
 		t.Errorf("Preamble failed, got (cmd: %s, ns: %s, op: %s, err: %s)", cmd, ns, op, err)
@@ -137,5 +142,12 @@ func TestPreamble(t *testing.T) {
 	cmd, ns, op, err = Preamble(util.NewRuneReader(""))
 	if err != errors.UnexpectedEOL {
 		t.Errorf("Expected UnexpectedEOL error, got %s", err)
+	}
+}
+
+func TestOperationPreamble(t *testing.T) {
+	op, err := OperationPreamble(util.NewRuneReader("insert test.$cmd query: { a: 1 }"))
+	if op.Operation != "insert" || op.Namespace != "test.$cmd" || err != nil {
+		t.Errorf("Values differ (%s, %s, %s)", op.Operation, op.Namespace, err)
 	}
 }

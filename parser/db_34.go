@@ -1,8 +1,6 @@
 package parser
 
 import (
-	"fmt"
-
 	"mgotools/mongo"
 	"mgotools/parser/errors"
 	"mgotools/parser/logger"
@@ -56,7 +54,8 @@ func init() {
 }
 
 func (v *Version34Parser) Check(base record.Base) bool {
-	return v.versionFlag && !base.CString &&
+	return v.versionFlag &&
+		!base.CString &&
 		base.RawSeverity != record.SeverityNone &&
 		base.RawComponent != ""
 }
@@ -97,7 +96,7 @@ func (v *Version34Parser) command(reader util.RuneReader) (record.MsgCommand, er
 		return record.MsgCommand{}, err
 	} else if cmd.Protocol != "op_query" && cmd.Protocol != "op_command" {
 		v.versionFlag = false
-		return record.MsgCommand{}, errors.VersionUnmatched{Message: fmt.Sprintf("unexpected protocol %s", cmd.Protocol)}
+		return record.MsgCommand{}, v.ErrorVersion
 	}
 
 	cmd.Duration, err = logger.Duration(r)
@@ -161,6 +160,7 @@ func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, err
 		return logger.Control(*r, entry)
 
 	case "NETWORK":
+		return logger.Network(*r, entry)
 
 	case "STORAGE":
 		return logger.Storage(*r, entry)
@@ -169,17 +169,23 @@ func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	return nil, v.ErrorVersion
 }
 
-func (v Version34Parser) operation(reader util.RuneReader) (record.MsgOperation, error) {
+func (v *Version34Parser) operation(reader util.RuneReader) (record.MsgOperation, error) {
 	r := &reader
 
 	op, err := logger.OperationPreamble(r)
 	if err != nil {
-		return op, err
+		return record.MsgOperation{}, err
+	}
+
+	if !util.ArrayBinarySearchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
+		v.versionFlag = false
+		return record.MsgOperation{}, v.ErrorVersion
 	}
 
 	for {
-		// Collation appears in this version for the first time as an
-		// operation section.
+		// Collation appears in this version for the first time and doesn't
+		// appear in any subsequent versions. It also only appears on WRITE
+		// operations.
 		err = logger.MidLoop(r, "collation:", &op.MsgBase, op.Counters, op.Payload, v.counters)
 		if err != nil {
 			v.versionFlag, err = logger.CheckCounterVersionError(err, v.ErrorVersion)

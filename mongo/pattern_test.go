@@ -46,6 +46,7 @@ func TestPattern_NewPattern(t *testing.T) {
 		}
 	}
 }
+
 func TestPattern_Equals(t *testing.T) {
 	s := []Object{
 		{},
