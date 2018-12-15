@@ -535,5 +535,6 @@ func update(comment string, counters map[string]int64, filter map[string]interfa
 		Update:  update,
 		N:       counters["nModified"],
 	}
-	return crud
+
+	return crud, true
 }
