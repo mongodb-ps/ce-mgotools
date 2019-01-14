@@ -13,14 +13,36 @@ import (
 
 type Version24Parser struct {
 	VersionBaseParser
+	counters []string
 }
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version24Parser{VersionBaseParser{
+		return &Version24Parser{VersionBaseParser: VersionBaseParser{
 			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR}),
 			ErrorVersion: errors.VersionUnmatched{Message: "version 2.4"},
-		}}
+		},
+
+			// A binary searchable (i.e. sorted) list of counters.
+			counters: []string{
+				"cursorid",
+				"exhaust",
+				"idhack",
+				"keyUpdates",
+				"fastmod",
+				"fastmodinsert",
+				"ndeleted",
+				"ninserted",
+				"nmoved",
+				"nscanned",
+				"ntoreturn",
+				"ntoskip",
+				"numYields",
+				"nupdated",
+				"scanAndOrder",
+				"upsert",
+			},
+		}
 	})
 }
 
@@ -107,7 +129,20 @@ func (v Version24Parser) parse24WithPayload(r *util.RuneReader, command bool) (r
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 
+	if cmd := r.PreviewWord(1); cmd == "" {
+		return record.MsgOperationLegacy{}, errors.UnexpectedEOL
+	} else if cmd != "command:" && command {
+		return record.MsgOperationLegacy{}, errors.CommandStructure
+	} else if cmd != "query:" && !command {
+		return record.MsgOperationLegacy{}, errors.OperationStructure
+	}
+
+	// Define the target for key:value finds (start with counters and end with
+	// locks) since both counters and locks look the same in this version.
 	var target = op.Counters
+
+	// Iterate through each word in the line.
+ParamLoop:
 	for param, ok := r.SlurpWord(); ok; param, ok = r.SlurpWord() {
 		if param[len(param)-1] == ':' {
 			param = param[:len(param)-1]
@@ -116,15 +151,38 @@ func (v Version24Parser) parse24WithPayload(r *util.RuneReader, command bool) (r
 			}
 			if r.ExpectRune('{') {
 				if command {
-					// Commands place the operation name at the beginning of the
-					// JSON object.
+					// Commands place the operation name before the JSON object.
 					r.SlurpWord()
 					word := r.PreviewWord(1)
 					op.Operation = word[:len(word)-1]
 
 					r.RewindSlurpWord()
 				}
+
 				if payload, err := mongo.ParseJsonRunes(r, false); err != nil {
+					if !command {
+						// An issue parsing runes could be caused by any number
+						// of problems. But there is a subset of cases that can be
+						// ignored. We only care about ignoring this subset if
+						// a query already exists since at least part of the line
+						// may be useful.
+
+						if _, ok := op.Payload["query"]; ok {
+							// A query exists so continue forward until we
+							// find something that looks like a key:value.
+							for ; ok; param, ok = r.SlurpWord() {
+								if key, _, ok := util.StringDoubleSplit(param, ':'); ok {
+									if util.ArrayBinarySearchString(key, v.counters) {
+										// I dislike using labels, but it's
+										// quick, easy, and perfectly fine here.
+										continue ParamLoop
+									}
+								}
+							}
+						}
+					}
+
+					// Otherwise, there's a problem.
 					return op, err
 				} else if command {
 					op.Payload = payload

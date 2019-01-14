@@ -18,14 +18,27 @@ import (
 	"mgotools/parser/context"
 	"mgotools/record"
 	"mgotools/util"
+
+	"github.com/pkg/errors"
+)
+
+const (
+	sortNamespace = iota
+	sortOperation
+	sortPattern
+	sortCount
+	sortMin
+	sortMax
+	sortN95
+	sortSum
 )
 
 type commandQuery struct {
 	*context.Instance
 	Name   string
-	Length int64
+	Length uint
 
-	sort string
+	sort []int8
 
 	ErrorCount uint
 	LineCount  uint
@@ -34,7 +47,6 @@ type commandQuery struct {
 }
 
 type queryLog struct {
-	//factory.BaseOptions
 	Log          map[int]*commandQuery
 	summaryTable *bytes.Buffer
 }
@@ -51,12 +63,14 @@ func init() {
 	args := CommandDefinition{
 		Usage: "output statistics about query patterns",
 		Flags: []CommandArgument{
-			{Name: "sort", ShortName: "s", Type: String, Usage: "sort by namespace, pattern, count, min, max, 95%, or sum"},
+			{Name: "sort", ShortName: "s", Type: String, Usage: "sort by namespace, pattern, count, min, max, 95%, and/or sum (comma separated for multiple)"},
 		},
 	}
+
 	init := func() (Command, error) {
 		return &queryLog{Log: make(map[int]*commandQuery), summaryTable: bytes.NewBuffer([]byte{})}, nil
 	}
+
 	GetCommandFactory().Register("query", args, init)
 }
 
@@ -64,45 +78,26 @@ func (s *queryLog) Finish(index int) error {
 	var host string
 	var port int
 
-	for _, startup := range s.Log[index].Startup {
+	log := s.Log[index]
+	for _, startup := range log.Startup {
 		host = startup.Hostname
 		port = startup.Port
 	}
 
 	summary := format.LogSummary{
-		Source:     s.Log[index].Name,
+		Source:     log.Name,
 		Host:       host,
 		Port:       port,
-		Start:      s.Log[index].Start,
-		End:        s.Log[index].End,
+		Start:      log.Start,
+		End:        log.End,
 		DateFormat: "",
-		Length:     s.Log[index].Length,
+		Length:     int64(log.Length),
 		Version:    nil,
 		Storage:    "",
 	}
 
-	values := make([]format.PatternSummary, 0, len(s.Log))
-
-	for _, pattern := range s.Log[index].Patterns {
-		sort.Slice(pattern.p95, func(i, j int) bool { return pattern.p95[i] > pattern.p95[j] })
-
-		if len(pattern.p95) > 1 {
-			index := float64(len(pattern.p95)) * 0.05
-			if math.Floor(index) == index {
-				pattern.PatternSummary.N95Percentile = (float64(pattern.p95[int(index)-1] + pattern.p95[int(index)])) / 2
-			} else {
-				pattern.PatternSummary.N95Percentile = float64(pattern.p95[int(index)])
-			}
-		}
-
-		values = append(values, pattern.PatternSummary)
-	}
-
-	var sorter sortFunction = func() (string, []format.PatternSummary) {
-		return s.Log[index].sort, values
-	}
-
-	sort.Sort(sorter)
+	values := s.values(log.Patterns)
+	s.sort(values, log.sort)
 
 	if index > 0 {
 		s.summaryTable.WriteString("\n------------------------------------------\n")
@@ -119,12 +114,28 @@ func (s *queryLog) Prepare(name string, instance int, args CommandArgumentCollec
 		Name:     name,
 		Patterns: make(map[string]queryPattern),
 
-		sort: "sum",
+		sort: []int8{sortSum, sortNamespace, sortOperation, sortPattern},
 	}
 
-	if sortType, ok := args.Strings["sort"]; ok {
-		s.Log[instance].sort = sortType
+	sortOptions := map[string]int8{
+		"namespace": sortNamespace,
+		"operation": sortOperation,
+		"pattern":   sortPattern,
+		"count":     sortCount,
+		"min":       sortMin,
+		"max":       sortMax,
+		"95%":       sortN95,
+		"sum":       sortSum,
 	}
+
+	for _, opt := range util.ArgumentSplit(args.Strings["sort"]) {
+		val, ok := sortOptions[opt]
+		if !ok {
+			return errors.New("unexpected sort option")
+		}
+		s.Log[instance].sort = append(s.Log[instance].sort, val)
+	}
+
 	return nil
 }
 
@@ -148,19 +159,13 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 		}
 
 		log.LineCount += 1
+		log.Length = base.LineNumber
 
 		if base.RawMessage == "" {
 			log.ErrorCount += 1
 		} else if entry, err := log.NewEntry(base); err != nil {
 			log.ErrorCount += 1
 		} else {
-			var (
-				ns    string
-				op    string
-				query string
-				dur   int64
-			)
-
 			log.End = entry.Date
 			crud, ok := entry.Message.(record.MsgCRUD)
 			if !ok {
@@ -169,31 +174,11 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 			}
 
 			pattern := mongo.NewPattern(crud.Filter)
-			query = pattern.StringCompact()
+			query := pattern.StringCompact()
 
-			switch cmd := crud.Message.(type) {
-			case record.MsgCommand:
-				dur = cmd.Duration
-				ns = cmd.Namespace
-				op = cmd.Command
-
-			case record.MsgCommandLegacy:
-				dur = cmd.Duration
-				ns = cmd.Namespace
-				op = cmd.Command
-
-			case record.MsgOperation:
-				dur = cmd.Duration
-				ns = cmd.Namespace
-				op = cmd.Operation
-
-			case record.MsgOperationLegacy:
-				dur = cmd.Duration
-				ns = cmd.Namespace
-				op = cmd.Operation
-
-			default:
-				// Returned something completely unexpected so ignore the line.
+			ns, op, dur, ok := s.standardize(crud)
+			if !ok {
+				log.ErrorCount += 1
 				continue
 			}
 
@@ -219,6 +204,7 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 				if !ok {
 					pattern = queryPattern{
 						PatternSummary: format.PatternSummary{
+							Min:       math.MaxInt64,
 							Namespace: ns,
 							Operation: op,
 							Pattern:   query,
@@ -227,9 +213,90 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 					}
 				}
 
-				log.Patterns[key] = updateSummary(pattern, dur)
+				log.Patterns[key] = s.update(pattern, dur)
 			}
 		}
+	}
+
+	return
+}
+
+func (queryLog) sort(values []format.PatternSummary, order []int8) {
+	sort.Slice(values, func(i, j int) bool {
+		for _, field := range order {
+			switch field {
+			case sortNamespace: // Ascending
+				if values[i].Namespace == values[j].Namespace {
+					continue
+				}
+				return values[i].Namespace < values[j].Namespace
+			case sortOperation: // Ascending
+				if values[i].Operation == values[j].Operation {
+					continue
+				}
+				return values[i].Operation < values[j].Operation
+			case sortPattern: // Ascending
+				if values[i].Pattern == values[j].Pattern {
+					continue
+				}
+				return values[i].Pattern < values[j].Pattern
+			case sortSum: // Descending
+				if values[i].Sum == values[j].Sum {
+					continue
+				}
+				return values[i].Sum >= values[j].Sum
+			case sortN95: // Descending
+				if values[i].N95Percentile == values[j].N95Percentile {
+					continue
+				}
+				return values[i].N95Percentile >= values[j].N95Percentile
+			case sortMax: // Descending
+				if values[i].Max == values[j].Max {
+					continue
+				}
+				return values[i].Max >= values[j].Max
+			case sortMin: // Descending
+				if values[i].Min == values[j].Min {
+					continue
+				}
+				return values[i].Min >= values[j].Min
+			case sortCount: // Descending
+				if values[i].Count == values[j].Count {
+					continue
+				}
+				return values[i].Count >= values[j].Count
+			}
+		}
+		return true
+	})
+}
+
+func (queryLog) standardize(crud record.MsgCRUD) (ns string, op string, dur int64, ok bool) {
+	ok = true
+	switch cmd := crud.Message.(type) {
+	case record.MsgCommand:
+		dur = cmd.Duration
+		ns = cmd.Namespace
+		op = cmd.Command
+
+	case record.MsgCommandLegacy:
+		dur = cmd.Duration
+		ns = cmd.Namespace
+		op = cmd.Command
+
+	case record.MsgOperation:
+		dur = cmd.Duration
+		ns = cmd.Namespace
+		op = cmd.Operation
+
+	case record.MsgOperationLegacy:
+		dur = cmd.Duration
+		ns = cmd.Namespace
+		op = cmd.Operation
+
+	default:
+		// Returned something completely unexpected so ignore the line.
+		ok = false
 	}
 
 	return
@@ -240,7 +307,7 @@ func (s *queryLog) Terminate(out chan<- string) error {
 	return nil
 }
 
-func updateSummary(s queryPattern, dur int64) queryPattern {
+func (queryLog) update(s queryPattern, dur int64) queryPattern {
 	s.Count += 1
 	s.Sum += dur
 	s.p95 = append(s.p95, dur)
@@ -252,54 +319,24 @@ func updateSummary(s queryPattern, dur int64) queryPattern {
 		s.Min = dur
 	}
 
-	// Calculate the 95th percentile using a moving percentile estimation.
-	// http://mjambon.com/2016-07-23-moving-percentile/
-	/*
-		s.n95Sequence = math.Pow(float64(s.Sum)/float64(s.Count)-float64(dur), 2)
-		if s.Count == 1 {
-			s.N95Percentile = float64(dur)
-		} else if float64(dur) < s.N95Percentile {
-			s.N95Percentile = s.N95Percentile - (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.9
-		} else if float64(dur) > s.N95Percentile {
-			s.N95Percentile = s.N95Percentile + (0.005*math.Sqrt(s.n95Sequence/float64(s.Sum)))/.1
-		}
-	*/
 	return s
 }
 
-type sortFunction func() (string, []format.PatternSummary)
+func (s *queryLog) values(patterns map[string]queryPattern) []format.PatternSummary {
+	values := make([]format.PatternSummary, 0, len(s.Log))
+	for _, pattern := range patterns {
+		sort.Slice(pattern.p95, func(i, j int) bool { return pattern.p95[i] > pattern.p95[j] })
 
-func (s sortFunction) Len() int {
-	_, v := s()
-	return len(v)
-}
+		if len(pattern.p95) > 1 {
+			index := float64(len(pattern.p95)) * 0.05
+			if math.Floor(index) == index {
+				pattern.PatternSummary.N95Percentile = (float64(pattern.p95[int(index)-1] + pattern.p95[int(index)])) / 2
+			} else {
+				pattern.PatternSummary.N95Percentile = float64(pattern.p95[int(index)])
+			}
+		}
 
-func (s sortFunction) Less(i, j int) bool {
-	field, v := s()
-
-	switch field {
-	case "namespace":
-		return v[i].Namespace < v[j].Namespace // Ascending
-	case "pattern":
-		return v[i].Pattern < v[j].Pattern // Ascending
-	case "count":
-		return v[i].Count > v[j].Count // Descending
-	case "min":
-		return v[i].Min < v[j].Min // Ascending
-	case "max":
-		return v[i].Max > v[j].Max // Descending
-	case "mean":
-		return (v[i].Count / v[i].Sum) > (v[j].Count / v[j].Sum) // Descending
-	case "95%":
-		return v[i].N95Percentile > v[j].N95Percentile // Descending
-	default:
-		return v[i].Sum > v[j].Sum // Descending
+		values = append(values, pattern.PatternSummary)
 	}
-}
-
-func (s sortFunction) Swap(i, j int) {
-	_, v := s()
-	t := v[i]
-	v[i] = v[j]
-	v[j] = t
+	return values
 }

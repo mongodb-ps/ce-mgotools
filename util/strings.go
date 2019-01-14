@@ -20,7 +20,10 @@ func Debug(format string, v ...interface{}) {
 
 	fmt.Fprintf(os.Stderr, format+"\n", v...)
 }
-func ArgumentSplit(r rune) bool {
+func ArgumentSplit(a string) []string {
+	return strings.FieldsFunc(a, argumentSplitRune)
+}
+func argumentSplitRune(r rune) bool {
 	switch r {
 	case ',', ';', ' ':
 		return true
@@ -29,7 +32,7 @@ func ArgumentSplit(r rune) bool {
 	}
 }
 func ArgumentMatchOptions(match []string, a string) bool {
-	for _, value := range strings.FieldsFunc(a, ArgumentSplit) {
+	for _, value := range ArgumentSplit(a) {
 		if !ArrayInsensitiveMatchString(match, value) {
 			return false
 		}

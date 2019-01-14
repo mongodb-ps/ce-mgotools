@@ -160,7 +160,7 @@ func (f *filterCommand) Prepare(name string, instance int, args CommandArgumentC
 			if value < 0 {
 				return errors.New("--fast must be greater than 0ms")
 			}
-			opts.FasterFilter = time.Duration(value)
+			opts.FasterFilter = time.Duration(value) * time.Millisecond
 		case "shorten":
 			if value < 10 {
 				return errors.New("--shorten must be longer than 10 characters")
@@ -170,12 +170,12 @@ func (f *filterCommand) Prepare(name string, instance int, args CommandArgumentC
 			if value < 1 {
 				return errors.New("--slow must be greater than 0ms")
 			}
-			opts.SlowerFilter = time.Duration(value)
+			opts.SlowerFilter = time.Duration(value) * time.Millisecond
 		case "timezone":
 			if value < -719 || value > 720 {
 				return errors.New("--timezone must be an offset between -719 and +720 minutes")
 			}
-			opts.TimezoneModifier = time.Duration(value)
+			opts.TimezoneModifier = time.Duration(value) * time.Minute
 		}
 	}
 
@@ -356,32 +356,18 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 	}
 
 	// Try converting into a base MsgCommand object and do comparisons if the filter succeeds.
-	if cmd, ok := record.MsgBaseFromMessage(entry.Message); ok {
-		if opts.FasterFilter > 0 && time.Duration(cmd.Duration) > opts.FasterFilter {
-			return false
-		} else if opts.SlowerFilter > 0 && time.Duration(cmd.Duration) < opts.SlowerFilter {
-			return false
-		}
+	base, ok := record.MsgBaseFromMessage(entry.Message)
+	if opts.FasterFilter > 0 && (!ok || time.Duration(base.Duration) > opts.FasterFilter) {
+		return false
+	} else if opts.SlowerFilter > 0 && (!ok || time.Duration(base.Duration) < opts.SlowerFilter) {
+		return false
+	} else if opts.NamespaceFilter != "" && (!ok || !stringMatchFields(base.Namespace, opts.NamespaceFilter)) {
+		return false
+	}
 
-		// Try convergent to a MsgCommandLegacy object and compare filters based on that object type.
-		if crud, ok := entry.Message.(record.MsgCRUD); ok {
-			if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
-				return false
-			} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(getCmdOrOpFromMessage(entry.Message), crud.Filter, opts.PatternFilter) {
-				return false
-			}
-		} else if cmd, ok := entry.Message.(record.MsgCommand); ok {
-			if opts.NamespaceFilter != "" && !stringMatchFields(cmd.Namespace, opts.NamespaceFilter) {
-				return false
-			} else if !opts.PatternFilter.IsEmpty() && !checkQueryPattern(getCmdOrOpFromMessage(entry.Message), crud.Filter, opts.PatternFilter) {
-				return false
-			}
-		} else if !ok && !opts.PatternFilter.IsEmpty() {
-			return false
-		}
-	} else if opts.FasterFilter > 0 || opts.SlowerFilter > 0 || opts.CommandFilter != "" || opts.NamespaceFilter != "" {
-		// Return failure on any log messages that are parsed successfully but don't contain components that can be
-		// filtered based on command-style criteria.
+	// Try convergent to a MsgCommandLegacy object and compare filters based on that object type.
+	crud, ok := entry.Message.(record.MsgCRUD)
+	if !opts.PatternFilter.IsEmpty() && (!ok || !checkQueryPattern(crud.Filter, opts.PatternFilter)) {
 		return false
 	}
 
@@ -391,21 +377,14 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 func (f *filterCommand) modify(entry record.Entry, options filterCommandOptions) (record.Entry, bool) {
 	if options.TimezoneModifier != 0 && entry.DateValid {
 		// add seconds to the parsed date object
-		entry.Date = entry.Date.Add(options.TimezoneModifier * time.Minute)
+		entry.Date = entry.Date.Add(options.TimezoneModifier)
 		return entry, true
 	}
 	return entry, false
 }
 
-func checkQueryPattern(op string, cmd map[string]interface{}, check mongo.Pattern) bool {
-	for _, key := range []string{"query", "command", "update", "remove"} {
-		if query, ok := cmd[key].(map[string]interface{}); ok {
-			if check.Equals(mongo.NewPattern(query)) {
-				return true
-			}
-		}
-	}
-	return false
+func checkQueryPattern(query map[string]interface{}, check mongo.Pattern) bool {
+	return check.Equals(mongo.NewPattern(query))
 }
 
 func getCmdOrOpFromMessage(msg record.Message) string {
@@ -418,13 +397,15 @@ func getCmdOrOpFromMessage(msg record.Message) string {
 		return t.Command
 	case record.MsgCommandLegacy:
 		return t.Command
+	case record.MsgCRUD:
+		return getCmdOrOpFromMessage(t.Message)
 	default:
 		return ""
 	}
 }
 
 func stringMatchFields(value string, check string) bool {
-	for _, item := range strings.FieldsFunc(check, util.ArgumentSplit) {
+	for _, item := range util.ArgumentSplit(check) {
 		if util.StringInsensitiveMatch(item, value) {
 			return true
 		}

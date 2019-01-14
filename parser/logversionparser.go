@@ -28,6 +28,7 @@ type logVersionParserFactory struct {
 func (f *logVersionParserFactory) GetAll() []VersionParser {
 	return f.factories
 }
+
 func (f *logVersionParserFactory) Register(init func() VersionParser) {
 	f.factories = append(f.factories, init())
 }

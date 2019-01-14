@@ -11,7 +11,7 @@ import (
 const OutputBuffer = 128
 const MaxBufferSize = 16777216
 
-type AccumulatorReadCloser interface {
+type accumulatorReadCloser interface {
 	io.ReadCloser
 	NewBase(string, uint) (record.Base, error)
 }
@@ -36,7 +36,7 @@ type accumulatorResult struct {
 	Error error
 }
 
-func NewAccumulator(handle AccumulatorReadCloser) *accumulator {
+func NewAccumulator(handle accumulatorReadCloser) *accumulator {
 	r := &accumulator{
 		Closer: handle,
 		eof:    false,

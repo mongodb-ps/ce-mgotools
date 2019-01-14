@@ -64,6 +64,9 @@ func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) 
 				r.Next()
 				r.ChompWS()
 			}
+
+			// Keep the value offset in case changes must be made to the value
+			// (like in cases where there's an unescaped string).
 			valueOffset := r.Pos()
 			if data[key], err = parseValue(r, strict); err != nil {
 				return nil, err

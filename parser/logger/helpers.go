@@ -529,12 +529,15 @@ func StringSections(term string, base *record.MsgBase, payload record.MsgPayload
 }
 
 func update(comment string, counters map[string]int64, filter map[string]interface{}, update map[string]interface{}) (record.MsgCRUD, bool) {
+	if filter == nil && update == nil {
+		return record.MsgCRUD{}, false
+	}
+
 	crud := record.MsgCRUD{
 		Comment: comment,
 		Filter:  filter,
 		Update:  update,
 		N:       counters["nModified"],
 	}
-
 	return crud, true
 }

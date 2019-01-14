@@ -23,9 +23,9 @@ import (
 // month, and two number date as a minimum. The time could, theoretically, be included in the minimum but it will all
 // come out in the wash later.
 const (
-	DATE_FORMAT_CTIMENOMS     = "Mon Jan 02 15:04:05"
-	DATE_FORMAT_CTIME         = "Mon Jan 02 15:04:05.000"
-	DATE_FORMAT_CTIMEYEAR     = "Mon Jan 02 2006 15:04:05.000"
+	DATE_FORMAT_CTIMENOMS     = "Mon Jan _2 15:04:05"
+	DATE_FORMAT_CTIME         = "Mon Jan _2 15:04:05.000"
+	DATE_FORMAT_CTIMEYEAR     = "Mon Jan _2 2006 15:04:05.000"
 	DATE_FORMAT_ISO8602_UTC   = "2006-01-02T15:04:05.000Z"
 	DATE_FORMAT_ISO8602_LOCAL = "2006-01-02T15:04:05.000-0700"
 
