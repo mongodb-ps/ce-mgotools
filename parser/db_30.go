@@ -168,7 +168,7 @@ func (v Version30Parser) operation(r *util.RuneReader) (record.MsgOperation, err
 	err = logger.MidLoop(r, "locks:", &op.MsgBase, op.Counters, op.Payload, v.counters)
 	if err != nil {
 		return record.MsgOperation{}, err
-	} else if !util.ArrayBinarySearchString(op.Operation, mongo.OPERATIONS) {
+	} else if !util.ArrayBinaryMatchString(op.Operation, mongo.OPERATIONS) {
 		return record.MsgOperation{}, errors.OperationStructure
 	}
 

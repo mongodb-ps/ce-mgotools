@@ -164,7 +164,7 @@ func (v *Version36Parser) operation(reader util.RuneReader) (record.MsgOperation
 
 	// Check against the expected list of operations. Anything not in this list
 	// is either very broken or a different version.
-	if !util.ArrayBinarySearchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
+	if !util.ArrayBinaryMatchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
 		v.versionFlag = false
 		return record.MsgOperation{}, v.ErrorVersion
 	}

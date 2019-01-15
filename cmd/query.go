@@ -333,11 +333,11 @@ func (queryLog) update(s queryPattern, dur int64) queryPattern {
 func (s *queryLog) values(patterns map[string]queryPattern) []format.PatternSummary {
 	values := make([]format.PatternSummary, 0, len(s.Log))
 	for _, pattern := range patterns {
-		sort.Slice(pattern.p95, func(i, j int) bool { return pattern.p95[i] > pattern.p95[j] })
+		sort.Slice(pattern.p95, func(i, j int) bool { return pattern.p95[i] <= pattern.p95[j] })
 
 		if len(pattern.p95) > 1 {
 			// Get the 95th percent position given the total set of data available.
-			index := float64(len(pattern.p95)) * 0.05
+			index := float64(len(pattern.p95)) * 0.95
 
 			if float64(int64(index)) == index {
 				// Check for a whole number (i.e. an exact 95th percentile value).

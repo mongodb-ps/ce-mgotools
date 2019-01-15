@@ -4,9 +4,9 @@ import "sort"
 
 // A custom sort algorithm for logical operators so an array of objects
 // gets sorted by the keys of each sub-object.
-type Pattern []map[string]interface{}
+type Logical []map[string]interface{}
 
-func Patternize(a []interface{}) Pattern {
+func Patternize(a []interface{}) Logical {
 	b := make([]map[string]interface{}, len(a))
 	for i := 0; i < len(a); i += 1 {
 		b[i] = a[i].(map[string]interface{})
@@ -14,7 +14,7 @@ func Patternize(a []interface{}) Pattern {
 	return b
 }
 
-func (p Pattern) Interface() []interface{} {
+func (p Logical) Interface() []interface{} {
 	b := make([]interface{}, len(p))
 	for i := 0; i < len(b); i += 1 {
 		b[i] = func() map[string]interface{} { return p[i] }()
@@ -22,11 +22,11 @@ func (p Pattern) Interface() []interface{} {
 	return b
 }
 
-func (p Pattern) Len() int {
+func (p Logical) Len() int {
 	return len(p)
 }
 
-func (p Pattern) Less(i, j int) bool {
+func (p Logical) Less(i, j int) bool {
 	a := make(Key, 0, len(p[i]))
 	b := make(Key, 0, len(p[j]))
 
@@ -55,7 +55,7 @@ func (p Pattern) Less(i, j int) bool {
 	}
 }
 
-func (p Pattern) Swap(i, j int) {
+func (p Logical) Swap(i, j int) {
 	c := p[i]
 	p[i] = p[j]
 	p[j] = c

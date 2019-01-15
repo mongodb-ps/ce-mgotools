@@ -39,7 +39,7 @@ func ArgumentMatchOptions(match []string, a string) bool {
 	}
 	return true
 }
-func ArrayBinarySearchString(a string, m []string) bool {
+func ArrayBinaryMatchString(a string, m []string) bool {
 	p := sort.SearchStrings(m, a)
 	if p >= len(m) {
 		return false

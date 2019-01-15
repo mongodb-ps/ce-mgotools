@@ -46,6 +46,7 @@ func init() {
 				"writeConflicts":   "writeConflicts",
 				"numYields":        "numYields",
 				"reslen":           "reslen",
+				"nreturned":        "nreturned",
 			},
 
 			versionFlag: true,
@@ -177,7 +178,7 @@ func (v *Version34Parser) operation(reader util.RuneReader) (record.MsgOperation
 		return record.MsgOperation{}, err
 	}
 
-	if !util.ArrayBinarySearchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
+	if !util.ArrayBinaryMatchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
 		v.versionFlag = false
 		return record.MsgOperation{}, v.ErrorVersion
 	}

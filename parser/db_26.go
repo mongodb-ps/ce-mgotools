@@ -203,7 +203,7 @@ func (Version26Parser) operation(r *util.RuneReader) (record.MsgOperationLegacy,
 			return op, nil
 
 		default:
-			if length := len(param); length > 1 && util.ArrayBinarySearchString(param[:length-1], mongo.OPERATIONS) {
+			if length := len(param); length > 1 && util.ArrayBinaryMatchString(param[:length-1], mongo.OPERATIONS) {
 				if r.EOL() {
 					return op, errors.OperationStructure
 				}

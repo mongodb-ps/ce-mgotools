@@ -5,6 +5,7 @@ package mongo
 
 import "mgotools/util"
 
+// Use type aliases (instead of type definitions)
 type Object = map[string]interface{}
 type Array = []interface{}
 
@@ -14,6 +15,7 @@ type Array = []interface{}
 
 // The components array contains all component strings.
 var COMPONENTS = []string{
+	"-",
 	"ACCESS",        // 3.0, 3.2, 3.4, 3.6
 	"ACCESSCONTROL", // 3.0, 3.2, 3.4, 3.6
 	"ASIO",          // 3.2, 3.4, 3.6
@@ -38,7 +40,6 @@ var COMPONENTS = []string{
 	"TOTAL",         // 3.0, 3.2, 3.4, 3.6
 	"TRACKING",      // 3.4, 3.6
 	"WRITE",         // 3.0, 3.2, 3.4, 3.6
-	"-",
 }
 
 // ref: /mongo/src/mongo/db/curop.cpp
@@ -117,8 +118,8 @@ var OPERATORS_COMPARISON = []string{
 var OPERATORS_LOGICAL = []string{
 	"$and",
 	"$nin",
-	"$not",
 	"$nor",
+	"$not",
 	"$or",
 }
 
@@ -146,7 +147,7 @@ var SEVERITIES = []string{"D", "E", "F", "I", "W"}
 
 // IsComponent checks a string value against the possible components array.
 func IsComponent(value string) bool {
-	return util.ArrayMatchString(COMPONENTS, value)
+	return util.ArrayBinaryMatchString(value, COMPONENTS)
 }
 
 // IsContext checks for a bracketed string ([<string>])
@@ -157,5 +158,5 @@ func IsContext(value string) bool {
 
 // IsSeverity checks a string value against the severities array.
 func IsSeverity(value string) bool {
-	return util.StringLength(value) == 1 && util.ArrayMatchString(SEVERITIES, value)
+	return util.StringLength(value) == 1 && util.ArrayBinaryMatchString(value, SEVERITIES)
 }

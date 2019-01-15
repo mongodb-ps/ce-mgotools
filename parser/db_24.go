@@ -182,7 +182,7 @@ ParamLoop:
 							// find something that looks like a key:value.
 							for ; ok; param, ok = r.SlurpWord() {
 								if key, _, ok := util.StringDoubleSplit(param, ':'); ok {
-									if util.ArrayBinarySearchString(key, v.counters) {
+									if util.ArrayBinaryMatchString(key, v.counters) {
 										// I dislike using labels, but it's
 										// quick, easy, and perfectly fine here.
 										continue ParamLoop

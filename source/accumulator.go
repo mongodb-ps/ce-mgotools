@@ -80,6 +80,23 @@ func Accumulator(in <-chan string, out chan<- accumulatorResult, callback func(s
 		started bool
 	}
 
+	accumulate := func(a accumulatorCounter) string {
+		// Create a buffer to construct a single line containing
+		// every accumulated record.Base entry between the latest
+		// line and the next line. Disregard any errors.
+		accumulator := bytes.NewBuffer(make([]byte, 0, a.size+len(a.last)))
+		for _, r := range a.last {
+			accumulator.WriteString(r.Base.String())
+			accumulator.WriteRune('\n')
+		}
+		// Create a record.Base object with all the accumulated base
+		// objects from previous lines.
+		s := accumulator.String()
+		s = s[:len(s)-1]
+		// Remove the extraneous newline.
+		return s
+	}
+
 	reset := func(a *accumulatorCounter) {
 		a.last = a.last[:0]
 		a.size = 0
@@ -116,23 +133,16 @@ func Accumulator(in <-chan string, out chan<- accumulatorResult, callback func(s
 					out <- a.last[0]
 					reset(&a)
 				} else {
-					// Create a buffer to construct a single line containing
-					// every accumulated record.Base entry between the latest
-					// line and the next line. Disregard any errors.
-					accumulator := bytes.NewBuffer([]byte{})
-					for _, r := range a.last {
-						accumulator.WriteString(r.Base.String())
-						accumulator.WriteRune('\n')
-					}
+					// Handle the actual accumulation and generate a string. The
+					// string gets passed back to the callback method to create
+					// a new object.
+					s := accumulate(a)
 
-					// Create a record.Base object with all the accumulated base
-					// objects from previous lines.
-					s := accumulator.String()
-					s = s[:len(s)-1] // Remove the extraneous newline.
-
+					// Create a base object from the newly accumulated string.
 					m, err := callback(s, a.last[0].Base.LineNumber)
 					reset(&a)
 
+					// Send the completed output and any errors.
 					out <- accumulatorResult{
 						Base:  m,
 						Error: err,
@@ -170,6 +180,24 @@ func Accumulator(in <-chan string, out chan<- accumulatorResult, callback func(s
 				a.last = append(a.last, accumulatorResult{base, err})
 				a.size += base.Length()
 			}
+		}
+	}
+
+	// It's possible that the log ended (for example, a stack trace that spans
+	// multiple lines then terminates). A check is needed for pending lines
+	// only when the first line is valid; otherwise the accumulated errors get
+	// flushed directly.
+	if len(a.last) > 1 && a.last[0].Error == nil {
+		// Grab the accumulated string.
+		s := accumulate(a)
+
+		// Generate a base object based on the string.
+		m, err := callback(s, a.last[0].Base.LineNumber)
+		reset(&a)
+
+		out <- accumulatorResult{
+			Base:  m,
+			Error: err,
 		}
 	}
 }
