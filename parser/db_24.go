@@ -71,7 +71,17 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 				return nil, err
 			}
 
-			return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
+			if crud, ok := logger.Crud(op.Operation, op.Counters, op.Payload); ok {
+				if op.Operation == "query" {
+					// Standardize with newer versions to queries appear as finds.
+					op.Operation = "find"
+				}
+
+				crud.Message = op
+				return crud, nil
+			}
+
+			return op, nil
 
 		case r.ExpectString("command"):
 			// Commands in 2.4 don't include anything that should be converted
