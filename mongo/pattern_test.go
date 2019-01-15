@@ -13,7 +13,9 @@ func TestPattern_NewPattern(t *testing.T) {
 		{"a": Object{"$gt": 5}},
 		{"a": Object{"$exists": true}},
 		{"a.b": "y"},
-		{"$or": Array{Object{"a": 5}, Object{"b": 5}}},
+		{"$or": Array{Object{"a": 5}, Object{"b": 5}}}, // Logical operator without compression.
+		{"$or": Array{Object{"b": 5}, Object{"a": 5}}}, // Sort of keys in logical operator.
+		{"$or": Array{Object{"b": 5, "a": 5}, Object{"a": 5}}},
 		{"$and": Array{Object{"$or": Array{Object{"a": 5}, Object{"b": 5}}}, Object{"$or": Array{Object{"c": 5}, Object{"d": 5}}}}},
 		{"_id": ObjectId{}},
 		{"a": Object{"$in": Array{5, 5, 5}}},
@@ -28,7 +30,9 @@ func TestPattern_NewPattern(t *testing.T) {
 		{"a": V{}},
 		{"a": V{}},
 		{"a.b": V{}},
-		{"$or": Array{Object{"a": V{}}, Object{"b": V{}}}},
+		{"$or": Array{Object{"a": V{}}, Object{"b": V{}}}}, // Logical operator without compression.
+		{"$or": Array{Object{"a": V{}}, Object{"b": V{}}}}, // Sort of keys in logical operator.
+		{"$or": Array{Object{"a": V{}}, Object{"a": V{}, "b": V{}}}},
 		{"$and": Array{Object{"$or": Array{Object{"a": V{}}, Object{"b": V{}}}}, Object{"$or": Array{Object{"c": V{}}, Object{"d": V{}}}}}},
 		{"_id": V{}},
 		{"a": V{}},

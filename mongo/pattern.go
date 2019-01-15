@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"fmt"
 	"sort"
-	"strings"
 
+	"mgotools/mongo/sorter"
 	"mgotools/util"
 )
 
 type Pattern struct {
-	pattern     Object
+	pattern     map[string]interface{}
 	initialized bool
 }
-type V struct {
-}
+
+type V struct{}
 
 func NewPattern(s map[string]interface{}) Pattern {
 	return Pattern{createPattern(s, false), true}
@@ -34,22 +34,39 @@ func (p *Pattern) String() string {
 func (p *Pattern) StringCompact() string {
 	return createString(p, true)
 }
-func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
-	compress := func(t map[string]interface{}) interface{} {
+
+func compress(c interface{}) interface{} {
+	switch t := c.(type) {
+	case map[string]interface{}:
 		for key := range t {
 			if !util.ArrayInsensitiveMatchString(OPERATORS_COMPARISON, key) {
 				return t
 			}
 		}
-		return V{}
+
+	case []interface{}:
+		for _, value := range t {
+			if _, ok := value.(V); !ok {
+				return t
+			}
+		}
+
+	default:
+		panic("attempted to compress unexpected value")
 	}
 
+	return V{}
+}
+
+func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
 	for key := range s {
 		switch t := s[key].(type) {
 		case map[string]interface{}:
 			if !expr || util.ArrayInsensitiveMatchString(OPERATORS_COMPARISON, key) {
 				s[key] = compress(createPattern(t, true))
-			} else if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) || util.ArrayInsensitiveMatchString(OPERATORS_EXPRESSION, key) {
+			} else if util.ArrayInsensitiveMatchString(OPERATORS_EXPRESSION, key) {
+				s[key] = createPattern(t, false)
+			} else if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) {
 				s[key] = createPattern(t, false)
 			} else {
 				s[key] = V{}
@@ -57,9 +74,11 @@ func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
 
 		case []interface{}:
 			if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) {
-				s[key] = createArray(t, false)
+				r := sorter.Patternize(createArray(t, false))
+				sort.Sort(r)
+				s[key] = r.Interface()
 			} else if util.ArrayInsensitiveMatchString(OPERATORS_EXPRESSION, key) {
-				s[key] = createArray(t, true)
+				s[key] = compress(createArray(t, true))
 			} else {
 				s[key] = V{}
 			}
@@ -123,14 +142,20 @@ func createString(p *Pattern, compact bool) string {
 		var buffer = bytes.NewBuffer([]byte{'{'})
 		total := len(object)
 		count := 0
+
 		if !compact && total > 0 {
 			buffer.WriteRune(' ')
 		}
-		keys := make(keySorter, 0)
+
+		// Iterating over a map will happen in a randomized order. Keys must
+		// be sorted and iterated in a specific order:
+		// https://codereview.appspot.com/5285042/patch/9001/10003
+		keys := make(sorter.Key, 0)
 		for key := range object {
 			keys = append(keys, key)
 		}
 		sort.Sort(keys)
+
 		for _, key := range keys {
 			count += 1
 			buffer.WriteRune('"')
@@ -159,13 +184,12 @@ func createString(p *Pattern, compact bool) string {
 		buffer.WriteRune('}')
 		return buffer.String()
 	}
+
 	return obj(p.pattern)
 }
 
-func createArray(t []interface{}, expr bool) interface{} {
-	size := len(t)
-	v := 0
-	for i := 0; i < size; i += 1 {
+func createArray(t []interface{}, expr bool) []interface{} {
+	for i := 0; i < len(t); i += 1 {
 		switch t2 := t[i].(type) {
 		case map[string]interface{}:
 			t[i] = createPattern(t2, true)
@@ -173,16 +197,11 @@ func createArray(t []interface{}, expr bool) interface{} {
 			if !expr {
 				return createArray(t2, true)
 			} else {
-				v += 1
 				t[i] = V{}
 			}
 		default:
 			t[i] = V{}
-			v += 1
 		}
-	}
-	if v == size {
-		return V{}
 	}
 	return t
 }
@@ -232,45 +251,4 @@ func deepEqual(ax, bx map[string]interface{}) bool {
 		}
 	}
 	return true // len(a) == len(b) == 0
-}
-
-// A custom sorting algorithm to keep keys starting with _ before $, and $
-// before everything else.
-type keySorter []string
-
-func (k keySorter) Len() int {
-	return len(k)
-}
-
-func (k keySorter) Less(i, j int) bool {
-	a := k[i]
-	b := k[j]
-	la, lb := len(a), len(b)
-	if la == 0 || lb == 0 {
-		if strings.Compare(a, b) < 0 {
-			return true
-		} else {
-			return false
-		}
-	}
-	if (a[0] == '_' && b[0] != '_') || (a[0] == '$' && b[0] != '$') {
-		return true
-	} else if (a[0] != '_' && b[0] == '_') || (a[0] != '$' && b[0] == '$') {
-		return false
-	} else if (a[0] == '_' && b[0] == '_') || (a[0] == '$' && b[0] == '$') {
-		if a[1:] < b[1:] {
-			return true
-		} else {
-			return false
-		}
-	} else if a < b {
-		return true
-	}
-	return false
-}
-
-func (k keySorter) Swap(i, j int) {
-	c := k[i]
-	k[i] = k[j]
-	k[j] = c
 }

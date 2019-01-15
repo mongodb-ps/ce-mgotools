@@ -2,6 +2,7 @@ package format
 
 import (
 	"io"
+	"math"
 	"strconv"
 
 	"github.com/olekukonko/tablewriter"
@@ -18,14 +19,14 @@ type PatternSummary struct {
 	Sum           int64
 }
 
-func PrintQueryTable(patterns []PatternSummary, out io.Writer) {
-	table := tablewriter.NewWriter(out)
-	defer table.Render()
-
+func PrintQueryTable(patterns []PatternSummary, wrap bool, out io.Writer) {
 	if len(patterns) == 0 {
 		out.Write([]byte("no queries found."))
 		return
 	}
+
+	table := tablewriter.NewWriter(out)
+	defer table.Render()
 
 	table.Append([]string{"namespace", "operation", "pattern", "count", "min (ms)", "max (ms)", "mean (ms)", "95%-ile (ms)", "sum (ms)"})
 	table.SetBorder(false)
@@ -33,6 +34,7 @@ func PrintQueryTable(patterns []PatternSummary, out io.Writer) {
 	table.SetCenterSeparator(" ")
 	table.SetColumnSeparator("  ")
 	table.SetColWidth(60)
+	table.SetAutoWrapText(wrap)
 
 	for _, pattern := range patterns {
 		if pattern.Count == 0 {
@@ -48,6 +50,11 @@ func PrintQueryTable(patterns []PatternSummary, out io.Writer) {
 				"-",
 			})
 		} else {
+			var n95 = "-"
+			if !math.IsNaN(pattern.N95Percentile) {
+				n95 = strconv.FormatFloat(pattern.N95Percentile, 'f', 1, 64)
+			}
+
 			table.Append([]string{
 				pattern.Namespace,
 				pattern.Operation,
@@ -56,7 +63,7 @@ func PrintQueryTable(patterns []PatternSummary, out io.Writer) {
 				strconv.FormatInt(pattern.Min, 10),
 				strconv.FormatInt(pattern.Max, 10),
 				strconv.FormatFloat(float64(pattern.Sum/pattern.Count), 'f', 0, 64),
-				strconv.FormatFloat(pattern.N95Percentile, 'f', 1, 64),
+				n95,
 				strconv.FormatInt(pattern.Sum, 10),
 			})
 		}

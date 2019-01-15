@@ -33,6 +33,8 @@ const (
 	sortSum
 )
 
+const N95MaxSamples = 16 * 1024 * 1024
+
 type commandQuery struct {
 	*context.Instance
 	Name   string
@@ -47,8 +49,10 @@ type commandQuery struct {
 }
 
 type queryLog struct {
-	Log          map[int]*commandQuery
+	Log map[int]*commandQuery
+
 	summaryTable *bytes.Buffer
+	wrap         bool
 }
 
 type queryPattern struct {
@@ -64,11 +68,12 @@ func init() {
 		Usage: "output statistics about query patterns",
 		Flags: []CommandArgument{
 			{Name: "sort", ShortName: "s", Type: String, Usage: "sort by namespace, pattern, count, min, max, 95%, and/or sum (comma separated for multiple)"},
+			{Name: "nowrap", Type: Bool, Usage: "prevent line wrapping of query table"},
 		},
 	}
 
 	init := func() (Command, error) {
-		return &queryLog{Log: make(map[int]*commandQuery), summaryTable: bytes.NewBuffer([]byte{})}, nil
+		return &queryLog{Log: make(map[int]*commandQuery), summaryTable: bytes.NewBuffer([]byte{}), wrap: true}, nil
 	}
 
 	GetCommandFactory().Register("query", args, init)
@@ -104,7 +109,7 @@ func (s *queryLog) Finish(index int) error {
 	}
 
 	format.PrintLogSummary(summary, os.Stdout)
-	format.PrintQueryTable(values, s.summaryTable)
+	format.PrintQueryTable(values, s.wrap, s.summaryTable)
 	return nil
 }
 
@@ -116,6 +121,8 @@ func (s *queryLog) Prepare(name string, instance int, args CommandArgumentCollec
 
 		sort: []int8{sortSum, sortNamespace, sortOperation, sortPattern},
 	}
+
+	s.wrap = !args.Booleans["nowrap"]
 
 	sortOptions := map[string]int8{
 		"namespace": sortNamespace,
@@ -192,6 +199,7 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 			case "remove":
 			case "findandmodify":
 			case "geonear":
+				// Noop
 
 			default:
 				continue
@@ -209,7 +217,7 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 							Operation: op,
 							Pattern:   query,
 						},
-						p95: make([]int64, 0, 16*1024*1024),
+						p95: make([]int64, 0, N95MaxSamples),
 					}
 				}
 
@@ -328,11 +336,17 @@ func (s *queryLog) values(patterns map[string]queryPattern) []format.PatternSumm
 		sort.Slice(pattern.p95, func(i, j int) bool { return pattern.p95[i] > pattern.p95[j] })
 
 		if len(pattern.p95) > 1 {
+			// Get the 95th percent position given the total set of data available.
 			index := float64(len(pattern.p95)) * 0.05
-			if math.Floor(index) == index {
+
+			if float64(int64(index)) == index {
+				// Check for a whole number (i.e. an exact 95th percentile value).
+				pattern.PatternSummary.N95Percentile = float64(pattern.p95[int(index)])
+			} else if index > 1 {
+				// Take the average of two values around the 95th percentile.
 				pattern.PatternSummary.N95Percentile = (float64(pattern.p95[int(index)-1] + pattern.p95[int(index)])) / 2
 			} else {
-				pattern.PatternSummary.N95Percentile = float64(pattern.p95[int(index)])
+				pattern.PatternSummary.N95Percentile = math.NaN()
 			}
 		}
 
