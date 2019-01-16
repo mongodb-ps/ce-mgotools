@@ -9,9 +9,8 @@ import (
 	"time"
 	"unicode"
 
+	"mgotools/parser/errors"
 	"mgotools/util"
-
-	"github.com/pkg/errors"
 )
 
 // https://docs.mongodb.com/manual/reference/mongodb-extended-json/
@@ -219,6 +218,9 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 				value, err = parseDbRef(r)
 			} else if length == 3 && word == "new" {
 				value, err = parseDate(r)
+			} else if length == 7 && word == "bindata" {
+				r.RewindSlurpWord()
+				value, err = parseBinData(r)
 			} else {
 				return nil, fmt.Errorf("unrecognized type beginning with '%c' at %d", r.NextRune(), r.Pos())
 			}
@@ -233,6 +235,38 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 	return value, err
 }
 
+func parseBinData(r *util.RuneReader) (BinData, error) {
+	// BinData(3, 7B41B8989CD93C2E80E3AA19F4732581)
+	// The RuneReader should be pointing to the beginning of the word.
+	var b BinData
+
+	// Skip "BinData("
+	r.Skip(8)
+
+	// Get the type (should be an integer).
+	t, ok := r.SlurpWord()
+	if !ok || len(t) < 2 {
+		return b, errors.UnexpectedEOL
+	} else if num, err := strconv.ParseInt(t[:len(t)-1], 10, 8); err != nil {
+		return BinData{}, err
+	} else {
+		b.Type = byte(num)
+	}
+
+	// Get the data itself.
+	c, ok := r.SlurpWord()
+	if !ok || len(c) < 2 {
+		return BinData{}, errors.UnexpectedEOL
+	} else if hex, err := hex.DecodeString(c[:len(c)-1]); err != nil {
+		// Decode the string into hex and set the output.
+		return BinData{}, err
+	} else {
+		b.BinData = hex
+	}
+
+	return b, nil
+}
+
 func parseDate(r *util.RuneReader) (time.Time, error) {
 	// new Date(1490821611611)
 	if r.CurrentWord() == "new" {
@@ -245,7 +279,7 @@ func parseDate(r *util.RuneReader) (time.Time, error) {
 	} else if util.StringInsensitiveMatch(r.Peek(8), "isodate(") {
 		offset = 8
 	} else {
-		return time.Time{}, errors.New("unexpected end of string parsing date")
+		return time.Time{}, errors.UnexpectedEOL
 	}
 	r.Skip(offset)
 	if date := r.Peek(13); len(date) != 13 {
@@ -323,10 +357,10 @@ func parseNumber(r *util.RuneReader) (interface{}, error) {
 func parseObjectId(oid string, strict bool) (ObjectId, error) {
 	// ObjectId('59e3fdf682f5ead28303a9cb')
 	if util.StringLength(oid) != 36 {
-		return nil, errors.New("unexpected length")
+		return nil, errors.UnexpectedLength
 	}
 	if (strict && !strings.HasPrefix(oid, "ObjectId(")) || (!strict && !util.StringInsensitiveMatch(oid[:9], "objectid(")) {
-		return nil, errors.New("unexpected string")
+		return nil, errors.MisplacedWordException
 	}
 	encoded := oid[10:34]
 	if decoded, err := hex.DecodeString(encoded); err != nil {
@@ -360,8 +394,10 @@ func parseDataType(m map[string]interface{}) interface{} {
 		}
 	case 2:
 		if _, ok := m["$binary"].([]byte); ok {
-			if _, ok := m["$type"].(string); ok {
-				return BinData{m["$binary"].([]byte), m["$type"].(string)}
+			if t, ok := m["$type"].(string); ok {
+				if h, err := hex.DecodeString(t); err == nil && len(h) == 1 {
+					return BinData{m["$binary"].([]byte), h[0]}
+				}
 			}
 		} else if _, ok := m["$regex"]; ok {
 			if _, ok := m["$options"].(string); ok {

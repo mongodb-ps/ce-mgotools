@@ -125,6 +125,33 @@ func TestParseDataType(t *testing.T) {
 	}
 }
 
+func TestBinData(t *testing.T) {
+	bin, err := parseBinData(util.NewRuneReader("BinData(0, 0123456789ABCDEF)"))
+	check := BinData{[]byte{0x1, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF}, 0x0}
+	if err != nil || !bytes.Equal(bin.BinData, check.BinData) || bin.Type != check.Type {
+		t.Errorf("Expected (%x, %x), got (%x, %x)", check.BinData, check.Type, bin.BinData, bin.Type)
+	}
+	bin, err = parseBinData(util.NewRuneReader("BinData(, 0123456789ABCDEF)"))
+	if err == nil {
+		t.Error("Expected EOF error, got none")
+	}
+
+	bin, err = parseBinData(util.NewRuneReader("BinData(256, 0123456789ABCDEF)"))
+	if err == nil {
+		t.Error("Expected overflow error, got none")
+	}
+
+	bin, err = parseBinData(util.NewRuneReader("BinData(0, )"))
+	if err == nil {
+		t.Error("Expected EOF error, got none")
+	}
+
+	bin, err = parseBinData(util.NewRuneReader("BinData(0, x)"))
+	if err == nil {
+		t.Error("Expected EOF error, got none")
+	}
+}
+
 func TestParseDbRef(t *testing.T) {
 	ref, err := parseDbRef(util.NewRuneReader("DBRef('test', 0123456789abcdef01234567)"))
 	tid, _ := NewObjectId([]byte("0123456789abcdef01234567"))

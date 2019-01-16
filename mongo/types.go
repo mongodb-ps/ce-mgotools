@@ -12,7 +12,7 @@ type Undefined struct{}
 
 type BinData struct {
 	BinData []byte
-	Type    string
+	Type    byte
 }
 
 type Regex struct {
