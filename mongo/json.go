@@ -218,7 +218,7 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 				value, err = parseDbRef(r)
 			} else if length == 3 && word == "new" {
 				value, err = parseDate(r)
-			} else if length == 7 && word == "bindata" {
+			} else if length > 7 && word[:7] == "bindata" {
 				r.RewindSlurpWord()
 				value, err = parseBinData(r)
 			} else {

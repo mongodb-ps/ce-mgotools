@@ -96,8 +96,6 @@ func (r *RuneReader) EnclosedString(which rune, snip bool) (string, error) {
 	start, length, escaped := r.next, r.length, false
 	for end := start + 1; end < length; end++ {
 		switch r.runes[end] {
-		case 0:
-			return "", fmt.Errorf("unexpected null character at %d", end)
 		case '\\':
 			escaped = true
 			continue
