@@ -1,4 +1,4 @@
-package cmd
+package command
 
 // TODO:
 //   count by namespace
@@ -12,7 +12,7 @@ import (
 	"sort"
 	"sync"
 
-	"mgotools/cmd/format"
+	"mgotools/command/format"
 	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/parser/context"
@@ -35,7 +35,14 @@ const (
 
 const N95MaxSamples = 16 * 1024 * 1024
 
-type commandQuery struct {
+type query struct {
+	Log map[int]*queryInstance
+
+	summaryTable *bytes.Buffer
+	wrap         bool
+}
+
+type queryInstance struct {
 	*context.Instance
 	Name   string
 	Length uint
@@ -48,13 +55,6 @@ type commandQuery struct {
 	Patterns map[string]queryPattern
 }
 
-type queryLog struct {
-	Log map[int]*commandQuery
-
-	summaryTable *bytes.Buffer
-	wrap         bool
-}
-
 type queryPattern struct {
 	format.PatternSummary
 
@@ -63,27 +63,31 @@ type queryPattern struct {
 	sync     sync.Mutex
 }
 
+var _ Command = (*query)(nil)
+
 func init() {
-	args := CommandDefinition{
+	args := Definition{
 		Usage: "output statistics about query patterns",
-		Flags: []CommandArgument{
+		Flags: []Argument{
 			{Name: "sort", ShortName: "s", Type: String, Usage: "sort by namespace, pattern, count, min, max, 95%, and/or sum (comma separated for multiple)"},
 			{Name: "nowrap", Type: Bool, Usage: "prevent line wrapping of query table"},
 		},
 	}
 
 	init := func() (Command, error) {
-		return &queryLog{Log: make(map[int]*commandQuery), summaryTable: bytes.NewBuffer([]byte{}), wrap: true}, nil
+		return &query{Log: make(map[int]*queryInstance), summaryTable: bytes.NewBuffer([]byte{}), wrap: true}, nil
 	}
 
-	GetCommandFactory().Register("query", args, init)
+	GetFactory().Register("query", args, init)
 }
 
-func (s *queryLog) Finish(index int) error {
+func (s *query) Finish(index int) error {
 	var host string
 	var port int
 
 	log := s.Log[index]
+	log.Finish()
+
 	for _, startup := range log.Startup {
 		host = startup.Hostname
 		port = startup.Port
@@ -97,7 +101,7 @@ func (s *queryLog) Finish(index int) error {
 		End:        log.End,
 		DateFormat: "",
 		Length:     int64(log.Length),
-		Version:    nil,
+		Version:    log.Versions,
 		Storage:    "",
 	}
 
@@ -113,8 +117,8 @@ func (s *queryLog) Finish(index int) error {
 	return nil
 }
 
-func (s *queryLog) Prepare(name string, instance int, args CommandArgumentCollection) error {
-	s.Log[instance] = &commandQuery{
+func (s *query) Prepare(name string, instance int, args ArgumentCollection) error {
+	s.Log[instance] = &queryInstance{
 		Instance: context.NewInstance(parser.VersionParserFactory.GetAll()),
 		Name:     name,
 		Patterns: make(map[string]queryPattern),
@@ -146,7 +150,7 @@ func (s *queryLog) Prepare(name string, instance int, args CommandArgumentCollec
 	return nil
 }
 
-func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs commandError, halt commandHalt) {
+func (s *query) Run(instance int, out commandTarget, in commandSource, errs commandError, halt commandHalt) {
 	exit := false
 
 	// Wait for kill signals.
@@ -229,7 +233,7 @@ func (s *queryLog) Run(instance int, out commandTarget, in commandSource, errs c
 	return
 }
 
-func (queryLog) sort(values []format.PatternSummary, order []int8) {
+func (query) sort(values []format.PatternSummary, order []int8) {
 	sort.Slice(values, func(i, j int) bool {
 		for _, field := range order {
 			switch field {
@@ -279,7 +283,7 @@ func (queryLog) sort(values []format.PatternSummary, order []int8) {
 	})
 }
 
-func (queryLog) standardize(crud record.MsgCRUD) (ns string, op string, dur int64, ok bool) {
+func (query) standardize(crud record.MsgCRUD) (ns string, op string, dur int64, ok bool) {
 	ok = true
 	switch cmd := crud.Message.(type) {
 	case record.MsgCommand:
@@ -310,12 +314,12 @@ func (queryLog) standardize(crud record.MsgCRUD) (ns string, op string, dur int6
 	return
 }
 
-func (s *queryLog) Terminate(out chan<- string) error {
+func (s *query) Terminate(out chan<- string) error {
 	out <- string(s.summaryTable.String())
 	return nil
 }
 
-func (queryLog) update(s queryPattern, dur int64) queryPattern {
+func (query) update(s queryPattern, dur int64) queryPattern {
 	s.Count += 1
 	s.Sum += dur
 	s.p95 = append(s.p95, dur)
@@ -330,7 +334,7 @@ func (queryLog) update(s queryPattern, dur int64) queryPattern {
 	return s
 }
 
-func (s *queryLog) values(patterns map[string]queryPattern) []format.PatternSummary {
+func (s *query) values(patterns map[string]queryPattern) []format.PatternSummary {
 	values := make([]format.PatternSummary, 0, len(s.Log))
 	for _, pattern := range patterns {
 		sort.Slice(pattern.p95, func(i, j int) bool { return pattern.p95[i] <= pattern.p95[j] })

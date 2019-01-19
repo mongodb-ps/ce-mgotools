@@ -32,7 +32,7 @@ func PrintQueryTable(patterns []PatternSummary, wrap bool, out io.Writer) {
 	table.SetBorder(false)
 	table.SetRowLine(false)
 	table.SetCenterSeparator(" ")
-	table.SetColumnSeparator("  ")
+	table.SetColumnSeparator(" ")
 	table.SetColWidth(60)
 	table.SetAutoWrapText(wrap)
 

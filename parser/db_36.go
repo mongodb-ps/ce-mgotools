@@ -1,8 +1,8 @@
 package parser
 
 import (
+	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser/errors"
 	"mgotools/parser/logger"
 	"mgotools/record"
 	"mgotools/util"
@@ -20,7 +20,7 @@ func init() {
 		return &Version36Parser{
 			VersionBaseParser: VersionBaseParser{
 				DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
-				ErrorVersion: errors.VersionUnmatched{Message: "version 3.6"},
+				ErrorVersion: internal.VersionUnmatched{Message: "version 3.6"},
 			},
 
 			counters: map[string]string{
@@ -123,13 +123,13 @@ func (v *Version36Parser) command(reader util.RuneReader) (record.MsgCommand, er
 		} else if param == "exception:" {
 			cmd.Exception, ok = logger.Exception(r)
 			if !ok {
-				return record.MsgCommand{}, errors.UnexpectedExceptionFormat
+				return record.MsgCommand{}, internal.UnexpectedExceptionFormat
 			}
 		} else if l := len(param); l > 6 && param[:6] == "locks:" {
 			r.RewindSlurpWord()
 			break
 		} else if !logger.IntegerKeyValue(param, cmd.Counters, v.counters) {
-			return record.MsgCommand{}, errors.CounterUnrecognized
+			return record.MsgCommand{}, internal.CounterUnrecognized
 		}
 	}
 
@@ -171,7 +171,7 @@ func (v *Version36Parser) operation(reader util.RuneReader) (record.MsgOperation
 
 	// The next word should always be "command:"
 	if c, ok := r.SlurpWord(); !ok {
-		return record.MsgOperation{}, errors.UnexpectedEOL
+		return record.MsgOperation{}, internal.UnexpectedEOL
 	} else if c != "command:" {
 		return record.MsgOperation{}, v.ErrorVersion
 	}
@@ -179,7 +179,7 @@ func (v *Version36Parser) operation(reader util.RuneReader) (record.MsgOperation
 	// There is no bareword like a command (even though the last word was
 	// "command:") so the only available option is a JSON document.
 	if !r.ExpectRune('{') {
-		return record.MsgOperation{}, errors.OperationStructure
+		return record.MsgOperation{}, internal.OperationStructure
 	}
 
 	op.Payload, err = mongo.ParseJsonRunes(r, false)
@@ -212,13 +212,13 @@ func (v *Version36Parser) operation(reader util.RuneReader) (record.MsgOperation
 		} else if param == "exception:" {
 			op.Exception, ok = logger.Exception(r)
 			if !ok {
-				return record.MsgOperation{}, errors.UnexpectedExceptionFormat
+				return record.MsgOperation{}, internal.UnexpectedExceptionFormat
 			}
 		} else if l := len(param); l > 6 && param[:6] == "locks:" {
 			r.RewindSlurpWord()
 			break
 		} else if !logger.IntegerKeyValue(param, op.Counters, v.counters) {
-			return record.MsgOperation{}, errors.CounterUnrecognized
+			return record.MsgOperation{}, internal.CounterUnrecognized
 		}
 	}
 

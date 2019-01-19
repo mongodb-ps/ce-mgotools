@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"mgotools/parser/errors"
+	"mgotools/internal"
 	"mgotools/util"
 )
 
@@ -246,7 +246,7 @@ func parseBinData(r *util.RuneReader) (BinData, error) {
 	// Get the type (should be an integer).
 	t, ok := r.SlurpWord()
 	if !ok || len(t) < 2 {
-		return b, errors.UnexpectedEOL
+		return b, internal.UnexpectedEOL
 	} else if num, err := strconv.ParseInt(t[:len(t)-1], 10, 8); err != nil {
 		return BinData{}, err
 	} else {
@@ -256,7 +256,7 @@ func parseBinData(r *util.RuneReader) (BinData, error) {
 	// Get the data itself.
 	c, ok := r.SlurpWord()
 	if !ok || len(c) < 2 {
-		return BinData{}, errors.UnexpectedEOL
+		return BinData{}, internal.UnexpectedEOL
 	} else if hex, err := hex.DecodeString(c[:len(c)-1]); err != nil {
 		// Decode the string into hex and set the output.
 		return BinData{}, err
@@ -279,7 +279,7 @@ func parseDate(r *util.RuneReader) (time.Time, error) {
 	} else if util.StringInsensitiveMatch(r.Peek(8), "isodate(") {
 		offset = 8
 	} else {
-		return time.Time{}, errors.UnexpectedEOL
+		return time.Time{}, internal.UnexpectedEOL
 	}
 	r.Skip(offset)
 	if date := r.Peek(13); len(date) != 13 {
@@ -357,10 +357,10 @@ func parseNumber(r *util.RuneReader) (interface{}, error) {
 func parseObjectId(oid string, strict bool) (ObjectId, error) {
 	// ObjectId('59e3fdf682f5ead28303a9cb')
 	if util.StringLength(oid) != 36 {
-		return nil, errors.UnexpectedLength
+		return nil, internal.UnexpectedLength
 	}
 	if (strict && !strings.HasPrefix(oid, "ObjectId(")) || (!strict && !util.StringInsensitiveMatch(oid[:9], "objectid(")) {
-		return nil, errors.MisplacedWordException
+		return nil, internal.MisplacedWordException
 	}
 	encoded := oid[10:34]
 	if decoded, err := hex.DecodeString(encoded); err != nil {

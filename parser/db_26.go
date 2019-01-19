@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser/errors"
 	"mgotools/parser/logger"
 	"mgotools/record"
 	"mgotools/util"
@@ -22,7 +22,7 @@ func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version26Parser{VersionBaseParser{
 			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
-			ErrorVersion: errors.VersionUnmatched{Message: "version 2.6"},
+			ErrorVersion: internal.VersionUnmatched{Message: "version 2.6"},
 		}}
 	})
 }
@@ -96,13 +96,13 @@ func (Version26Parser) command(r *util.RuneReader) (record.MsgCommandLegacy, err
 	if c, n, o, err := logger.Preamble(r); err != nil {
 		return record.MsgCommandLegacy{}, err
 	} else if c != "command" || o != "command" {
-		return record.MsgCommandLegacy{}, errors.CommandStructure
+		return record.MsgCommandLegacy{}, internal.CommandStructure
 	} else {
 		cmd.Command = c
 		cmd.Namespace = n
 
 		if word, ok := r.SlurpWord(); !ok {
-			return record.MsgCommandLegacy{}, errors.CommandStructure
+			return record.MsgCommandLegacy{}, internal.CommandStructure
 		} else if cmd.Payload, err = logger.Payload(r); err != nil {
 			return record.MsgCommandLegacy{}, err
 		} else {
@@ -137,7 +137,7 @@ func (Version26Parser) command(r *util.RuneReader) (record.MsgCommandLegacy, err
 		} else if strings.ContainsRune(param, ':') {
 			if !logger.IntegerKeyValue(param, cmd.Counters, mongo.COUNTERS) &&
 				!logger.IntegerKeyValue(param, cmd.Locks, map[string]string{"r": "r", "R": "R", "w": "w", "W": "W"}) {
-				return record.MsgCommandLegacy{}, errors.CounterUnrecognized
+				return record.MsgCommandLegacy{}, internal.CounterUnrecognized
 			}
 		}
 	}
@@ -186,7 +186,7 @@ func (Version26Parser) operation(r *util.RuneReader) (record.MsgOperationLegacy,
 		case strings.HasPrefix(param, "locks"):
 			if param != "locks(micros)" {
 				// Wrong version.
-				return record.MsgOperationLegacy{}, errors.VersionUnmatched{}
+				return record.MsgOperationLegacy{}, internal.VersionUnmatched{}
 			}
 			continue
 
@@ -194,7 +194,7 @@ func (Version26Parser) operation(r *util.RuneReader) (record.MsgOperationLegacy,
 			// A counter (in the form of key:value) needs to be applied to the correct target.
 			if !logger.IntegerKeyValue(param, op.Locks, map[string]string{"r": "r", "R": "R", "w": "w", "W": "W"}) &&
 				!logger.IntegerKeyValue(param, op.Counters, mongo.COUNTERS) {
-				return record.MsgOperationLegacy{}, errors.CounterUnrecognized
+				return record.MsgOperationLegacy{}, internal.CounterUnrecognized
 			}
 
 		case strings.HasSuffix(param, "ms"):
@@ -205,7 +205,7 @@ func (Version26Parser) operation(r *util.RuneReader) (record.MsgOperationLegacy,
 		default:
 			if length := len(param); length > 1 && util.ArrayBinaryMatchString(param[:length-1], mongo.OPERATIONS) {
 				if r.EOL() {
-					return op, errors.OperationStructure
+					return op, internal.OperationStructure
 				}
 
 				// Parse JSON, found immediately after an operation.
@@ -215,12 +215,12 @@ func (Version26Parser) operation(r *util.RuneReader) (record.MsgOperationLegacy,
 				}
 			} else {
 				// An unexpected value means that this parser either isn't the correct version or the line is invalid.
-				return record.MsgOperationLegacy{}, errors.VersionUnmatched{Message: fmt.Sprintf("encountered unexpected value '%s'", param)}
+				return record.MsgOperationLegacy{}, internal.VersionUnmatched{Message: fmt.Sprintf("encountered unexpected value '%s'", param)}
 			}
 		}
 	}
 
-	return op, errors.CommandStructure
+	return op, internal.CommandStructure
 }
 
 func (Version26Parser) Version() VersionDefinition {

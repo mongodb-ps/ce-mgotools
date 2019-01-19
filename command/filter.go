@@ -1,4 +1,4 @@
-package cmd
+package command
 
 // TODO:
 //   filter by IXSCAN (and pattern)
@@ -10,21 +10,22 @@ import (
 	"strings"
 	"time"
 
+	"mgotools/internal"
 	"mgotools/mongo"
 	"mgotools/parser"
 	"mgotools/parser/context"
 	"mgotools/record"
 	"mgotools/util"
-
-	parser_errors "mgotools/parser/errors"
 )
 
-type filterCommand struct {
-	BaseOptions
-	Instance map[int]filterInstance
+type filter struct {
+	DateFormat  string
+	Instance    map[int]filterInstance
+	LinearParse bool
+	Verbose     bool
 }
 
-type filterCommandOptions struct {
+type filterOptions struct {
 	argCount int
 
 	AppNameFilter            string
@@ -53,16 +54,19 @@ type filterCommandOptions struct {
 
 type filterInstance struct {
 	*context.Instance
-	commandOptions filterCommandOptions
+	commandOptions filterOptions
 
 	ErrorCount uint
 	LineCount  uint
 }
 
+// Enforce compile-time adherance to the
+var _ Command = (*filter)(nil)
+
 func init() {
-	args := CommandDefinition{
+	args := Definition{
 		Usage: "filters a log file",
-		Flags: []CommandArgument{
+		Flags: []Argument{
 			{Name: "command", Type: String, Usage: "only output log lines which are `COMMAND` of a given type. Examples: \"distinct\", \"isMaster\", \"replSetGetStatus\""},
 			{Name: "component", ShortName: "c", Type: String, Usage: "find all lines matching `COMPONENT`"},
 			{Name: "context", Type: StringSourceSlice, Usage: "find all lines matching `CONTEXT`"},
@@ -83,20 +87,22 @@ func init() {
 		},
 	}
 	init := func() (Command, error) {
-		return &filterCommand{
+		return &filter{
 			Instance: make(map[int]filterInstance),
 		}, nil
 	}
-	GetCommandFactory().Register("filter", args, init)
+	GetFactory().Register("filter", args, init)
 }
 
-func (f *filterCommand) Finish(index int) error {
-	// There are no operations that need to be performed when a file finishes.
+func (f *filter) Finish(index int) error {
+	// Clean up resources before exiting.
+	f.Instance[index].Finish()
+
 	return nil
 }
 
-func (f *filterCommand) Prepare(name string, instance int, args CommandArgumentCollection) error {
-	opts := filterCommandOptions{
+func (f *filter) Prepare(name string, instance int, args ArgumentCollection) error {
+	opts := filterOptions{
 		ConnectionFilter:         -1,
 		ExecutionDurationMinimum: -1,
 		InvertMatch:              false,
@@ -253,12 +259,12 @@ func (f *filterCommand) Prepare(name string, instance int, args CommandArgumentC
 	return nil
 }
 
-func (f *filterCommand) Terminate(out chan<- string) error {
+func (f *filter) Terminate(out chan<- string) error {
 	// Finish any
 	return nil
 }
 
-func (f *filterCommand) Run(instance int, out commandTarget, in commandSource, errs commandError, fatal commandHalt) {
+func (f *filter) Run(instance int, out commandTarget, in commandSource, errs commandError, fatal commandHalt) {
 	exit := 0
 	options := f.Instance[instance].commandOptions
 
@@ -280,7 +286,7 @@ func (f *filterCommand) Run(instance int, out commandTarget, in commandSource, e
 
 		if err != nil {
 			log.ErrorCount += 1
-			if _, ok := err.(parser_errors.VersionUnmatched); ok {
+			if _, ok := err.(internal.VersionUnmatched); ok {
 				errs <- err
 				continue
 			} else if log.commandOptions.argCount > 0 {
@@ -315,11 +321,11 @@ func (f *filterCommand) Run(instance int, out commandTarget, in commandSource, e
 	}
 }
 
-func (f *filterCommand) Usage() string {
+func (f *filter) Usage() string {
 	return "used to filter log files based on a set of criteria"
 }
 
-func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) bool {
+func (f *filter) match(entry record.Entry, opts filterOptions) bool {
 	if opts.argCount == 0 {
 		return true
 	} else if !entry.Valid {
@@ -374,7 +380,7 @@ func (f *filterCommand) match(entry record.Entry, opts filterCommandOptions) boo
 	return true
 }
 
-func (f *filterCommand) modify(entry record.Entry, options filterCommandOptions) (record.Entry, bool) {
+func (f *filter) modify(entry record.Entry, options filterOptions) (record.Entry, bool) {
 	if options.TimezoneModifier != 0 && entry.DateValid {
 		// add seconds to the parsed date object
 		entry.Date = entry.Date.Add(options.TimezoneModifier)

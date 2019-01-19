@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser/errors"
 	"mgotools/record"
 	"mgotools/util"
 )
@@ -23,7 +23,7 @@ func CommandPreamble(r *util.RuneReader) (record.MsgCommand, error) {
 	if c, n, o, err := Preamble(r); err != nil {
 		return record.MsgCommand{}, err
 	} else if c != "command" {
-		return record.MsgCommand{}, errors.CommandStructure
+		return record.MsgCommand{}, internal.CommandStructure
 	} else {
 		if o == "appName" {
 			cmd.Agent, err = r.QuotedString()
@@ -45,7 +45,7 @@ func CommandPreamble(r *util.RuneReader) (record.MsgCommand, error) {
 			cmd.Command = ""
 			r.RewindSlurpWord()
 		} else if op, ok := r.SlurpWord(); !ok {
-			return record.MsgCommand{}, errors.CommandStructure
+			return record.MsgCommand{}, internal.CommandStructure
 		} else {
 			// Cases where there are erratic commands will output JSON without
 			// a command name. Record the command name if one exists, otherwise
@@ -68,7 +68,7 @@ func CommandPreamble(r *util.RuneReader) (record.MsgCommand, error) {
 }
 
 func CheckCounterVersionError(err error, v error) (bool, error) {
-	if err == errors.CounterUnrecognized {
+	if err == internal.CounterUnrecognized {
 		return true, v
 	}
 
@@ -187,9 +187,9 @@ func CrudOrMessage(obj record.Message, term string, counters map[string]int64, p
 // of <int>ms.
 func Duration(r *util.RuneReader) (int64, error) {
 	if word, ok := r.SlurpWord(); !ok {
-		return 0, errors.UnexpectedEOL
+		return 0, internal.UnexpectedEOL
 	} else if !strings.HasSuffix(word, "ms") {
-		return 0, errors.MisplacedWordException
+		return 0, internal.MisplacedWordException
 	} else if dur, err := strconv.ParseInt(word[:len(word)-2], 10, 64); err != nil {
 		return 0, err
 	} else if dur < 0 {
@@ -296,7 +296,7 @@ func geoNear(cursorId int64, query map[string]interface{}, payload record.MsgPay
 
 func Locks(r *util.RuneReader) (map[string]interface{}, error) {
 	if !r.ExpectString("locks:{") {
-		return nil, errors.UnexpectedVersionFormat
+		return nil, internal.UnexpectedVersionFormat
 	}
 
 	r.Skip(6)
@@ -317,7 +317,7 @@ func MidLoop(r *util.RuneReader, stop string, base *record.MsgBase, counters map
 	for s := len(stop); ; {
 		param, ok := r.SlurpWord()
 		if !ok {
-			return errors.UnexpectedVersionFormat
+			return internal.UnexpectedVersionFormat
 		}
 
 		if ok, err := StringSections(param, base, payload, r); ok {
@@ -330,7 +330,7 @@ func MidLoop(r *util.RuneReader, stop string, base *record.MsgBase, counters map
 			break
 		}
 		if !IntegerKeyValue(param, counters, check) {
-			return errors.CounterUnrecognized
+			return internal.CounterUnrecognized
 		}
 	}
 
@@ -380,7 +380,7 @@ func OperationPreamble(r *util.RuneReader) (record.MsgOperation, error) {
 
 func Payload(r *util.RuneReader) (payload record.MsgPayload, err error) {
 	if !r.ExpectRune('{') {
-		return record.MsgPayload{}, errors.MisplacedWordException
+		return record.MsgPayload{}, internal.MisplacedWordException
 	}
 
 	payload, err = mongo.ParseJsonRunes(r, false)
@@ -421,14 +421,14 @@ func PlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
 	}
 	if len(out) == 0 {
 		// Return an error if no plans exist.
-		return nil, errors.NoPlanSummaryFound
+		return nil, internal.NoPlanSummaryFound
 	}
 	return out, nil
 }
 
 func Preamble(r *util.RuneReader) (cmd, ns, op string, err error) {
 	if word, ok := r.SlurpWord(); !ok {
-		err = errors.UnexpectedEOL
+		err = internal.UnexpectedEOL
 		return
 	} else {
 		cmd = word
@@ -438,12 +438,12 @@ func Preamble(r *util.RuneReader) (cmd, ns, op string, err error) {
 		ns = word
 	} else {
 		r.RewindSlurpWord()
-		err = errors.UnexpectedEOL
+		err = internal.UnexpectedEOL
 		return
 	}
 
 	if name, ok := r.SlurpWord(); !ok {
-		err = errors.UnexpectedEOL
+		err = internal.UnexpectedEOL
 	} else if size := len(name); name[size-1] == ':' && size > 1 {
 		op = name[:size-1]
 	} else {
@@ -455,12 +455,12 @@ func Preamble(r *util.RuneReader) (cmd, ns, op string, err error) {
 
 func Protocol(r *util.RuneReader) (string, error) {
 	if !r.ExpectString("protocol:") {
-		return "", errors.VersionMessageUnmatched
+		return "", internal.VersionMessageUnmatched
 	}
 
 	word, _ := r.SlurpWord()
 	if len(word) < 10 {
-		return "", errors.UnexpectedEOL
+		return "", internal.UnexpectedEOL
 	}
 	return word[9:], nil
 }
@@ -518,7 +518,7 @@ func StringSections(term string, base *record.MsgBase, payload record.MsgPayload
 	case "exception:":
 		ok = true
 		if exception, ok := Exception(r); !ok {
-			err = errors.CommandStructure
+			err = internal.CommandStructure
 			return false, err
 		} else {
 			base.Exception = exception

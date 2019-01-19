@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"io"
+	"sync"
 	"unicode"
 
 	"mgotools/mongo"
@@ -26,6 +27,7 @@ type Log struct {
 	closed bool
 	eof    bool
 	line   uint
+	mutex  sync.RWMutex
 }
 
 // Enforce the interface at compile time.
@@ -46,6 +48,7 @@ func NewLog(base io.ReadCloser) (*Log, error) {
 			closed: false,
 			eof:    false,
 			line:   0,
+			mutex:  sync.RWMutex{},
 		}, nil
 	}
 }
@@ -132,8 +135,22 @@ func (Log) NewBase(line string, num uint) (record.Base, error) {
 }
 
 func (f *Log) Close() error {
-	f.closed = true
-	return f.Closer.Close()
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
+	if !f.closed {
+		f.closed = true
+		return f.Closer.Close()
+	}
+
+	return nil
+}
+
+func (f *Log) isClosed() bool {
+	f.mutex.RLock()
+	defer f.mutex.RUnlock()
+
+	return f.closed
 }
 
 func (f *Log) Get() (record.Base, error) {
@@ -150,7 +167,7 @@ func (f *Log) Next() bool {
 }
 
 func (f Log) get() (record.Base, error) {
-	if !f.eof && !f.closed && f.Scanner.Scan() {
+	if !f.eof && !f.isClosed() && f.Scanner.Scan() {
 		f.line += 1
 		return f.NewBase(f.Scanner.Text(), f.line)
 	}

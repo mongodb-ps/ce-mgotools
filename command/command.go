@@ -1,4 +1,4 @@
-package cmd
+package command
 
 // TODO: Stream input from _mongod_ and tee output
 // TODO: Create better factory model than including parser.EntryFactory
@@ -12,40 +12,34 @@ import (
 	"mgotools/record"
 )
 
+type Flag int
+
 type commandSource <-chan record.Base
 type commandTarget chan<- string
 type commandError chan<- error
 type commandHalt <-chan struct{}
 
-type CommandInput struct {
-	Arguments CommandArgumentCollection
+type Input struct {
+	Arguments ArgumentCollection
 	Name      string
 	Length    int64
 	Reader    record.BaseFactory
 }
 
-type CommandOutput struct {
+type Output struct {
 	Writer io.WriteCloser
 	Error  io.WriteCloser
 }
 
 type Command interface {
 	Finish(int) error
-	Prepare(string, int, CommandArgumentCollection) error
+	Prepare(string, int, ArgumentCollection) error
 	Run(int, commandTarget, commandSource, commandError, commandHalt)
 	Terminate(chan<- string) error
 }
 
-type CommandFlag int
-
-type BaseOptions struct {
-	DateFormat  string
-	LinearParse bool
-	Verbose     bool
-}
-
 // A method for preparing all the bytes and pieces to pass along to the next step.
-func RunCommand(f Command, in []CommandInput, out CommandOutput) error {
+func RunCommand(f Command, in []Input, out Output) error {
 	var (
 		// Keep a count of all contexts provided as input.
 		count = len(in)

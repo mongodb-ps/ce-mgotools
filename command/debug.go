@@ -1,6 +1,6 @@
 // +build debug
 
-package cmd
+package command
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 
 	"mgotools/mongo"
 	"mgotools/parser"
@@ -32,13 +33,20 @@ type debugLog struct {
 	limitVersion bool
 	versions     []parser.VersionDefinition
 
+	outputBuffer []outputResult
+
 	width int
 }
 
+type outputResult struct {
+	Header string
+	Body   string
+}
+
 func init() {
-	args := CommandDefinition{
+	args := Definition{
 		Usage: "debug log lines",
-		Flags: []CommandArgument{
+		Flags: []Argument{
 			{Name: "context", ShortName: "c", Type: Bool, Usage: "only check the most likely result"},
 			{Name: "highlight", ShortName: "g", Type: String, Usage: "highlight specific phrases"},
 			{Name: "json", ShortName: "j", Type: Bool, Usage: "return parsed data in JSON format"},
@@ -51,17 +59,17 @@ func init() {
 		},
 	}
 	init := func() (Command, error) {
-		return &debugLog{}, nil
+		return &debugLog{outputBuffer: make([]outputResult, 0)}, nil
 	}
 
-	GetCommandFactory().Register("debug", args, init)
+	GetFactory().Register("debug", args, init)
 }
 
 func (d *debugLog) Finish(int) error {
 	return nil
 }
 
-func (d *debugLog) Prepare(name string, instance int, args CommandArgumentCollection) error {
+func (d *debugLog) Prepare(name string, instance int, args ArgumentCollection) error {
 	d.context, _ = args.Booleans["context"]
 	d.json, _ = args.Booleans["json"]
 	d.highlight, _ = args.Strings["highlight"]
@@ -131,13 +139,6 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 		exit = true
 	}()
 
-	factories := make([]parser.VersionParser, 0)
-	for _, check := range parser.VersionParserFactory.GetAll() {
-		if !d.limitVersion || d.checkVersion(check) {
-			factories = append(factories, check)
-		}
-	}
-
 	type BaseResult struct {
 		Base record.Base
 		Err  error
@@ -148,44 +149,25 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 		Err error
 	}
 
-	type OutputResult struct {
-		Header string
-		Body   string
-	}
-
-	outputBuffer := make([]OutputResult, 0)
-	buffer := func(s, b string) {
-		if d.highlight != "" {
-			var colorize func(string, string, func(string, ...interface{}) string) string
-			colorize = func(m string, h string, c func(string, ...interface{}) string) string {
-				if l := len(h); len(m) > 0 && l > 0 {
-					if pos := strings.Index(strings.ToLower(m), h); pos > -1 {
-						r := []byte(m)
-						r = append(r[:pos], r[pos+l:]...)
-						r = append(r[:pos], append([]byte(c(m[pos:pos+l])), []byte(colorize(string(r[pos:]), h, c))...)...)
-						m = string(r)
-					}
-				}
-				return m
-			}
-			s := strings.Split(d.highlight, "||")
-			c := []func(string, ...interface{}) string{
-				color.RedString,
-				color.GreenString,
-				color.CyanString,
-				color.HiMagentaString,
-			}
-			for i, v := range s {
-				b = colorize(b, v, c[i%len(c)])
-			}
+	// Instantiate a list of factories. All factories will be run by default
+	// unless the --version switch is provided.
+	factories := make([]parser.VersionParser, 0)
+	for _, check := range parser.VersionParserFactory.GetAll() {
+		if !d.limitVersion || d.checkVersion(check) {
+			factories = append(factories, check)
 		}
-
-		outputBuffer = append(outputBuffer, OutputResult{s, b})
 	}
 
+	// Create a wait group to ensure everything exits gracefully.
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(1)
+
+	buffer := d.buffer
 	logs := context.NewInstance(factories)
+
 	versionLogs := make(map[parser.VersionDefinition]*context.Instance)
 	for _, f := range factories {
+		waitGroup.Add(1)
 		versionLogs[f.Version()] = context.NewInstance([]parser.VersionParser{f})
 	}
 
@@ -242,26 +224,58 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 			}
 		}
 
-		for _, r := range outputBuffer {
-			if d.width > 0 && len(r.Body) > d.width {
-				r.Body = r.Body[:d.width]
-			}
-
-			r.Header = color.HiWhiteString(r.Header)
-			out <- r.Header + r.Body
-		}
-
-		outputBuffer = outputBuffer[:0]
-		if !d.object {
-			out <- ""
-		}
+		d.flush(out)
 	}
 
+	// Finalize the logs instance.
+	go func() {
+		defer waitGroup.Done()
+		logs.Finish()
+	}()
+
+	// Finalize each version instance.
+	go func() {
+		for _, version := range versionLogs {
+			version.Finish()
+			waitGroup.Done()
+		}
+	}()
+
+	waitGroup.Wait()
 	return
 }
 
 func (d *debugLog) Terminate(chan<- string) error {
 	return nil
+}
+
+func (d *debugLog) buffer(s, b string) {
+	if d.highlight != "" {
+		var colorize func(string, string, func(string, ...interface{}) string) string
+		colorize = func(m string, h string, c func(string, ...interface{}) string) string {
+			if l := len(h); len(m) > 0 && l > 0 {
+				if pos := strings.Index(strings.ToLower(m), h); pos > -1 {
+					r := []byte(m)
+					r = append(r[:pos], r[pos+l:]...)
+					r = append(r[:pos], append([]byte(c(m[pos:pos+l])), []byte(colorize(string(r[pos:]), h, c))...)...)
+					m = string(r)
+				}
+			}
+			return m
+		}
+		s := strings.Split(d.highlight, "||")
+		c := []func(string, ...interface{}) string{
+			color.RedString,
+			color.GreenString,
+			color.CyanString,
+			color.HiMagentaString,
+		}
+		for i, v := range s {
+			b = colorize(b, v, c[i%len(c)])
+		}
+	}
+
+	d.outputBuffer = append(d.outputBuffer, outputResult{s, b})
 }
 
 func (d *debugLog) checkLine(current uint) bool {
@@ -295,6 +309,23 @@ func (d *debugLog) formatObject(a interface{}) string {
 	}
 
 	return string(r)
+}
+
+func (d *debugLog) flush(out commandTarget) {
+	for _, r := range d.outputBuffer {
+		if d.width > 0 && len(r.Body) > d.width {
+			r.Body = r.Body[:d.width]
+		}
+
+		r.Header = color.HiWhiteString(r.Header)
+		out <- r.Header + r.Body
+	}
+
+	d.outputBuffer = d.outputBuffer[:0]
+
+	if !d.object {
+		out <- ""
+	}
 }
 
 var errorInterface = (*error)(nil)

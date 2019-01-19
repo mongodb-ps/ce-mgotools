@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser/errors"
 	"mgotools/record"
 	"mgotools/util"
 )
@@ -35,7 +35,7 @@ func Control(r util.RuneReader, entry record.Entry) (record.Message, error) {
 			return record.MsgSignal{String: r.Remainder()}, nil
 		}
 	}
-	return nil, errors.ControlUnrecognized
+	return nil, internal.ControlUnrecognized
 }
 
 func Network(r util.RuneReader, entry record.Entry) (record.Message, error) {
@@ -57,7 +57,7 @@ func Network(r util.RuneReader, entry record.Entry) (record.Message, error) {
 		} else if r.ExpectString("received client metadata from") {
 			// Skip "received client metadata" and grab connection information.
 			if addr, port, conn, ok := connectionInit(r.SkipWords(3)); !ok {
-				return nil, errors.MetadataUnmatched
+				return nil, internal.MetadataUnmatched
 			} else {
 				if meta, err := mongo.ParseJsonRunes(&r, false); err == nil {
 					return record.MsgConnectionMeta{
@@ -72,7 +72,7 @@ func Network(r util.RuneReader, entry record.Entry) (record.Message, error) {
 		}
 	}
 
-	return nil, errors.NetworkUnrecognized
+	return nil, internal.NetworkUnrecognized
 }
 
 func Storage(r util.RuneReader, entry record.Entry) (record.Message, error) {
@@ -86,7 +86,7 @@ func Storage(r util.RuneReader, entry record.Entry) (record.Message, error) {
 		}
 	}
 
-	return nil, errors.StorageUnmatched
+	return nil, internal.StorageUnmatched
 }
 
 func connectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
@@ -158,7 +158,7 @@ func StartupInfo(msg string) (record.MsgStartupInfo, error) {
 		}
 		return startupInfo, nil
 	}
-	return record.MsgStartupInfo{}, errors.NoStartupArgumentsFound
+	return record.MsgStartupInfo{}, internal.NoStartupArgumentsFound
 }
 
 func StartupOptions(msg string) (record.MsgStartupOptions, error) {
@@ -180,7 +180,7 @@ func Version(msg string, binary string) (record.MsgVersion, error) {
 		}
 	}
 	if version.String == "" {
-		return version, errors.UnexpectedVersionFormat
+		return version, internal.UnexpectedVersionFormat
 	}
 	return version, nil
 }

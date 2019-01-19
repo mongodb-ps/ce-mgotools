@@ -1,33 +1,32 @@
-package cmd
+package command
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 )
 
 const (
-	Bool CommandFlag = iota
+	Bool Flag = iota
 	Int
 	IntSourceSlice
 	String
 	StringSourceSlice
 )
 
-type CommandArgument struct {
+type Argument struct {
 	Name      string
 	ShortName string
 	Usage     string
-	Type      CommandFlag
+	Type      Flag
 }
 
-type CommandArgumentCollection struct {
+type ArgumentCollection struct {
 	Booleans map[string]bool
 	Integers map[string]int
 	Strings  map[string]string
 }
 
-func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd CommandDefinition) (CommandArgumentCollection, error) {
+func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd Definition) (ArgumentCollection, error) {
 	var (
 		argsBool   = make(map[string]bool)
 		argsInt    = make(map[string]int)
@@ -48,7 +47,7 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 				case len(values) == 1:
 					argsInt[argument.Name] = values[0]
 				case index >= len(values):
-					return CommandArgumentCollection{}, errors.New(fmt.Sprintf("--%s must appear for each file", argument.Name))
+					return ArgumentCollection{}, fmt.Errorf("--%s must appear for each file", argument.Name)
 				default:
 					argsInt[argument.Name] = values[index]
 				}
@@ -61,7 +60,7 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 				case len(values) == 1:
 					argsString[argument.Name] = values[0]
 				case index >= len(values):
-					return CommandArgumentCollection{}, errors.New(fmt.Sprintf("--%s must appear for each file", argument.Name))
+					return ArgumentCollection{}, fmt.Errorf("--%s must appear for each file", argument.Name)
 				default:
 					argsString[argument.Name] = values[index]
 				}
@@ -69,5 +68,5 @@ func MakeCommandArgumentCollection(index int, args map[string]interface{}, cmd C
 		}
 	}
 
-	return CommandArgumentCollection{argsBool, argsInt, argsString}, nil
+	return ArgumentCollection{argsBool, argsInt, argsString}, nil
 }

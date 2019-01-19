@@ -38,7 +38,6 @@ func testAccumulator(r accumulatorFile, t *testing.T) {
 		i := uint(0)
 		for scanner.Scan() {
 			i += 1
-			//util.Debug("input (%d): %s", i, scanner.Text())
 			in <- scanner.Text()
 		}
 		close(in)

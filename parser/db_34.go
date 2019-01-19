@@ -1,8 +1,8 @@
 package parser
 
 import (
+	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser/errors"
 	"mgotools/parser/logger"
 	"mgotools/record"
 	"mgotools/util"
@@ -20,7 +20,7 @@ func init() {
 		return &Version34Parser{
 			VersionBaseParser: VersionBaseParser{
 				DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
-				ErrorVersion: errors.VersionUnmatched{Message: "version 3.4"},
+				ErrorVersion: internal.VersionUnmatched{Message: "version 3.4"},
 			},
 
 			counters: map[string]string{

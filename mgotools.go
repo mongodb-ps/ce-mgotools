@@ -12,7 +12,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"mgotools/cmd"
+	"mgotools/command"
 	"mgotools/source"
 	"mgotools/util"
 
@@ -38,13 +38,13 @@ func main() {
 	}
 }
 
-func checkClientCommands(context *cli.Context, count int, command cmd.CommandDefinition) error {
+func checkClientCommands(context *cli.Context, count int, def command.Definition) error {
 	var length = 0
-	for _, flag := range command.Flags {
+	for _, flag := range def.Flags {
 		switch flag.Type {
-		case cmd.IntSourceSlice:
+		case command.IntSourceSlice:
 			length = len(context.IntSlice(flag.Name))
-		case cmd.StringSourceSlice:
+		case command.StringSourceSlice:
 			length = len(context.StringSlice(flag.Name))
 		}
 		if length > count {
@@ -56,22 +56,22 @@ func checkClientCommands(context *cli.Context, count int, command cmd.CommandDef
 
 func makeClientFlags() []cli.Command {
 	var c []cli.Command
-	commandFactory := cmd.GetCommandFactory()
-	for _, commandName := range commandFactory.GetCommandNames() {
-		command, _ := commandFactory.GetCommandDefinition(commandName)
-		clientCommand := cli.Command{Name: commandName, Action: runCommand, Usage: command.Usage}
-		for _, argument := range command.Flags {
+	commandFactory := command.GetFactory()
+	for _, commandName := range commandFactory.GetNames() {
+		cmd, _ := commandFactory.GetDefinition(commandName)
+		clientCommand := cli.Command{Name: commandName, Action: runCommand, Usage: cmd.Usage}
+		for _, argument := range cmd.Flags {
 			if argument.ShortName != "" {
 				argument.Name = fmt.Sprintf("%s, %s", argument.Name, argument.ShortName)
 			}
 			switch argument.Type {
-			case cmd.Bool:
+			case command.Bool:
 				clientCommand.Flags = append(clientCommand.Flags, cli.BoolFlag{Name: argument.Name, Usage: argument.Usage})
-			case cmd.Int:
+			case command.Int:
 				clientCommand.Flags = append(clientCommand.Flags, cli.IntFlag{Name: argument.Name, Usage: argument.Usage})
-			case cmd.IntSourceSlice:
+			case command.IntSourceSlice:
 				clientCommand.Flags = append(clientCommand.Flags, cli.IntSliceFlag{Name: argument.Name, Usage: argument.Usage})
-			case cmd.StringSourceSlice, cmd.String:
+			case command.StringSourceSlice, command.String:
 				clientCommand.Flags = append(clientCommand.Flags, cli.StringSliceFlag{Name: argument.Name, Usage: argument.Usage})
 			}
 		}
@@ -83,18 +83,18 @@ func makeClientFlags() []cli.Command {
 func runCommand(c *cli.Context) error {
 	// Pull arguments from the helper interpreter.
 	var (
-		commandFactory = cmd.GetCommandFactory()
+		commandFactory = command.GetFactory()
 		clientContext  = c.Args()
 		//start          = time.Now()
 	)
 	if c.Command.Name == "" {
 		return errors.New("command required")
-	} else if cmdDefinition, ok := commandFactory.GetCommandDefinition(c.Command.Name); !ok {
+	} else if cmdDefinition, ok := commandFactory.GetDefinition(c.Command.Name); !ok {
 		return fmt.Errorf("unrecognized command %s", c.Command.Name)
 	} else {
 		//util.Debug("Command: %s, starting: %s", c.Command.Name, time.Now())
 
-		command, err := commandFactory.GetCommand(c.Command.Name)
+		cmd, err := commandFactory.Get(c.Command.Name)
 		if err != nil {
 			return err
 		}
@@ -103,8 +103,8 @@ func runCommand(c *cli.Context) error {
 		argc := c.NArg()
 		fileCount := 0
 
-		input := make([]cmd.CommandInput, 0)
-		output := cmd.CommandOutput{os.Stdout, os.Stderr}
+		input := make([]command.Input, 0)
+		output := command.Output{os.Stdout, os.Stderr}
 
 		// Check for pipe usage.
 		pipe, err := os.Stdin.Stat()
@@ -116,7 +116,7 @@ func runCommand(c *cli.Context) error {
 			}
 
 			// Add stdin to the list of input files.
-			args, err := cmd.MakeCommandArgumentCollection(0, getArgumentMap(cmdDefinition, c), cmdDefinition)
+			args, err := command.MakeCommandArgumentCollection(0, getArgumentMap(cmdDefinition, c), cmdDefinition)
 			if err != nil {
 				return err
 			}
@@ -124,7 +124,7 @@ func runCommand(c *cli.Context) error {
 			fileCount = 1
 			stdio, err := source.NewLog(os.Stdin)
 
-			input = append(input, cmd.CommandInput{
+			input = append(input, command.Input{
 				Arguments: args,
 				Name:      "stdin",
 				Length:    int64(0),
@@ -150,7 +150,7 @@ func runCommand(c *cli.Context) error {
 				return err
 			}
 
-			args, err := cmd.MakeCommandArgumentCollection(index, getArgumentMap(cmdDefinition, c), cmdDefinition)
+			args, err := command.MakeCommandArgumentCollection(index, getArgumentMap(cmdDefinition, c), cmdDefinition)
 			if err != nil {
 				return err
 			}
@@ -161,7 +161,7 @@ func runCommand(c *cli.Context) error {
 			}
 
 			fileCount += 1
-			input = append(input, cmd.CommandInput{
+			input = append(input, command.Input{
 				Arguments: args,
 				Name:      filepath.Base(path),
 				Length:    size,
@@ -175,7 +175,7 @@ func runCommand(c *cli.Context) error {
 		}
 
 		// Run the actual command.
-		if err := cmd.RunCommand(command, input, output); err != nil {
+		if err := command.RunCommand(cmd, input, output); err != nil {
 			return err
 		}
 
@@ -184,18 +184,18 @@ func runCommand(c *cli.Context) error {
 	}
 }
 
-func getArgumentMap(commandDefinition cmd.CommandDefinition, c *cli.Context) map[string]interface{} {
+func getArgumentMap(commandDefinition command.Definition, c *cli.Context) map[string]interface{} {
 	out := make(map[string]interface{})
 	for _, arg := range commandDefinition.Flags {
 		if c.IsSet(arg.Name) {
 			switch arg.Type {
-			case cmd.Bool:
+			case command.Bool:
 				out[arg.Name] = c.Bool(arg.Name)
-			case cmd.Int:
+			case command.Int:
 				out[arg.Name] = c.Int(arg.Name)
-			case cmd.IntSourceSlice:
+			case command.IntSourceSlice:
 				out[arg.Name] = c.IntSlice(arg.Name)
-			case cmd.String, cmd.StringSourceSlice:
+			case command.String, command.StringSourceSlice:
 				out[arg.Name] = c.StringSlice(arg.Name)
 			}
 		}

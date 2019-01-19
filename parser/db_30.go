@@ -1,8 +1,8 @@
 package parser
 
 import (
+	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser/errors"
 	"mgotools/parser/logger"
 	"mgotools/record"
 	"mgotools/util"
@@ -19,7 +19,7 @@ func init() {
 		return &Version30Parser{
 			VersionBaseParser: VersionBaseParser{
 				DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
-				ErrorVersion: errors.VersionUnmatched{"version 3.0"},
+				ErrorVersion: internal.VersionUnmatched{"version 3.0"},
 			},
 
 			counters: map[string]string{
@@ -71,7 +71,7 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (record.Message, err
 		return v.crud(false, &r)
 
 	default:
-		return nil, errors.VersionMessageUnmatched
+		return nil, internal.VersionMessageUnmatched
 	}
 }
 
@@ -89,9 +89,9 @@ func (v *Version30Parser) command(r *util.RuneReader) (record.MsgCommand, error)
 
 	err = logger.MidLoop(r, "locks:", &cmd.MsgBase, cmd.Counters, cmd.Payload, v.counters)
 	if err != nil {
-		if err == errors.CounterUnrecognized {
+		if err == internal.CounterUnrecognized {
 			v.versionFlag = false
-			err = errors.VersionUnmatched{Message: "counter unrecognized"}
+			err = internal.VersionUnmatched{Message: "counter unrecognized"}
 		}
 		return record.MsgCommand{}, err
 	}
@@ -169,7 +169,7 @@ func (v Version30Parser) operation(r *util.RuneReader) (record.MsgOperation, err
 	if err != nil {
 		return record.MsgOperation{}, err
 	} else if !util.ArrayBinaryMatchString(op.Operation, mongo.OPERATIONS) {
-		return record.MsgOperation{}, errors.OperationStructure
+		return record.MsgOperation{}, internal.OperationStructure
 	}
 
 	op.Locks, err = logger.Locks(r)

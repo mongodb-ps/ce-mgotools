@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser/errors"
 	"mgotools/parser/logger"
 	"mgotools/record"
 	"mgotools/util"
@@ -20,7 +20,7 @@ func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version24Parser{VersionBaseParser: VersionBaseParser{
 			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR}),
-			ErrorVersion: errors.VersionUnmatched{Message: "version 2.4"},
+			ErrorVersion: internal.VersionUnmatched{Message: "version 2.4"},
 		},
 
 			// A binary searchable (i.e. sorted) list of counters.
@@ -140,11 +140,11 @@ func (v Version24Parser) parse24WithPayload(r *util.RuneReader, command bool) (r
 	op.Namespace, _ = r.SlurpWord()
 
 	if cmd := r.PreviewWord(1); cmd == "" {
-		return record.MsgOperationLegacy{}, errors.UnexpectedEOL
+		return record.MsgOperationLegacy{}, internal.UnexpectedEOL
 	} else if cmd != "command:" && command {
-		return record.MsgOperationLegacy{}, errors.CommandStructure
+		return record.MsgOperationLegacy{}, internal.CommandStructure
 	} else if cmd != "query:" && !command {
-		return record.MsgOperationLegacy{}, errors.OperationStructure
+		return record.MsgOperationLegacy{}, internal.OperationStructure
 	}
 
 	// Define the target for key:value finds (start with counters and end with
@@ -231,7 +231,7 @@ func (Version24Parser) parse24WithoutPayload(r *util.RuneReader) (record.MsgOper
 			continue
 		} else if param == "locks:{" {
 			// Wrong version, so exit.
-			return record.MsgOperationLegacy{}, errors.VersionUnmatched{}
+			return record.MsgOperationLegacy{}, internal.VersionUnmatched{}
 		}
 		logger.IntegerKeyValue(param, target, mongo.COUNTERS)
 	}

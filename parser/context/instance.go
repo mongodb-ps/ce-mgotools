@@ -5,15 +5,15 @@ import (
 	"strings"
 	"time"
 
+	"mgotools/internal"
 	"mgotools/mongo"
 	"mgotools/parser"
-	"mgotools/parser/errors"
 	"mgotools/record"
 	"mgotools/util"
 )
 
 type Instance struct {
-	parserFactory manager
+	parserFactory *manager
 	startupIndex  int
 	startSet      bool
 
@@ -34,11 +34,11 @@ type Instance struct {
 
 	End      time.Time
 	Start    time.Time
-	Startup  []logStartup
+	Startup  []instanceStartup
 	Versions []parser.VersionDefinition
 }
 
-type logStartup struct {
+type instanceStartup struct {
 	record.MsgBuildInfo
 	record.MsgStartupInfo
 	record.MsgStartupOptions
@@ -51,7 +51,7 @@ type logStartup struct {
 
 func NewInstance(parsers []parser.VersionParser) *Instance {
 	context := Instance{
-		Startup:      []logStartup{{}},
+		Startup:      []instanceStartup{{}},
 		startupIndex: 0,
 
 		Count:  0,
@@ -65,12 +65,16 @@ func NewInstance(parsers []parser.VersionParser) *Instance {
 	return &context
 }
 
+func (c *Instance) Finish() {
+	c.parserFactory.Finish()
+}
+
 func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 	manager := c.parserFactory
 	entry, version, err := manager.Try(base)
 	c.LastWinner = version
 
-	if err == errors.VersionMessageUnmatched {
+	if err == internal.VersionMessageUnmatched {
 		return record.Entry{}, err
 	}
 
@@ -103,19 +107,25 @@ func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 	if entry.Message != nil && entry.Connection == 0 {
 		switch msg := entry.Message.(type) {
 		case record.MsgStartupInfo:
-			c.Startup = append(c.Startup, logStartup{})
+			// Reference the new startup so downstream processes know that the
+			// instance, at some point, restarted.
+			c.Startup = append(c.Startup, instanceStartup{MsgStartupInfo: msg})
 			c.startupIndex += 1
-			c.Startup[c.startupIndex].MsgStartupInfo = msg
+
 			// Reset all available versions since the server restarted.
 			manager.Reset()
+
 		case record.MsgBuildInfo:
 			c.Startup[c.startupIndex].MsgBuildInfo = msg
 			// Server restarted so reject all versions for a reset (because it could be a new version)
 			manager.Reset()
+
 		case record.MsgStartupOptions:
 			c.Startup[c.startupIndex].MsgStartupOptions = msg
+
 		case record.MsgWiredTigerConfig:
 			c.Startup[c.startupIndex].MsgWiredTigerConfig = msg
+
 		case record.MsgVersion:
 			// Reject all versions but the current version.
 			switch msg.Binary {
@@ -132,6 +142,7 @@ func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 			case "OpenSSL":
 				c.Startup[c.startupIndex].OpenSSLVersion = msg
 			}
+
 		case record.MsgListening:
 			// noop
 		}
@@ -149,7 +160,7 @@ func (c *Instance) BaseToEntry(base record.Base, factory parser.VersionParser) (
 	)
 
 	if out.Date, err = factory.ParseDate(base.RawDate); err != nil {
-		return record.Entry{Valid: false}, errors.VersionDateUnmatched
+		return record.Entry{Valid: false}, internal.VersionDateUnmatched
 	}
 
 	// No dates matched so mark the date invalid and reset the count.
@@ -177,7 +188,7 @@ func (c *Instance) BaseToEntry(base record.Base, factory parser.VersionParser) (
 	// Check for the base message for validity and parse it.
 	if out.RawMessage == "" {
 		// No log message exists so it cannot be further analyzed.
-		return out, errors.VersionMessageUnmatched
+		return out, internal.VersionMessageUnmatched
 	}
 
 	// TODO: This is a debug statement! Remove.

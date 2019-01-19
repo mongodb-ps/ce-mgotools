@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"mgotools/parser/errors"
+	"mgotools/internal"
 	"mgotools/record"
 	"mgotools/util"
 )
@@ -21,11 +21,11 @@ func TestCheckCounterVersionError(t *testing.T) {
 		E error
 	}
 
-	v := errors.VersionUnmatched{""}
+	v := internal.VersionUnmatched{""}
 	s := map[Tuple]Result{
-		{errors.CounterUnrecognized, v}: {true, v},
+		{internal.CounterUnrecognized, v}: {true, v},
 
-		{errors.UnexpectedEOL, v}: {false, errors.UnexpectedEOL},
+		{internal.UnexpectedEOL, v}: {false, internal.UnexpectedEOL},
 
 		{nil, v}: {false, nil},
 	}
@@ -60,13 +60,13 @@ func TestCommandPreamble(t *testing.T) {
 
 		`command test.$cmd command: { a: 1 }`: {"command", "test.$cmd", "", record.MsgPayload{"a": 1}, nil},
 
-		`command test.$cmd`: {"", "", "", nil, errors.UnexpectedEOL},
+		`command test.$cmd`: {"", "", "", nil, internal.UnexpectedEOL},
 
 		`command test.$cmd appName: "...`: {"", "", "", nil, fmt.Errorf("unexpected end of string looking for quote (\")")},
 
-		`query test.$cmd query: { a: 1 }`: {"", "", "", nil, errors.CommandStructure},
+		`query test.$cmd query: { a: 1 }`: {"", "", "", nil, internal.CommandStructure},
 
-		`command test.$cmd command:`: {"", "", "", nil, errors.CommandStructure},
+		`command test.$cmd command:`: {"", "", "", nil, internal.CommandStructure},
 	}
 
 	for m, r := range s {
@@ -102,8 +102,8 @@ func TestDuration(t *testing.T) {
 		`10ms`: {10, nil},
 		`0ms`:  {0, nil},
 		`-1ms`: {0, nil},
-		``:     {0, errors.UnexpectedEOL},
-		`ok`:   {0, errors.MisplacedWordException},
+		``:     {0, internal.UnexpectedEOL},
+		`ok`:   {0, internal.MisplacedWordException},
 	}
 	for m, r := range s {
 		n, e := Duration(util.NewRuneReader(m))
@@ -140,7 +140,7 @@ func TestPreamble(t *testing.T) {
 	}
 
 	cmd, ns, op, err = Preamble(util.NewRuneReader(""))
-	if err != errors.UnexpectedEOL {
+	if err != internal.UnexpectedEOL {
 		t.Errorf("Expected UnexpectedEOL error, got %s", err)
 	}
 }

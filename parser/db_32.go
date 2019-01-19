@@ -3,7 +3,7 @@ package parser
 import (
 	"fmt"
 
-	"mgotools/parser/errors"
+	"mgotools/internal"
 	"mgotools/parser/logger"
 	"mgotools/record"
 	"mgotools/util"
@@ -21,7 +21,7 @@ func init() {
 		return &Version32Parser{
 			VersionBaseParser: VersionBaseParser{
 				DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
-				ErrorVersion: errors.VersionUnmatched{Message: "version 3.2"},
+				ErrorVersion: internal.VersionUnmatched{Message: "version 3.2"},
 			},
 
 			counters: map[string]string{
@@ -129,7 +129,7 @@ func (v Version32Parser) command(reader util.RuneReader) (record.MsgCommand, err
 		return record.MsgCommand{}, err
 	} else if cmd.Protocol != "op_query" && cmd.Protocol != "op_command" {
 		v.versionFlag = false
-		return record.MsgCommand{}, errors.VersionUnmatched{Message: fmt.Sprintf("unexpected protocol %s", cmd.Protocol)}
+		return record.MsgCommand{}, internal.VersionUnmatched{Message: fmt.Sprintf("unexpected protocol %s", cmd.Protocol)}
 	}
 
 	cmd.Duration, err = logger.Duration(r)
