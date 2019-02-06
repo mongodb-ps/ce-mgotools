@@ -44,8 +44,7 @@ type query struct {
 
 type queryInstance struct {
 	*context.Instance
-	Name   string
-	Length uint
+	summary format.LogSummary
 
 	sort []int8
 
@@ -70,40 +69,20 @@ func init() {
 		Usage: "output statistics about query patterns",
 		Flags: []Argument{
 			{Name: "sort", ShortName: "s", Type: String, Usage: "sort by namespace, pattern, count, min, max, 95%, and/or sum (comma separated for multiple)"},
-			{Name: "nowrap", Type: Bool, Usage: "prevent line wrapping of query table"},
+			{Name: "wrap", Type: Bool, Usage: "line wrapping of query table"},
 		},
 	}
 
 	init := func() (Command, error) {
-		return &query{Log: make(map[int]*queryInstance), summaryTable: bytes.NewBuffer([]byte{}), wrap: true}, nil
+		return &query{Log: make(map[int]*queryInstance), summaryTable: bytes.NewBuffer([]byte{}), wrap: false}, nil
 	}
 
 	GetFactory().Register("query", args, init)
 }
 
 func (s *query) Finish(index int) error {
-	var host string
-	var port int
-
 	log := s.Log[index]
 	log.Finish()
-
-	for _, startup := range log.Startup {
-		host = startup.Hostname
-		port = startup.Port
-	}
-
-	summary := format.LogSummary{
-		Source:     log.Name,
-		Host:       host,
-		Port:       port,
-		Start:      log.Start,
-		End:        log.End,
-		DateFormat: "",
-		Length:     int64(log.Length),
-		Version:    log.Versions,
-		Storage:    "",
-	}
 
 	values := s.values(log.Patterns)
 	s.sort(values, log.sort)
@@ -112,21 +91,21 @@ func (s *query) Finish(index int) error {
 		s.summaryTable.WriteString("\n------------------------------------------\n")
 	}
 
-	format.PrintLogSummary(summary, os.Stdout)
-	format.PrintQueryTable(values, s.wrap, s.summaryTable)
+	log.summary.Print(os.Stdout)
+	values.Print(s.wrap, s.summaryTable)
 	return nil
 }
 
 func (s *query) Prepare(name string, instance int, args ArgumentCollection) error {
 	s.Log[instance] = &queryInstance{
 		Instance: context.NewInstance(parser.VersionParserFactory.GetAll()),
-		Name:     name,
 		Patterns: make(map[string]queryPattern),
 
-		sort: []int8{sortSum, sortNamespace, sortOperation, sortPattern},
+		sort:    []int8{sortSum, sortNamespace, sortOperation, sortPattern},
+		summary: format.LogSummary{Source: name},
 	}
 
-	s.wrap = !args.Booleans["nowrap"]
+	s.wrap = args.Booleans["wrap"]
 
 	sortOptions := map[string]int8{
 		"namespace": sortNamespace,
@@ -170,14 +149,14 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 		}
 
 		log.LineCount += 1
-		log.Length = base.LineNumber
+		log.summary.Length = base.LineNumber
 
 		if base.RawMessage == "" {
 			log.ErrorCount += 1
 		} else if entry, err := log.NewEntry(base); err != nil {
 			log.ErrorCount += 1
 		} else {
-			log.End = entry.Date
+			log.summary.End = entry.Date
 			crud, ok := entry.Message.(record.MsgCRUD)
 			if !ok {
 				// Ignore non-CRUD operations for query purposes.
@@ -334,7 +313,7 @@ func (query) update(s queryPattern, dur int64) queryPattern {
 	return s
 }
 
-func (s *query) values(patterns map[string]queryPattern) []format.PatternSummary {
+func (s *query) values(patterns map[string]queryPattern) format.PatternTable {
 	values := make([]format.PatternSummary, 0, len(s.Log))
 	for _, pattern := range patterns {
 		sort.Slice(pattern.p95, func(i, j int) bool { return pattern.p95[i] <= pattern.p95[j] })

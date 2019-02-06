@@ -8,6 +8,8 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
+type PatternTable []PatternSummary
+
 type PatternSummary struct {
 	Namespace     string
 	Pattern       string
@@ -19,7 +21,7 @@ type PatternSummary struct {
 	Sum           int64
 }
 
-func PrintQueryTable(patterns []PatternSummary, wrap bool, out io.Writer) {
+func (patterns PatternTable) Print(wrap bool, out io.Writer) {
 	if len(patterns) == 0 {
 		out.Write([]byte("no queries found."))
 		return

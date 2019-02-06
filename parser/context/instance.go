@@ -14,8 +14,7 @@ import (
 
 type Instance struct {
 	parserFactory *manager
-	startupIndex  int
-	startSet      bool
+	versions      []parser.VersionDefinition
 
 	Count      int
 	Errors     int
@@ -27,42 +26,40 @@ type Instance struct {
 	DateRollover      int
 	DateYearMissing   bool
 
-	ReplicaSet     bool
-	ReplicaState   string
-	ReplicaMembers int
-	ReplicaVersion int
-
-	End      time.Time
-	Start    time.Time
-	Startup  []instanceStartup
-	Versions []parser.VersionDefinition
-}
-
-type instanceStartup struct {
-	record.MsgBuildInfo
-	record.MsgStartupInfo
-	record.MsgStartupOptions
-	record.MsgWiredTigerConfig
-
-	DatabaseVersion record.MsgVersion
-	OpenSSLVersion  record.MsgVersion
-	ShardVersion    record.MsgVersion
+	day   int
+	month time.Month
 }
 
 func NewInstance(parsers []parser.VersionParser) *Instance {
 	context := Instance{
-		Startup:      []instanceStartup{{}},
-		startupIndex: 0,
-
 		Count:  0,
 		Errors: 0,
 
 		DateRollover:    0,
 		DateYearMissing: false,
+
+		day:      time.Now().Day(),
+		month:    time.Now().Month(),
+		versions: make([]parser.VersionDefinition, len(parsers)),
+	}
+
+	for index, version := range parsers {
+		context.versions[index] = version.Version()
 	}
 
 	context.parserFactory = newManager(context.BaseToEntry, parsers)
 	return &context
+}
+
+func (c *Instance) Versions() []parser.VersionDefinition {
+	versions := make([]parser.VersionDefinition, 0)
+	for _, check := range c.versions {
+		if r, f := c.parserFactory.IsRejected(check); f && !r {
+			versions = append(versions, check)
+		}
+	}
+
+	return versions
 }
 
 func (c *Instance) Finish() {
@@ -71,6 +68,8 @@ func (c *Instance) Finish() {
 
 func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 	manager := c.parserFactory
+
+	// Attempt to retrieve a version from the base.
 	entry, version, err := manager.Try(base)
 	c.LastWinner = version
 
@@ -91,56 +90,35 @@ func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 	}
 
 	// Handle situations where the date is missing (typically old versions).
-	if !c.DateYearMissing && (entry.DateYearMissing || entry.Date.Year() == 0) {
+	if entry.DateYearMissing || entry.Date.Year() == 0 {
 		c.DateYearMissing = true
-		entry.Date = time.Date(time.Now().Year(), entry.Date.Month(), entry.Date.Day(), entry.Date.Hour(), entry.Date.Minute(), entry.Date.Second(), entry.Date.Nanosecond(), entry.Date.Location())
-	}
 
-	// Hold on to the start and end time for later summary.
-	c.End = entry.Date
-	if !c.startSet {
-		c.Start = entry.Date
-		c.startSet = true
+		year := time.Now().Year()
+		if c.DateRollover == 0 && (entry.Date.Month() > c.month || (entry.Date.Month() == c.month && entry.Date.Day() > c.day)) {
+			year -= 1
+		}
+
+		entry.Date = time.Date(year, entry.Date.Month(), entry.Date.Day(), entry.Date.Hour(), entry.Date.Minute(), entry.Date.Second(), entry.Date.Nanosecond(), entry.Date.Location())
 	}
 
 	// Update index context if it is available.
 	if entry.Message != nil && entry.Connection == 0 {
 		switch msg := entry.Message.(type) {
-		case record.MsgStartupInfo:
-			// Reference the new startup so downstream processes know that the
-			// instance, at some point, restarted.
-			c.Startup = append(c.Startup, instanceStartup{MsgStartupInfo: msg})
-			c.startupIndex += 1
-
+		case record.MsgStartupInfo, record.MsgBuildInfo:
 			// Reset all available versions since the server restarted.
 			manager.Reset()
-
-		case record.MsgBuildInfo:
-			c.Startup[c.startupIndex].MsgBuildInfo = msg
-			// Server restarted so reject all versions for a reset (because it could be a new version)
-			manager.Reset()
-
-		case record.MsgStartupOptions:
-			c.Startup[c.startupIndex].MsgStartupOptions = msg
-
-		case record.MsgWiredTigerConfig:
-			c.Startup[c.startupIndex].MsgWiredTigerConfig = msg
 
 		case record.MsgVersion:
 			// Reject all versions but the current version.
 			switch msg.Binary {
 			case "mongod":
-				c.Startup[c.startupIndex].DatabaseVersion = msg
 				manager.Reject(func(version parser.VersionDefinition) bool {
 					return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongod
 				})
 			case "mongos":
-				c.Startup[c.startupIndex].ShardVersion = msg
 				manager.Reject(func(version parser.VersionDefinition) bool {
 					return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongos
 				})
-			case "OpenSSL":
-				c.Startup[c.startupIndex].OpenSSLVersion = msg
 			}
 
 		case record.MsgListening:
@@ -190,15 +168,6 @@ func (c *Instance) BaseToEntry(base record.Base, factory parser.VersionParser) (
 		// No log message exists so it cannot be further analyzed.
 		return out, internal.VersionMessageUnmatched
 	}
-
-	// TODO: This is a debug statement! Remove.
-	defer func() {
-		if r := recover(); r != nil {
-			util.Debug("Panic on line %d", out.LineNumber)
-			util.Debug(out.String())
-			panic(r)
-		}
-	}()
 
 	// Try parsing the remaining factories for a log message until one succeeds.
 	out.Message, _ = factory.NewLogMessage(out)

@@ -1,6 +1,7 @@
 package context
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -239,7 +240,7 @@ func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition,
 	expected := m.send(base, output)
 
 	if expected == 0 {
-		panic("no versions to try")
+		panic(fmt.Sprintf("no versions to try at line %d", base.LineNumber))
 	}
 
 	// Create a "winner" object that will be filled with "the winner" out of all the factories attempted.
