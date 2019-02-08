@@ -139,6 +139,10 @@ func TestPattern_String(t *testing.T) {
 }
 
 func TestPattern_mtools(t *testing.T) {
+	oid1, _ := NewObjectId("1234564863acd10e5cbf5f6e")
+	oid2, _ := NewObjectId("1234564863acd10e5cbf5f7e")
+	oid3, _ := NewObjectId("528556616dde23324f233168")
+
 	s := []Object{
 		//`{"d": {"$gt": 2, "$lt": 4}, "b": {"$gte": 3}, "c": {"$nin": [1, "foo", "bar"]}, "$or": [{"a":1}, {"b":1}] }`,
 		{
@@ -152,12 +156,12 @@ func TestPattern_mtools(t *testing.T) {
 
 		//`{"a": {"$gt": 2, "$lt": 4}, "b": {"$in": [ ObjectId("1234564863acd10e5cbf5f6e"), ObjectId("1234564863acd10e5cbf5f7e") ] } }`,
 		{
-			"a": Object{"$gt": 2, "$lt": 4}, "b": Object{"$in": Array{ObjectId("1234564863acd10e5cbf5f6e"), ObjectId("1234564863acd10e5cbf5f7e")}},
+			"a": Object{"$gt": 2, "$lt": 4}, "b": Object{"$in": Array{oid1, oid2}},
 		},
 
 		//`{ "sk": -1182239108, "_id": { "$in": [ ObjectId("1234564863acd10e5cbf5f6e"), ObjectId("1234564863acd10e5cbf5f7e") ] } }`,
 		{
-			"sk": -1182239108, "_id": Object{"$in": Array{ObjectId("1234564863acd10e5cbf5f6e"), ObjectId("1234564863acd10e5cbf5f6e")}},
+			"sk": -1182239108, "_id": Object{"$in": Array{oid1, oid1}},
 		},
 
 		//`{ "a": 1, "b": { "c": 2, "d": "text" }, "e": "more test" }`,
@@ -167,7 +171,7 @@ func TestPattern_mtools(t *testing.T) {
 
 		//`{ "_id": ObjectId("528556616dde23324f233168"), "config": { "_id": 2, "host": "localhost:27017" }, "ns": "local.oplog.rs" }`,
 		{
-			"_id": ObjectId("528556616dde23324f233168"), "config": Object{"_id": 2, "host": "localhost:27017"}, "ns": "local.oplog.rs",
+			"_id": oid3, "config": Object{"_id": 2, "host": "localhost:27017"}, "ns": "local.oplog.rs",
 		},
 	}
 

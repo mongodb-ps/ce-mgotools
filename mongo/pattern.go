@@ -74,9 +74,14 @@ func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
 
 		case []interface{}:
 			if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) {
-				r := sorter.Patternize(createArray(t, false))
-				sort.Sort(r)
-				s[key] = r.Interface()
+				v := createArray(t, false)
+				if isValueArray(v) {
+					s[key] = v
+				} else {
+					r := sorter.Patternize(v)
+					sort.Sort(r)
+					s[key] = r.Interface()
+				}
 			} else if util.ArrayInsensitiveMatchString(OPERATORS_EXPRESSION, key) {
 				s[key] = compress(createArray(t, true))
 			} else {
@@ -251,4 +256,13 @@ func deepEqual(ax, bx map[string]interface{}) bool {
 		}
 	}
 	return true // len(a) == len(b) == 0
+}
+
+func isValueArray(a []interface{}) bool {
+	for _, v := range a {
+		if _, ok := v.(V); !ok {
+			return false
+		}
+	}
+	return true
 }

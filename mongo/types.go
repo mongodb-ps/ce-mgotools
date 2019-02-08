@@ -25,15 +25,27 @@ type Ref struct {
 	Id   ObjectId
 }
 
-type ObjectId []byte
+type ObjectId [12]byte
 
-func NewObjectId(s []byte) (ObjectId, bool) {
-	var d = make([]byte, 24, 24)
+func NewObjectId(s string) (ObjectId, bool) {
+	var d = make([]byte, 12, 12)
 	if len(s) != 24 {
-		return nil, false
-	} else if l, err := hex.Decode(d, s); l != 12 || err != nil {
-		return nil, false
+		return ObjectId{}, false
+	} else if l, err := hex.Decode(d, []byte(s)); l != 12 || err != nil {
+		return ObjectId{}, false
 	} else {
-		return ObjectId(d), true
+		var v ObjectId
+		copy(v[:], d[:12])
+		return v, true
 	}
+}
+
+func (o ObjectId) Slice() []byte {
+	var s = make([]byte, 12, 12)
+	copy(s, o[:12])
+	return s
+}
+
+func (o ObjectId) Equals(a ObjectId) bool {
+	return o == a
 }

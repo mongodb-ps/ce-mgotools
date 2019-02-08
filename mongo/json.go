@@ -1,3 +1,9 @@
+// MongoDB logging has its own special blend of JSON output, i.e. not at all
+// standard compliant. Any standard JSON parsers will surely fail. This is
+// especially true with things like non-JSON data types (there are only six,
+// after all). That means a custom JSON parser is necessary to accurately grab
+// all the necessary information.
+
 package mongo
 
 import (
@@ -304,7 +310,8 @@ func parseDataType(m map[string]interface{}) interface{} {
 		} else if _, ok := m["$timestamp"].(time.Time); ok {
 			return Timestamp(m["$timestamp"].(time.Time))
 		} else if _, ok := m["$oid"].(string); ok {
-			return ObjectId(m["$oid"].(string))
+			oid, _ := NewObjectId(m["$oid"].(string))
+			return oid
 		} else if _, ok := m["$undefined"].(bool); ok && m["$undefined"].(bool) {
 			return Undefined{}
 		} else if _, ok := m["$minKey"].(int); ok && m["$minKey"] == 1 {
@@ -331,7 +338,8 @@ func parseDataType(m map[string]interface{}) interface{} {
 			}
 		} else if _, ok := m["$ref"].(string); ok {
 			if _, ok := m["$id"].(string); ok {
-				return Ref{m["$ref"].(string), ObjectId(m["$id"].(string))}
+				oid, _ := NewObjectId(m["$id"].(string))
+				return Ref{m["$ref"].(string), oid}
 			}
 		}
 	}
@@ -386,7 +394,7 @@ func parseDbRef(r *util.RuneReader) (Ref, error) {
 	} else if l := len(oid); l != 25 {
 		return Ref{}, fmt.Errorf("unexpected OID format")
 	} else {
-		ref.Id, ok = NewObjectId([]byte(oid[:24]))
+		ref.Id, ok = NewObjectId(oid[:24])
 		if !ok {
 			return Ref{}, fmt.Errorf("cannot translate from hex to objectid")
 		}
@@ -425,20 +433,21 @@ func parseNumber(r *util.RuneReader) (interface{}, error) {
 	}
 }
 
-func parseObjectId(oid string, strict bool) (ObjectId, error) {
+func parseObjectId(oid string, strict bool) (value ObjectId, err error) {
 	// ObjectId('59e3fdf682f5ead28303a9cb')
 	if util.StringLength(oid) != 36 {
-		return nil, internal.UnexpectedLength
+		return ObjectId{}, internal.UnexpectedLength
 	}
 	if (strict && !strings.HasPrefix(oid, "ObjectId(")) || (!strict && !util.StringInsensitiveMatch(oid[:9], "objectid(")) {
-		return nil, internal.MisplacedWordException
+		return ObjectId{}, internal.MisplacedWordException
 	}
 	encoded := oid[10:34]
 	if decoded, err := hex.DecodeString(encoded); err != nil {
-		return nil, err
+		return ObjectId{}, err
 	} else {
-		return decoded, nil
+		copy(value[:], decoded[:12])
 	}
+	return
 }
 
 func parseTimestamp(r *util.RuneReader) (time.Time, error) {

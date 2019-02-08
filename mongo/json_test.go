@@ -25,15 +25,15 @@ func TestParseJson(t *testing.T) {
 		`{"number" : 1}`:                         {"number": 1},
 		`{"float" : 1.5}`:                        {"float": 1.5},
 		`{"object":{"key":"value"}}`:             {"object": map[string]interface{}{"key": "value"}},
+		`{"key":[]}`:                             {"key": []interface{}{}},
+		`{"key": ["value"]}`:                     {"key": []interface{}{"value"}},
+		`{"key":[ "value1" , "value2" ]}`:        {"key": []interface{}{"value1", "value2"}},
+		`{"key": /regex/ }`:                      {"key": Regex{"regex", ""}},
+		`{"key": /regex/i }`:                     {"key": Regex{"regex", "i"}},
+		`{"key": /(?:)/i }`:                      {"key": Regex{"(?:)", "i"}},
+		`{"key": Timestamp 492000|16}`:           {"key": time.Unix(492000, 16)},
+		`{"key":Timestamp 0|0}`:                  {"key": time.Unix(0, 0)},
 		`{"object":{"key1":"value1" , "key2" : "value2" } }`: {"object": map[string]interface{}{"key1": "value1", "key2": "value2"}},
-		`{"key":[]}`:                      {"key": []interface{}{}},
-		`{"key": ["value"]}`:              {"key": []interface{}{"value"}},
-		`{"key":[ "value1" , "value2" ]}`: {"key": []interface{}{"value1", "value2"}},
-		`{"key": /regex/ }`:               {"key": Regex{"regex", ""}},
-		`{"key": /regex/i }`:              {"key": Regex{"regex", "i"}},
-		`{"key": /(?:)/i }`:               {"key": Regex{"(?:)", "i"}},
-		`{"key": Timestamp 492000|16}`:    {"key": time.Unix(492000, 16)},
-		`{"key":Timestamp 0|0}`:           {"key": time.Unix(0, 0)},
 	}
 
 	for source, target := range s1 {
@@ -160,8 +160,9 @@ func TestBinData(t *testing.T) {
 
 func TestParseDbRef(t *testing.T) {
 	ref, err := parseDbRef(util.NewRuneReader("DBRef('test', 0123456789abcdef01234567)"))
-	tid, _ := NewObjectId([]byte("0123456789abcdef01234567"))
-	if err != nil || ref.Name != "test" || !bytes.Equal(ref.Id, tid) {
+	tid, _ := NewObjectId("0123456789abcdef01234567")
+
+	if err != nil || ref.Name != "test" || !ref.Id.Equals(tid) {
 		t.Errorf("Expected (test, 012345678901234567890123), got (%s, %s) %s", ref.Name, ref.Id, err)
 	}
 
