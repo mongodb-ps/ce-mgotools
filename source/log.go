@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"unicode"
 
@@ -78,9 +79,9 @@ func (Log) NewBase(line string, num uint) (record.Base, error) {
 
 	// Check for a day in the first portion of the string, which represents version <= 2.4
 	if day := base.PreviewWord(1); util.IsDay(day) {
-		base.RawDate = base.ParseCDateString()
+		base.RawDate = parseCDateString(&base)
 		base.CString = true
-	} else if base.IsIsoString() {
+	} else if util.IsIsoString(base.PreviewWord(1)) {
 		base.RawDate, _ = base.SlurpWord()
 		base.CString = false
 	}
@@ -172,4 +173,28 @@ func (f Log) get() (record.Base, error) {
 		return f.NewBase(f.Scanner.Text(), f.line)
 	}
 	return record.Base{}, io.EOF
+}
+
+// Take a parts array ([]string { "Sun", "Jan", "02", "15:04:05" }) and combined into a single element
+// ([]string { "Sun Jan 02 15:04:05" }) with all trailing elements appended to the array.
+func parseCDateString(r *record.Base) string {
+	var (
+		ok     = true
+		target = make([]string, 4)
+	)
+	start := r.Pos()
+	for i := 0; i < 4 && ok; i++ {
+		target[i], ok = r.SlurpWord()
+	}
+
+	switch {
+	case !util.IsDay(target[0]):
+	case !util.IsMonth(target[1]):
+	case !util.IsNumeric(target[2]):
+	case !util.IsTime(target[3]):
+		r.Seek(start, 0)
+		return ""
+	}
+
+	return strings.Join(target, " ")
 }
