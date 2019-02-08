@@ -93,6 +93,33 @@ func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) 
 	}
 }
 
+func checkRune(r rune, a ...interface{}) bool {
+	for _, b := range a {
+		switch v := b.(type) {
+		case rune:
+			return r == v
+		case []rune:
+			for _, i := range v {
+				if r == i {
+					return true
+				}
+			}
+		case byte:
+		case int:
+			if r == rune(v) {
+				return true
+			}
+		case *unicode.RangeTable:
+			if unicode.Is(v, r) {
+				return true
+			}
+		default:
+			panic(fmt.Sprintf("unexpected match type: %T", v))
+		}
+	}
+	return false
+}
+
 func parseArray(r *util.RuneReader, strict bool) ([]interface{}, error) {
 	var (
 		c      rune
@@ -207,6 +234,8 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 			value = MaxKey{}
 		case "MinKey":
 			value = MinKey{}
+		case "timestamp":
+			value, err = parseTimestamp(r)
 		case "undefined":
 			value = Undefined{}
 		default:
@@ -265,6 +294,48 @@ func parseBinData(r *util.RuneReader) (BinData, error) {
 	}
 
 	return b, nil
+}
+
+func parseDataType(m map[string]interface{}) interface{} {
+	switch len(m) {
+	case 1:
+		if _, ok := m["$date"].(time.Time); ok {
+			return m["$date"]
+		} else if _, ok := m["$timestamp"].(time.Time); ok {
+			return Timestamp(m["$timestamp"].(time.Time))
+		} else if _, ok := m["$oid"].(string); ok {
+			return ObjectId(m["$oid"].(string))
+		} else if _, ok := m["$undefined"].(bool); ok && m["$undefined"].(bool) {
+			return Undefined{}
+		} else if _, ok := m["$minKey"].(int); ok && m["$minKey"] == 1 {
+			return MinKey{}
+		} else if _, ok := m["$maxKey"]; ok && m["$maxKey"] == 1 {
+			return MaxKey{}
+		} else if _, ok := m["$numberLong"].(int64); ok {
+			return m["$numberLong"]
+		} else if _, ok := m["$numberDecimal"].(float64); ok {
+			return m["$numberDecimal"]
+		} else if _, ok := m["$regex"].(string); ok {
+			return Regex{m["$regex"].(string), ""}
+		}
+	case 2:
+		if _, ok := m["$binary"].([]byte); ok {
+			if t, ok := m["$type"].(string); ok {
+				if h, err := hex.DecodeString(t); err == nil && len(h) == 1 {
+					return BinData{m["$binary"].([]byte), h[0]}
+				}
+			}
+		} else if _, ok := m["$regex"]; ok {
+			if _, ok := m["$options"].(string); ok {
+				return Regex{m["$regex"].(string), m["$options"].(string)}
+			}
+		} else if _, ok := m["$ref"].(string); ok {
+			if _, ok := m["$id"].(string); ok {
+				return Ref{m["$ref"].(string), ObjectId(m["$id"].(string))}
+			}
+		}
+	}
+	return m
 }
 
 func parseDate(r *util.RuneReader) (time.Time, error) {
@@ -370,71 +441,30 @@ func parseObjectId(oid string, strict bool) (ObjectId, error) {
 	}
 }
 
-func parseDataType(m map[string]interface{}) interface{} {
-	switch len(m) {
-	case 1:
-		if _, ok := m["$date"].(time.Time); ok {
-			return m["$date"]
-		} else if _, ok := m["$timestamp"].(time.Time); ok {
-			return Timestamp(m["$timestamp"].(time.Time))
-		} else if _, ok := m["$oid"].(string); ok {
-			return ObjectId(m["$oid"].(string))
-		} else if _, ok := m["$undefined"].(bool); ok && m["$undefined"].(bool) {
-			return Undefined{}
-		} else if _, ok := m["$minKey"].(int); ok && m["$minKey"] == 1 {
-			return MinKey{}
-		} else if _, ok := m["$maxKey"]; ok && m["$maxKey"] == 1 {
-			return MaxKey{}
-		} else if _, ok := m["$numberLong"].(int64); ok {
-			return m["$numberLong"]
-		} else if _, ok := m["$numberDecimal"].(float64); ok {
-			return m["$numberDecimal"]
-		} else if _, ok := m["$regex"].(string); ok {
-			return Regex{m["$regex"].(string), ""}
-		}
-	case 2:
-		if _, ok := m["$binary"].([]byte); ok {
-			if t, ok := m["$type"].(string); ok {
-				if h, err := hex.DecodeString(t); err == nil && len(h) == 1 {
-					return BinData{m["$binary"].([]byte), h[0]}
-				}
-			}
-		} else if _, ok := m["$regex"]; ok {
-			if _, ok := m["$options"].(string); ok {
-				return Regex{m["$regex"].(string), m["$options"].(string)}
-			}
-		} else if _, ok := m["$ref"].(string); ok {
-			if _, ok := m["$id"].(string); ok {
-				return Ref{m["$ref"].(string), ObjectId(m["$id"].(string))}
-			}
-		}
-	}
-	return m
-}
+func parseTimestamp(r *util.RuneReader) (time.Time, error) {
+	// The log format is "Timestamp 0|0". The "Timestamp" portion should already
+	// be removed from the reader so continue parsing forward.
 
-func checkRune(r rune, a ...interface{}) bool {
-	for _, b := range a {
-		switch v := b.(type) {
-		case rune:
-			return r == v
-		case []rune:
-			for _, i := range v {
-				if r == i {
-					return true
-				}
-			}
-		case byte:
-		case int:
-			if r == rune(v) {
-				return true
-			}
-		case *unicode.RangeTable:
-			if unicode.Is(v, r) {
-				return true
-			}
-		default:
-			panic(fmt.Sprintf("unexpected match type: %T", v))
-		}
+	// Start by removing any extra spaces from before the value.
+	r.ChompWS()
+
+	// Next scan until a space, comma, curly bracket indicating end of value.
+	if term, ok := r.ScanForRune(unicode.White_Space, ',', '}'); term == "" && !ok {
+		return time.Time{}, internal.UnexpectedEOL
 	}
-	return false
+
+	// Rewind one character (a space, comma, or curly bracket).
+	r.Prev()
+
+	// Split into two parts and parse the values into integers.
+	if swall, sns, ok := util.StringDoubleSplit(r.CurrentWord(), '|'); !ok {
+		return time.Time{}, internal.MisplacedWordException
+	} else if wall, err := strconv.ParseUint(swall, 10, 32); err != nil {
+		return time.Time{}, internal.UnexpectedValue
+	} else if ns, err := strconv.ParseUint(sns, 10, 32); err != nil {
+		return time.Time{}, internal.UnexpectedValue
+	} else {
+		// The wall clock portion gets converted and eventually stored as a uint.
+		return time.Unix(int64(wall), int64(ns)), nil
+	}
 }

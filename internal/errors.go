@@ -22,6 +22,7 @@ var StorageUnmatched = VersionUnmatched{"unrecognized storage option"}
 var UnexpectedExceptionFormat = errors.New("error parsing exception")
 var UnexpectedEOL = errors.New("unexpected end of line")
 var UnexpectedLength = errors.New("unexpected text length")
+var UnexpectedValue = errors.New("unexpected value")
 var UnexpectedVersionFormat = errors.New("unexpected version format")
 
 /*

@@ -12,19 +12,19 @@ import (
 func TestParseJson(t *testing.T) {
 	// These tests should pass both strict and weak JSON tests.
 	s1 := map[string]map[string]interface{}{
-		"{}":                                                 {},
-		`{"key":"value"}`:                                    {"key": "value"},
-		`{"$key":"value"}`:                                   {"$key": "value"},
-		`{    "key"   :    "value"    }`:                     {"key": "value"},
-		`{    "key"   :    "value"    }        `:             {"key": "value"},
-		`{"key1":"value","key2":"value"}`:                    {"key1": "value", "key2": "value"},
-		`{"key1" : "value" , "key2" : "value" }`:             {"key1": "value", "key2": "value"},
-		`{"key":true}`:                                       {"key": true},
-		`{"key":false}`:                                      {"key": false},
-		`{"key":"true"}`:                                     {"key": "true"},
-		`{"number" : 1}`:                                     {"number": 1},
-		`{"float" : 1.5}`:                                    {"float": 1.5},
-		`{"object":{"key":"value"}}`:                         {"object": map[string]interface{}{"key": "value"}},
+		"{}":                                     {},
+		`{"key":"value"}`:                        {"key": "value"},
+		`{"$key":"value"}`:                       {"$key": "value"},
+		`{    "key"   :    "value"    }`:         {"key": "value"},
+		`{    "key"   :    "value"    }        `: {"key": "value"},
+		`{"key1":"value","key2":"value"}`:        {"key1": "value", "key2": "value"},
+		`{"key1" : "value" , "key2" : "value" }`: {"key1": "value", "key2": "value"},
+		`{"key":true}`:                           {"key": true},
+		`{"key":false}`:                          {"key": false},
+		`{"key":"true"}`:                         {"key": "true"},
+		`{"number" : 1}`:                         {"number": 1},
+		`{"float" : 1.5}`:                        {"float": 1.5},
+		`{"object":{"key":"value"}}`:             {"object": map[string]interface{}{"key": "value"}},
 		`{"object":{"key1":"value1" , "key2" : "value2" } }`: {"object": map[string]interface{}{"key1": "value1", "key2": "value2"}},
 		`{"key":[]}`:                      {"key": []interface{}{}},
 		`{"key": ["value"]}`:              {"key": []interface{}{"value"}},
@@ -32,6 +32,8 @@ func TestParseJson(t *testing.T) {
 		`{"key": /regex/ }`:               {"key": Regex{"regex", ""}},
 		`{"key": /regex/i }`:              {"key": Regex{"regex", "i"}},
 		`{"key": /(?:)/i }`:               {"key": Regex{"(?:)", "i"}},
+		`{"key": Timestamp 492000|16}`:    {"key": time.Unix(492000, 16)},
+		`{"key":Timestamp 0|0}`:           {"key": time.Unix(0, 0)},
 	}
 
 	for source, target := range s1 {
@@ -49,14 +51,14 @@ func TestParseJson(t *testing.T) {
 
 	// These should only pass weak tests.
 	s2 := map[string]map[string]interface{}{
-		`{    key:"value"}`:                             {"key": "value"},
-		`{"key.key":"value"}`:                           {"key.key": "value"},
-		`{ $key: "value" }`:                             {"$key": "value"},
-		`{ key.1: "value" } `:                           {"key.1": "value"},
-		`{ key.name : "value" }`:                        {"key.name": "value"},
-		`{key:{$op:"value"}}`:                           {"key": map[string]interface{}{"$op": "value"}},
-		`{key:"value"}`:                                 {"key": "value"},
-		`{"key":''}`:                                    {"key": ""},
+		`{    key:"value"}`:      {"key": "value"},
+		`{"key.key":"value"}`:    {"key.key": "value"},
+		`{ $key: "value" }`:      {"$key": "value"},
+		`{ key.1: "value" } `:    {"key.1": "value"},
+		`{ key.name : "value" }`: {"key.name": "value"},
+		`{key:{$op:"value"}}`:    {"key": map[string]interface{}{"$op": "value"}},
+		`{key:"value"}`:          {"key": "value"},
+		`{"key":''}`:             {"key": ""},
 		`{"key": objectid(00000000000000000000000000)}`: {"key": ObjectId{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
 		`{"key": "this " is " incorrectly " quoted"}`:   {"key": `this \" is \" incorrectly \" quoted`},
 	}
@@ -90,6 +92,10 @@ func TestParseJson(t *testing.T) {
 		`{"key": -1-}`,
 		`{"key": objectid(00)}`,
 		`{key.1.:"value"}`,
+		`{key: Timestamp -1|0}`,
+		`{key: Timestamp 0|-1}`,
+		`{key: Timestamp 0}`,
+		`{key: 4294967296|4294967296}`,
 	}
 
 	for _, str := range n1 {
