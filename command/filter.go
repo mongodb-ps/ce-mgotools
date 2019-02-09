@@ -253,7 +253,7 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 		}
 	}
 	f.Instance[instance] = filterInstance{
-		Instance:       context.NewInstance(parser.VersionParserFactory.GetAll()),
+		Instance:       context.NewInstance(parser.VersionParserFactory.GetAll(), &util.GlobalDateParser),
 		commandOptions: opts,
 	}
 	return nil

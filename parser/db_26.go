@@ -21,7 +21,6 @@ type Version26Parser struct {
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version26Parser{VersionBaseParser{
-			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
 			ErrorVersion: internal.VersionUnmatched{Message: "version 2.6"},
 		}}
 	})
@@ -152,8 +151,7 @@ func (Version26Parser) currentOp(entry record.Entry) bool {
 }
 
 func (Version26Parser) Check(base record.Base) bool {
-	return !base.CString &&
-		base.RawSeverity == 0 &&
+	return base.RawSeverity == 0 &&
 		base.RawComponent == ""
 }
 

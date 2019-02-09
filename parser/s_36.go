@@ -3,7 +3,6 @@ package parser
 import (
 	"mgotools/internal"
 	"mgotools/record"
-	"mgotools/util"
 )
 
 type Version36SParser struct {
@@ -13,15 +12,13 @@ type Version36SParser struct {
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version36SParser{VersionBaseParser{
-			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
 			ErrorVersion: internal.VersionUnmatched{"mongos 3.6"},
 		}}
 	})
 }
 
 func (v *Version36SParser) Check(base record.Base) bool {
-	return !base.CString &&
-		base.RawSeverity != record.SeverityNone &&
+	return base.RawSeverity != record.SeverityNone &&
 		base.RawComponent != ""
 }
 

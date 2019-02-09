@@ -28,11 +28,6 @@ const (
 	DATE_FORMAT_CTIMEYEAR     = "Mon Jan _2 2006 15:04:05.000"
 	DATE_FORMAT_ISO8602_UTC   = "2006-01-02T15:04:05.000Z"
 	DATE_FORMAT_ISO8602_LOCAL = "2006-01-02T15:04:05.000-0700"
-
-	// RFC3339 (which is stricter than ISO8601 and, incidentally, used by MongoDB)
-	DATE_REGEX_RFC3339 = `^(\d{4})-(?:(0[13578]|1[02])-([12]\d|0[1-9]|3[01])|(0[469]|11)-([12]\d|0[1-9]|3[0])|(02)-([12]\d|0[1-9]))(?:[Tt\s])([01]\d|2[0-3]):([0-5]\d):([0-5]\d|60)(\.\d{1,4})?(?:([-+](?:\d{2}|\d{4}|\d{2}:\d{2}?|Z)))?$`
-	DATE_REGEX_TIME    = `(?:[01][0-9]|2[0123]):[0-5][0-9]:(?:[0-5][0-9]|60)(?:\.[0-9]{1,8})?(?:Z|[-+][01]\d:?\d{2})?`
-	DATE_REGEX_OFFSET  = `^[+-]?(0\d|1[012]):?(\d{2})$`
 )
 
 type DateParser struct {
@@ -41,8 +36,14 @@ type DateParser struct {
 	lock        sync.Mutex
 }
 
-var DATE_DAYS = []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
-var DATE_MONTHS = []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+var GlobalDateParser = DateParser{
+	formatCount: 5,
+	formatOrder: []string{DATE_FORMAT_CTIME, DATE_FORMAT_CTIMENOMS, DATE_FORMAT_CTIMEYEAR, DATE_FORMAT_ISO8602_UTC, DATE_FORMAT_ISO8602_LOCAL},
+	lock:        sync.Mutex{},
+}
+
+var DATE_DAYS = []string{"Fri", "Mon", "Sat", "Sun", "Thu", "Tue", "Wed"}
+var DATE_MONTHS = []string{"Apr", "Aug", "Dec", "Feb", "Jan", "Jul", "Jun", "Mar", "May", "Nov", "Oct", "Sep"}
 var DATE_YEAR = time.Now().Year()
 
 func NewDateParser(formats []string) *DateParser {
@@ -93,7 +94,7 @@ func (d *DateParser) reorderFormat(index int) {
 }
 
 func IsDay(match string) bool {
-	return ArrayInsensitiveMatchString(DATE_DAYS, match)
+	return ArrayBinaryMatchString(match, DATE_DAYS)
 }
 
 // Takes string and returns if the string *looks* like an ISO formatted date,
@@ -125,13 +126,9 @@ func IsIsoString(date string) bool {
 }
 
 func IsMonth(match string) bool {
-	return ArrayInsensitiveMatchString(DATE_MONTHS, match)
+	return ArrayBinaryMatchString(match, DATE_MONTHS)
 }
 
-/*func IsTime(match string) bool {
-	check, _ := GetRegexRegistry().Compile(DATE_REGEX_TIME)
-	return check.MatchString(match)
-}*/
 func IsTime(match string) bool {
 	// 00:00:00.000
 	check := []rune(match)

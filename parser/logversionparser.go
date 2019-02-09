@@ -1,10 +1,7 @@
 package parser
 
 import (
-	"time"
-
 	"mgotools/record"
-	"mgotools/util"
 )
 
 /*
@@ -17,7 +14,6 @@ var VersionParserFactory = &logVersionParserFactory{factories: make([]VersionPar
 type VersionParser interface {
 	Check(base record.Base) bool
 	NewLogMessage(record.Entry) (record.Message, error)
-	ParseDate(string) (time.Time, error)
 	Version() VersionDefinition
 }
 
@@ -97,8 +93,6 @@ func (v VersionDefinition) String() string {
 }
 
 type VersionBaseParser struct {
-	*util.DateParser
-
 	ErrorVersion error
 }
 

@@ -75,13 +75,13 @@ func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, er
 		m.waitGroup.Add(1)
 
 		// Create a goroutine that will continuously monitor for base objects and begin conversion once received.
-		go parseByVersion(parser.Input, worker, version, parser.Parser, &m.waitGroup)
+		go m.parseByVersion(parser.Input, worker, version, parser.Parser, &m.waitGroup)
 	}
 
 	return &m
 }
 
-func parseByVersion(baseIn <-chan managerInput, worker func(record.Base, parser.VersionParser) (record.Entry, error), version parser.VersionDefinition, parser parser.VersionParser, wg *sync.WaitGroup) {
+func (manager) parseByVersion(baseIn <-chan managerInput, worker func(record.Base, parser.VersionParser) (record.Entry, error), version parser.VersionDefinition, parser parser.VersionParser, wg *sync.WaitGroup) {
 	// Continuously loop over the input channel to process log.Base objects as they arrive.
 	result := Result{Version: version}
 	for input := range baseIn {
@@ -107,6 +107,8 @@ func parseByVersion(baseIn <-chan managerInput, worker func(record.Base, parser.
 	wg.Done()
 }
 
+// Iterate through each of the goroutines and close the associated inputs. This
+// technically isn't necessary since they'll close on shutdown but
 func (m *manager) Finish() {
 	// Iterate through each version to close the channels causing the parser
 	// method to exit.

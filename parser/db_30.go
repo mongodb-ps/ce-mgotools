@@ -18,7 +18,6 @@ func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version30Parser{
 			VersionBaseParser: VersionBaseParser{
-				DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_ISO8602_UTC, util.DATE_FORMAT_ISO8602_LOCAL}),
 				ErrorVersion: internal.VersionUnmatched{"version 3.0"},
 			},
 
@@ -76,7 +75,7 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (record.Message, err
 }
 
 func (v *Version30Parser) Check(base record.Base) bool {
-	return v.versionFlag && !base.CString &&
+	return v.versionFlag &&
 		base.RawSeverity != record.SeverityNone &&
 		v.expectedComponents(base.RawComponent)
 }

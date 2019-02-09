@@ -15,6 +15,7 @@ import (
 	"mgotools/parser"
 	"mgotools/parser/context"
 	"mgotools/record"
+	"mgotools/util"
 
 	"github.com/fatih/color"
 )
@@ -163,12 +164,12 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 	waitGroup.Add(1)
 
 	buffer := d.buffer
-	logs := context.NewInstance(factories)
+	logs := context.NewInstance(factories, &util.GlobalDateParser)
 
 	versionLogs := make(map[parser.VersionDefinition]*context.Instance)
 	for _, f := range factories {
 		waitGroup.Add(1)
-		versionLogs[f.Version()] = context.NewInstance([]parser.VersionParser{f})
+		versionLogs[f.Version()] = context.NewInstance([]parser.VersionParser{f}, &util.GlobalDateParser)
 	}
 
 	for base := range in {
@@ -195,7 +196,7 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 			for _, versionParser := range factories {
 				if pass := versionParser.Check(base); !pass && !d.object {
 					buffer(" skip: ", fmt.Sprintf("[%s]", color.HiCyanString(versionParser.Version().String())))
-				} else if entry, err := versionLogs[versionParser.Version()].BaseToEntry(base, versionParser); err != nil && !d.object {
+				} else if entry, err := versionLogs[versionParser.Version()].Entry(base, versionParser); err != nil && !d.object {
 					buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(versionParser.Version().String()), err))
 				} else if d.object && entry.Message != nil || !d.object {
 					messages[versionParser.Version()] = MessageResult{entry.Message, err}

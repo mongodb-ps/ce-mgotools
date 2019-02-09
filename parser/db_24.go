@@ -19,7 +19,6 @@ type Version24Parser struct {
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version24Parser{VersionBaseParser: VersionBaseParser{
-			DateParser:   util.NewDateParser([]string{util.DATE_FORMAT_CTIMENOMS, util.DATE_FORMAT_CTIME, util.DATE_FORMAT_CTIMEYEAR}),
 			ErrorVersion: internal.VersionUnmatched{Message: "version 2.4"},
 		},
 

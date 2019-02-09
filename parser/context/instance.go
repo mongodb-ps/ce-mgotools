@@ -26,11 +26,12 @@ type Instance struct {
 	DateRollover      int
 	DateYearMissing   bool
 
-	day   int
-	month time.Month
+	dateParser *util.DateParser
+	day        int
+	month      time.Month
 }
 
-func NewInstance(parsers []parser.VersionParser) *Instance {
+func NewInstance(parsers []parser.VersionParser, date *util.DateParser) *Instance {
 	context := Instance{
 		Count:  0,
 		Errors: 0,
@@ -38,16 +39,17 @@ func NewInstance(parsers []parser.VersionParser) *Instance {
 		DateRollover:    0,
 		DateYearMissing: false,
 
-		day:      time.Now().Day(),
-		month:    time.Now().Month(),
-		versions: make([]parser.VersionDefinition, len(parsers)),
+		dateParser: date,
+		day:        time.Now().Day(),
+		month:      time.Now().Month(),
+		versions:   make([]parser.VersionDefinition, len(parsers)),
 	}
 
 	for index, version := range parsers {
 		context.versions[index] = version.Version()
 	}
 
-	context.parserFactory = newManager(context.BaseToEntry, parsers)
+	context.parserFactory = newManager(context.Entry, parsers)
 	return &context
 }
 
@@ -131,13 +133,13 @@ func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 	return entry, nil
 }
 
-func (c *Instance) BaseToEntry(base record.Base, factory parser.VersionParser) (record.Entry, error) {
+func (c *Instance) Entry(base record.Base, factory parser.VersionParser) (record.Entry, error) {
 	var (
 		err error
 		out = record.Entry{Base: base, DateValid: true, Valid: true}
 	)
 
-	if out.Date, err = factory.ParseDate(base.RawDate); err != nil {
+	if out.Date, err = c.dateParser.ParseDate(base.RawDate); err != nil {
 		return record.Entry{Valid: false}, internal.VersionDateUnmatched
 	}
 
