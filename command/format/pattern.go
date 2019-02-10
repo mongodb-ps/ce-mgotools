@@ -31,12 +31,12 @@ func (patterns PatternTable) Print(wrap bool, out io.Writer) {
 	defer table.Render()
 
 	table.Append([]string{"namespace", "operation", "pattern", "count", "min (ms)", "max (ms)", "mean (ms)", "95%-ile (ms)", "sum (ms)"})
+	table.SetAutoWrapText(wrap)
 	table.SetBorder(false)
 	table.SetRowLine(false)
 	table.SetCenterSeparator(" ")
 	table.SetColumnSeparator(" ")
 	table.SetColWidth(60)
-	table.SetAutoWrapText(wrap)
 
 	for _, pattern := range patterns {
 		if pattern.Count == 0 {
@@ -53,7 +53,7 @@ func (patterns PatternTable) Print(wrap bool, out io.Writer) {
 			})
 		} else {
 			var n95 = "-"
-			if !math.IsNaN(pattern.N95Percentile) {
+			if !math.IsNaN(pattern.N95Percentile) && pattern.Count > 1 {
 				n95 = strconv.FormatFloat(pattern.N95Percentile, 'f', 1, 64)
 			}
 

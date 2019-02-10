@@ -153,6 +153,10 @@ func (f *info) Run(index int, out commandTarget, in commandSource, errs commandE
 			}
 		}
 	}
+
+	if len(summary.Version) == 0 {
+		summary.Guess(instance.Versions())
+	}
 }
 
 func (f *info) Terminate(out chan<- string) error {

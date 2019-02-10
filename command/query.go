@@ -149,14 +149,16 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 		}
 
 		log.LineCount += 1
-		log.summary.Length = base.LineNumber
 
 		if base.RawMessage == "" {
 			log.ErrorCount += 1
 		} else if entry, err := log.NewEntry(base); err != nil {
 			log.ErrorCount += 1
 		} else {
-			log.summary.End = entry.Date
+			// Update the summary with any information available.
+			log.summary.Update(entry)
+
+			// Ignore any messages that aren't CRUD related.
 			crud, ok := entry.Message.(record.MsgCRUD)
 			if !ok {
 				// Ignore non-CRUD operations for query purposes.
@@ -207,6 +209,10 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 				log.Patterns[key] = s.update(pattern, dur)
 			}
 		}
+	}
+
+	if len(log.summary.Version) == 0 {
+		log.summary.Guess(log.Instance.Versions())
 	}
 
 	return

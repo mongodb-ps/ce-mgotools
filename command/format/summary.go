@@ -24,7 +24,19 @@ type LogSummary struct {
 	Version []parser.VersionDefinition
 	Storage string
 
-	mutex sync.Mutex
+	mutex   sync.Mutex
+	guessed bool
+}
+
+func (s *LogSummary) Guess(versions []parser.VersionDefinition) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	for _, v := range versions {
+		s.Version = append(s.Version, v)
+	}
+
+	s.guessed = true
 }
 
 func (s LogSummary) Print(w io.Writer) {
@@ -71,8 +83,27 @@ func (s LogSummary) Print(w io.Writer) {
 		versions[i] = v.String()
 	}
 
-	version := strings.Join(versions, " -> ")
-	write(out, "version", version, "unknown")
+	if !s.guessed {
+		version := strings.Join(versions, " -> ")
+		write(out, "version", version, "unknown")
+	} else {
+		leastVersion := parser.VersionDefinition{Major: 999, Minor: 999, Binary: record.Binary(999)}
+
+		for _, version := range s.Version {
+			if version.Major < leastVersion.Major {
+				leastVersion.Major = version.Major
+			}
+			if version.Major == leastVersion.Major && version.Minor < leastVersion.Minor {
+				leastVersion.Minor = version.Minor
+			}
+			if version.Major == leastVersion.Major && version.Minor == leastVersion.Minor && version.Binary < leastVersion.Binary {
+				leastVersion.Binary = version.Binary
+			}
+		}
+
+		write(out, "version", fmt.Sprintf("(guess) >= %s", leastVersion.String()), "")
+	}
+
 	write(out, "storage", s.Storage, "unknown")
 	out.Write([]byte{'\n'})
 
