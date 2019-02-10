@@ -289,13 +289,13 @@ func (r *RuneReader) RewindSlurpWord() {
 	}
 }
 
-// ScanForRune(_match_) searches the rune set for the occurrence of _match_ and
+// ScanFor(_match_) searches the rune set for the occurrence of _match_ and
 // returns the string up to and including _match_. The _start_ pointer is
 // reset and the _end_ pointer advances until it encounters _match_ or reaches
-// the the last rune in the rune set. If no _match_ is found, the entire rune
+// the  last rune in the rune set. If no _match_ is found, the entire rune
 // set beginning at _start_ is returned with a false value. The _end_ pointer
 // is not reset on failure.
-func (r *RuneReader) ScanForRune(match ...interface{}) (string, bool) {
+func (r *RuneReader) ScanFor(match ...interface{}) (string, bool) {
 	r.start = r.next
 	for ; r.next < r.length; r.next += 1 {
 		if checkReader(r, match...) {
@@ -306,7 +306,16 @@ func (r *RuneReader) ScanForRune(match ...interface{}) (string, bool) {
 	return string(r.runes[r.start:]), false
 }
 
-func (r *RuneReader) ScanForRuneWhile(match ...interface{}) (string, bool) {
+// ScanUntilRune advances the pointer until it reaches _m_ or EOL. It returns
+// true if the rune was found, false otherwise.
+func (r *RuneReader) ScanUntilRune(m rune) bool {
+	r.start = r.next
+	for ; r.next < r.length && r.runes[r.next] != m; r.next += 1 {
+	}
+	return r.next < r.length
+}
+
+func (r *RuneReader) ScanWhile(match ...interface{}) (string, bool) {
 	r.start = r.next
 	if !checkReader(r, match...) {
 		return "", false

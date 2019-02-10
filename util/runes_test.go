@@ -320,35 +320,53 @@ func TestRuneReader_Substr(t *testing.T) {
 
 }
 
-func TestRuneReader_ScanForRune(t *testing.T) {
+func TestRuneReader_ScanUntilRune(t *testing.T) {
 	r := util.NewRuneReader("abcd")
-	if s, ok := r.ScanForRune('a'); s != "a" || !ok {
+	if ok := r.ScanUntilRune('a'); !ok {
+		t.Error("scan for rune 'a' failed")
+	}
+	if ok := r.ScanUntilRune('d'); !ok {
+		t.Error("scan for rune 'd' failed")
+	}
+	r.Seek(0, 0)
+	if ok := r.ScanUntilRune('e'); ok {
+		t.Errorf("scan for 'e' succeeded, should have failed")
+	}
+	r.Seek(1, 0)
+	if ok := r.ScanUntilRune('a'); ok {
+		t.Error("scan for 'a' past a succeeded, should have failed'")
+	}
+}
+
+func TestRuneReader_ScanUntil(t *testing.T) {
+	r := util.NewRuneReader("abcd")
+	if s, ok := r.ScanFor('a'); s != "a" || !ok {
 		t.Errorf("scan for rune 'a' failed, '%s' returned", s)
 	}
-	if s, ok := r.ScanForRune('d'); s != "bcd" || !ok {
+	if s, ok := r.ScanFor('d'); s != "bcd" || !ok {
 		t.Errorf("scan for rune 'd' failed, '%s' returned", s)
 	}
 	r.Seek(0, 0)
-	if s, ok := r.ScanForRune('e'); s != "abcd" || ok {
+	if s, ok := r.ScanFor('e'); s != "abcd" || ok {
 		t.Errorf("scan for 'e' failed, '%s' returned", s)
 	}
 	r.Seek(1, 0)
-	if s, ok := r.ScanForRune('a'); s != "bcd" || ok {
+	if s, ok := r.ScanFor('a'); s != "bcd" || ok {
 		t.Errorf("scan for 'a' past a, '%s' returned", s)
 	}
 }
 
-func TestRuneReader_ScanForRuneWhile(t *testing.T) {
+func TestRuneReader_ScanWhile(t *testing.T) {
 	r := util.NewRuneReader("abc def")
-	if s, ok := r.ScanForRuneWhile([]rune{'a', 'b', 'c'}); s != "abc" || !ok {
+	if s, ok := r.ScanWhile([]rune{'a', 'b', 'c'}); s != "abc" || !ok {
 		t.Errorf("scan for rune a,b,c failed, '%s' returned", s)
 	}
 	r.Next()
-	if s, ok := r.ScanForRuneWhile([]rune{'d', 'e', 'f'}); s != "def" || !ok {
+	if s, ok := r.ScanWhile([]rune{'d', 'e', 'f'}); s != "def" || !ok {
 		t.Errorf("scan for rune d,e,f succeeded, '%s' returned", s)
 	}
 	r.Seek(0, 0)
-	if s, ok := r.ScanForRuneWhile('x'); s != "" || ok {
+	if s, ok := r.ScanWhile('x'); s != "" || ok {
 		t.Errorf("scan for rune 'x' succeeded, '%s' returned", s)
 	}
 

@@ -188,8 +188,17 @@ func parseKey(r *util.RuneReader, strict bool) (string, error) {
 		if !checkRune(c, unicode.Letter, []rune{'$', '_'}) {
 			return "", fmt.Errorf("first character in key must be a letter, dollar sign ($), or underscore (_)")
 		}
-		for r.Expect(unicode.Letter, unicode.Number, []rune{'$', '_', '.'}) {
-			r.Next()
+		if strict {
+			for r.Expect(unicode.Letter, unicode.Number, []rune{'$', '_', '.'}) {
+				r.Next()
+			}
+		} else {
+			if _, ok := r.ScanFor([]rune{':', 0}, unicode.White_Space); !ok {
+				return "", fmt.Errorf("reached end of string while parsing key")
+			}
+			if r, _ := r.Prev(); r == 0 {
+				return "", fmt.Errorf("null character found in key")
+			}
 		}
 	}
 	return r.CurrentWord(), nil
@@ -220,7 +229,7 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 		if value, err = r.EnclosedString('/', true); err != nil {
 			return "", err
 		}
-		if options, ok := r.ScanForRuneWhile([]rune{'i', 'g', 'x'}); ok { // TODO: POPULATE OTHER OPTIONS
+		if options, ok := r.ScanWhile([]rune{'i', 'g', 'x'}); ok { // TODO: POPULATE OTHER OPTIONS
 			value = Regex{value.(string), options}
 		} else {
 			value = Regex{value.(string), ""}
@@ -389,7 +398,7 @@ func parseDbRef(r *util.RuneReader) (Ref, error) {
 
 	// Skip ", "
 	r.Skip(2)
-	if oid, ok := r.ScanForRune(')'); !ok {
+	if oid, ok := r.ScanFor(')'); !ok {
 		return Ref{}, fmt.Errorf("unexpected end of string")
 	} else if l := len(oid); l != 25 {
 		return Ref{}, fmt.Errorf("unexpected OID format")
@@ -458,7 +467,7 @@ func parseTimestamp(r *util.RuneReader) (time.Time, error) {
 	r.ChompWS()
 
 	// Next scan until a space, comma, curly bracket indicating end of value.
-	if term, ok := r.ScanForRune(unicode.White_Space, ',', '}'); term == "" && !ok {
+	if term, ok := r.ScanFor(unicode.White_Space, ',', '}'); term == "" && !ok {
 		return time.Time{}, internal.UnexpectedEOL
 	}
 

@@ -232,10 +232,10 @@ func IntegerKeyValue(source string, target map[string]int64, limit map[string]st
 
 func Exception(r *util.RuneReader) (string, bool) {
 	start := r.Pos()
-	if exception, ok := r.ScanForRune("numYields:"); !ok {
+	if exception, ok := r.ScanFor("numYields:"); !ok {
 		r.Seek(start, 0)
 	} else {
-		// Rewind one since ScanForRune advances an extra character
+		// Rewind one since ScanFor advances an extra character
 		r.Prev()
 
 		pos := strings.LastIndex(exception, " ")
