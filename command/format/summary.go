@@ -20,12 +20,27 @@ type LogSummary struct {
 	Port    int
 	Start   time.Time
 	End     time.Time
+	Format  map[util.DateFormat]int
 	Length  uint
 	Version []parser.VersionDefinition
 	Storage string
 
 	mutex   sync.Mutex
 	guessed bool
+}
+
+func NewLogSummary(name string) LogSummary {
+	return LogSummary{
+		Source:  name,
+		Host:    "",
+		Port:    0,
+		Start:   time.Time{},
+		End:     time.Time{},
+		Length:  0,
+		Version: nil,
+		Storage: "",
+		Format:  make(map[util.DateFormat]int),
+	}
 }
 
 func (s *LogSummary) Guess(versions []parser.VersionDefinition) {
@@ -68,19 +83,60 @@ func (s LogSummary) Print(w io.Writer) {
 		out.WriteRune('\n')
 	}
 
+	formatTable := func(histogram map[util.DateFormat]int) string {
+		formatString := func(format util.DateFormat) string {
+			switch format {
+			case util.DATE_FORMAT_CTIME,
+				util.DATE_FORMAT_CTIMENOMS:
+				return "cdate"
+			case util.DATE_FORMAT_CTIMEYEAR:
+				return "cdate-year"
+			case util.DATE_FORMAT_ISO8602_LOCAL:
+				return "iso8602-local"
+			case util.DATE_FORMAT_ISO8602_UTC:
+				return "iso8602"
+			default:
+				return "unknown"
+			}
+		}
+
+		if len(histogram) < 2 {
+			for key := range histogram {
+				return formatString(key)
+			}
+			return "unknown"
+		} else {
+			buffer := bytes.NewBuffer([]byte{})
+			total := 0
+			for _, count := range histogram {
+				total += count
+			}
+			for format, count := range histogram {
+				buffer.WriteString(formatString(format))
+				buffer.WriteString(" (")
+				buffer.WriteString(strconv.FormatFloat(100*float64(count)/float64(total), 'f', 1, 64))
+				buffer.WriteString("%)  ")
+			}
+			return buffer.String()
+		}
+	}
+
 	write(out, "source", s.Source, "")
 	write(out, "host", host, "unknown")
 	write(out, "start", s.Start.Format("2006 Jan 02 15:04:05.000"), "")
 	write(out, "end", s.End.Format("2006 Jan 02 15:04:05.000"), "")
+	write(out, "date format", formatTable(s.Format), "")
 	write(out, "length", strconv.FormatUint(uint64(s.Length), 10), "0")
 
-	var versions = make([]string, len(s.Version))
-	for i, v := range s.Version {
+	var versions = make([]string, 0, len(s.Version))
+	for _, v := range s.Version {
 		if v.Major < 3 && s.Storage == "" {
 			s.Storage = "MMAPv1"
 		}
 
-		versions[i] = v.String()
+		if v.Major > 1 {
+			versions = append(versions, v.String())
+		}
 	}
 
 	if !s.guessed {
@@ -90,13 +146,13 @@ func (s LogSummary) Print(w io.Writer) {
 		leastVersion := parser.VersionDefinition{Major: 999, Minor: 999, Binary: record.Binary(999)}
 
 		for _, version := range s.Version {
-			if version.Major < leastVersion.Major {
+			if version.Major < leastVersion.Major && leastVersion.Major > 0 {
 				leastVersion.Major = version.Major
 			}
 			if version.Major == leastVersion.Major && version.Minor < leastVersion.Minor {
 				leastVersion.Minor = version.Minor
 			}
-			if version.Major == leastVersion.Major && version.Minor == leastVersion.Minor && version.Binary < leastVersion.Binary {
+			if version.Major == leastVersion.Major && version.Minor == leastVersion.Minor && version.Binary < leastVersion.Binary && version.Binary > record.BinaryAny {
 				leastVersion.Binary = version.Binary
 			}
 		}
@@ -122,6 +178,10 @@ func (s *LogSummary) Update(entry record.Entry) bool {
 
 	// Keep the most recent date for log summary purposes.
 	s.End = entry.Date
+
+	if entry.DateValid {
+		s.Format[entry.Format] += 1
+	}
 
 	// Track until the last parsable line number.
 	if s.Length < entry.LineNumber {

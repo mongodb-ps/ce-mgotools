@@ -66,6 +66,8 @@ func (v VersionDefinition) String() string {
 		dst = [12]byte{'m', 'o', 'n', 'g', 'o', 'd', ' ', 0, '.', '.'}
 	case record.BinaryMongos:
 		dst = [12]byte{'m', 'o', 'n', 'g', 'o', 's', ' ', 0, '.', '.'}
+	case record.BinaryAny:
+		dst = [12]byte{'m', 'o', 'n', 'g', 'o', '?', ' ', 0, '.', '.'}
 	default:
 		panic("unexpected binary")
 	}

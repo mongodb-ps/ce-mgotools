@@ -23,72 +23,73 @@ import (
 // month, and two number date as a minimum. The time could, theoretically, be included in the minimum but it will all
 // come out in the wash later.
 const (
-	DATE_FORMAT_CTIMENOMS     = "Mon Jan _2 15:04:05"
-	DATE_FORMAT_CTIME         = "Mon Jan _2 15:04:05.000"
-	DATE_FORMAT_CTIMEYEAR     = "Mon Jan _2 2006 15:04:05.000"
-	DATE_FORMAT_ISO8602_UTC   = "2006-01-02T15:04:05.000Z"
-	DATE_FORMAT_ISO8602_LOCAL = "2006-01-02T15:04:05.000-0700"
+	DATE_FORMAT_CTIMENOMS     = DateFormat("Mon Jan _2 15:04:05")
+	DATE_FORMAT_CTIME         = DateFormat("Mon Jan _2 15:04:05.000")
+	DATE_FORMAT_CTIMEYEAR     = DateFormat("Mon Jan _2 2006 15:04:05.000")
+	DATE_FORMAT_ISO8602_UTC   = DateFormat("2006-01-02T15:04:05.000Z")
+	DATE_FORMAT_ISO8602_LOCAL = DateFormat("2006-01-02T15:04:05.000-0700")
 )
 
+type DateFormat string
+
 type DateParser struct {
-	formatCount int
-	formatOrder []string
-	lock        sync.Mutex
+	order []DateFormat
+	lock  sync.Mutex
 }
 
 var GlobalDateParser = DateParser{
-	formatCount: 5,
-	formatOrder: []string{DATE_FORMAT_CTIME, DATE_FORMAT_CTIMENOMS, DATE_FORMAT_CTIMEYEAR, DATE_FORMAT_ISO8602_UTC, DATE_FORMAT_ISO8602_LOCAL},
-	lock:        sync.Mutex{},
+	order: []DateFormat{DATE_FORMAT_CTIME, DATE_FORMAT_CTIMENOMS, DATE_FORMAT_CTIMEYEAR, DATE_FORMAT_ISO8602_UTC, DATE_FORMAT_ISO8602_LOCAL},
+	lock:  sync.Mutex{},
 }
 
 var DATE_DAYS = []string{"Fri", "Mon", "Sat", "Sun", "Thu", "Tue", "Wed"}
 var DATE_MONTHS = []string{"Apr", "Aug", "Dec", "Feb", "Jan", "Jul", "Jun", "Mar", "May", "Nov", "Oct", "Sep"}
 var DATE_YEAR = time.Now().Year()
 
-func NewDateParser(formats []string) *DateParser {
-	return &DateParser{
-		formatCount: len(formats),
-		formatOrder: formats,
-	}
+func NewDateParser(formats []DateFormat) *DateParser {
+	return &DateParser{order: formats}
 }
-func (d *DateParser) ParseDate(value string) (time.Time, error) {
+
+func (d *DateParser) ParseDate(value string) (time.Time, DateFormat, error) {
 	var (
-		date  time.Time
-		err   error
-		index int
-		order = d.formatOrder
+		date   time.Time
+		err    error
+		index  int
+		picked DateFormat
 	)
-	for index = 0; index < d.formatCount; index += 1 {
-		if date, err = time.Parse(order[index], value); err == nil {
-			if index == 0 {
-				return date, err
+
+	for index = 0; index < len(d.order); index += 1 {
+		if date, err = time.Parse(string(d.order[index]), value); err == nil {
+			picked = d.order[index]
+			if index > 0 && err == nil {
+				d.reorder(index)
 			}
 			break
 		}
 	}
-	if err == nil {
-		d.reorderFormat(index)
-	}
-	return date, err
+
+	return date, picked, err
 }
 
-func (d *DateParser) reorderFormat(index int) {
+func (d *DateParser) reorder(index int) {
 	if index > 0 {
 		var (
-			format  string
-			reorder = make([]string, d.formatCount)
+			format  DateFormat
+			reorder = make([]DateFormat, len(d.order))
 		)
+
 		d.lock.Lock()
-		copy(reorder, d.formatOrder)
-		if index == d.formatCount {
-			format, reorder = reorder[d.formatCount-1], reorder[:d.formatCount-1]
-			reorder = append([]string{format}, reorder...)
+		copy(reorder, d.order)
+
+		if index == len(d.order) {
+			format, reorder = reorder[len(d.order)-1], reorder[:len(d.order)-1]
+			reorder = append([]DateFormat{format}, reorder...)
 		} else {
 			format := reorder[index]
-			reorder = append([]string{format}, append(reorder[:index], reorder[index+1:]...)...)
+			reorder = append([]DateFormat{format}, append(reorder[:index], reorder[index+1:]...)...)
 		}
-		d.formatOrder = reorder
+
+		d.order = reorder
 		d.lock.Unlock()
 	}
 }

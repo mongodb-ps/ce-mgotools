@@ -115,7 +115,7 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 	}
 
 	util.Debug("Options: %+v %+v %+v", args.Booleans, args.Integers, args.Strings)
-	dateParser := util.NewDateParser([]string{
+	dateParser := util.NewDateParser([]util.DateFormat{
 		"2006",
 		"2006-01-02",
 		"2006-01-02T15:04:05",
@@ -203,7 +203,7 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 		case "context":
 			opts.ContextFilter = value
 		case "from":
-			if dateParser, err := dateParser.ParseDate(value); err != nil {
+			if dateParser, _, err := dateParser.ParseDate(value); err != nil {
 				return errors.New("--from flag could not be parsed")
 			} else {
 				opts.FromFilter = dateParser
@@ -240,7 +240,7 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 			}
 			opts.SeverityFilter = record.Severity(value[0])
 		case "to":
-			if dateParser, err := dateParser.ParseDate(value); err != nil {
+			if dateParser, _, err := dateParser.ParseDate(value); err != nil {
 				return errors.New("--to flag could not be parsed")
 			} else {
 				opts.ToFilter = dateParser

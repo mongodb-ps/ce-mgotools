@@ -3,7 +3,6 @@ package command
 import (
 	"bytes"
 	"fmt"
-	"time"
 
 	"mgotools/command/format"
 	"mgotools/parser"
@@ -74,17 +73,8 @@ func (f *info) Prepare(name string, instance int, args ArgumentCollection) error
 
 	f.Instance[instance] = &infoInstance{
 		Instance: context.NewInstance(parsers, &util.GlobalDateParser),
-		Summary: format.LogSummary{
-			Source:  name,
-			Host:    "",
-			Port:    0,
-			Start:   time.Time{},
-			End:     time.Time{},
-			Length:  0,
-			Version: nil,
-			Storage: "",
-		},
-		output: bytes.NewBuffer([]byte{}),
+		Summary:  format.NewLogSummary(name),
+		output:   bytes.NewBuffer([]byte{}),
 	}
 
 	if args.Booleans["errors"] {

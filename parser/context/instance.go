@@ -112,6 +112,8 @@ func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 
 		case record.MsgVersion:
 			// Reject all versions but the current version.
+			manager.Reset()
+
 			switch msg.Binary {
 			case "mongod":
 				manager.Reject(func(version parser.VersionDefinition) bool {
@@ -139,7 +141,7 @@ func (c *Instance) Entry(base record.Base, factory parser.VersionParser) (record
 		out = record.Entry{Base: base, DateValid: true, Valid: true}
 	)
 
-	if out.Date, err = c.dateParser.ParseDate(base.RawDate); err != nil {
+	if out.Date, out.Format, err = c.dateParser.ParseDate(base.RawDate); err != nil {
 		return record.Entry{Valid: false}, internal.VersionDateUnmatched
 	}
 

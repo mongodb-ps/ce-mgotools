@@ -102,7 +102,7 @@ func (s *query) Prepare(name string, instance int, args ArgumentCollection) erro
 		Patterns: make(map[string]queryPattern),
 
 		sort:    []int8{sortSum, sortNamespace, sortOperation, sortPattern},
-		summary: format.LogSummary{Source: name},
+		summary: format.NewLogSummary(name),
 	}
 
 	s.wrap = args.Booleans["wrap"]

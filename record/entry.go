@@ -2,7 +2,7 @@ package record
 
 import (
 	"bytes"
-		"time"
+	"time"
 
 	"mgotools/util"
 )
@@ -20,6 +20,7 @@ type Entry struct {
 	Connection      int
 	Context         string
 	Date            time.Time
+	Format          util.DateFormat
 	DateYearMissing bool
 	DateRollover    int
 	DateValid       bool
@@ -30,7 +31,11 @@ type Entry struct {
 
 func (r *Entry) String() string {
 	var buffer bytes.Buffer
-	buffer.WriteString(r.Date.Format(util.DATE_FORMAT_ISO8602_LOCAL))
+	if r.Format != "" {
+		buffer.WriteString(string(r.Format))
+	} else {
+		buffer.WriteString(string(util.DATE_FORMAT_ISO8602_UTC))
+	}
 	buffer.WriteString(" ")
 	buffer.WriteRune(rune(r.RawSeverity))
 	buffer.WriteString(" ")
