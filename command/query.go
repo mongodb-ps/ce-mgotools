@@ -98,7 +98,7 @@ func (s *query) Finish(index int) error {
 
 func (s *query) Prepare(name string, instance int, args ArgumentCollection) error {
 	s.Log[instance] = &queryInstance{
-		Instance: context.NewInstance(parser.VersionParserFactory.GetAll(), &util.GlobalDateParser),
+		Instance: context.NewInstance(parser.VersionParserFactory.GetAll(), util.AllDateParser.Clone()),
 		Patterns: make(map[string]queryPattern),
 
 		sort:    []int8{sortSum, sortNamespace, sortOperation, sortPattern},

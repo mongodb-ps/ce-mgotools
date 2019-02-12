@@ -49,7 +49,7 @@ func NewInstance(parsers []parser.VersionParser, date *util.DateParser) *Instanc
 		context.versions[index] = version.Version()
 	}
 
-	context.parserFactory = newManager(context.Entry, parsers)
+	context.parserFactory = newManager(context.convert, parsers)
 	return &context
 }
 
@@ -135,7 +135,7 @@ func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 	return entry, nil
 }
 
-func (c *Instance) Entry(base record.Base, factory parser.VersionParser) (record.Entry, error) {
+func (c *Instance) convert(base record.Base, factory parser.VersionParser) (record.Entry, error) {
 	var (
 		err error
 		out = record.Entry{Base: base, DateValid: true, Valid: true}

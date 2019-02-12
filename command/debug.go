@@ -1,3 +1,7 @@
+// The debug module provides verbose output about each line of input. The default
+// operator will iterate through each parser and return the output. It colorizes
+// the output for easy digestion.
+//
 // +build debug
 
 package command
@@ -164,12 +168,12 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 	waitGroup.Add(1)
 
 	buffer := d.buffer
-	logs := context.NewInstance(factories, &util.GlobalDateParser)
+	logs := context.NewInstance(factories, util.AllDateParser.Clone())
 
 	versionLogs := make(map[parser.VersionDefinition]*context.Instance)
 	for _, f := range factories {
 		waitGroup.Add(1)
-		versionLogs[f.Version()] = context.NewInstance([]parser.VersionParser{f}, &util.GlobalDateParser)
+		versionLogs[f.Version()] = context.NewInstance([]parser.VersionParser{f}, util.AllDateParser.Clone())
 	}
 
 	for base := range in {
@@ -196,7 +200,7 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 			for _, versionParser := range factories {
 				if pass := versionParser.Check(base); !pass && !d.object {
 					buffer(" skip: ", fmt.Sprintf("[%s]", color.HiCyanString(versionParser.Version().String())))
-				} else if entry, err := versionLogs[versionParser.Version()].Entry(base, versionParser); err != nil && !d.object {
+				} else if entry, err := versionLogs[versionParser.Version()].Convert(base, versionParser); err != nil && !d.object {
 					buffer(" fail: ", fmt.Sprintf("[%s] (err: %v)", color.RedString(versionParser.Version().String()), err))
 				} else if d.object && entry.Message != nil || !d.object {
 					messages[versionParser.Version()] = MessageResult{entry.Message, err}

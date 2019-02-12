@@ -72,7 +72,7 @@ func (f *info) Prepare(name string, instance int, args ArgumentCollection) error
 	parsers := parser.VersionParserFactory.GetAll()
 
 	f.Instance[instance] = &infoInstance{
-		Instance: context.NewInstance(parsers, &util.GlobalDateParser),
+		Instance: context.NewInstance(parsers, util.AllDateParser.Clone()),
 		Summary:  format.NewLogSummary(name),
 		output:   bytes.NewBuffer([]byte{}),
 	}

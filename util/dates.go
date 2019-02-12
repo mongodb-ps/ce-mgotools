@@ -37,7 +37,7 @@ type DateParser struct {
 	lock  sync.Mutex
 }
 
-var GlobalDateParser = DateParser{
+var AllDateParser = DateParser{
 	order: []DateFormat{DATE_FORMAT_CTIME, DATE_FORMAT_CTIMENOMS, DATE_FORMAT_CTIMEYEAR, DATE_FORMAT_ISO8602_UTC, DATE_FORMAT_ISO8602_LOCAL},
 	lock:  sync.Mutex{},
 }
@@ -48,6 +48,10 @@ var DATE_YEAR = time.Now().Year()
 
 func NewDateParser(formats []DateFormat) *DateParser {
 	return &DateParser{order: formats}
+}
+
+func (d DateParser) Clone() *DateParser {
+	return &d
 }
 
 func (d *DateParser) ParseDate(value string) (time.Time, DateFormat, error) {
