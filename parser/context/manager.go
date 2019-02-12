@@ -1,3 +1,7 @@
+// The manager context object tries parsing multiple versions concurrently,
+// checking each version for failure conditions, and no longer attempting
+// versions that fail.
+
 package context
 
 import (
@@ -10,7 +14,7 @@ import (
 	"mgotools/record"
 )
 
-type Result struct {
+type result struct {
 	Entry   record.Entry
 	Err     error
 	Version parser.VersionDefinition
@@ -18,40 +22,72 @@ type Result struct {
 	Rejected bool
 }
 
-type managerParser struct {
+type version struct {
 	sync.RWMutex
 
 	Errors  uint64
 	Input   chan managerInput
 	Parser  parser.VersionParser
 	Version parser.VersionDefinition
+	Worker  func(record.Base, parser.VersionParser) (record.Entry, error)
 
 	Rejected bool
 	sticky   bool
 }
 
-type managerInput struct {
-	Base   record.Base
-	Output chan<- Result
+// This method is designed to be used as a goroutine. It iterates through each
+// base object provided to the manager object, attempting to generate an entry
+// object for output. Any failed attempts are recorded and versions may be
+// rejected under certain conditions.
+func (test version) parse(wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// Continuously loop over the input channel to process log.Base objects as they arrive.
+	attempt := result{Version: test.Version}
+	for input := range test.Input {
+		// Do a quick-and-dirty version check and only process against factories that may return an attempt.
+		attempt.Rejected = !test.Parser.Check(input.Base)
+		if !attempt.Rejected {
+			// Run the parser against the active factory (parser).
+			entry, err := test.Worker(input.Base, test.Parser)
+
+			if _, ok := err.(internal.VersionUnmatched); ok {
+				attempt.Rejected = true
+			} else if err == internal.VersionDateUnmatched || err == internal.VersionMessageUnmatched {
+				attempt.Rejected = true
+			} else {
+				attempt.Entry = entry
+				attempt.Err = err
+			}
+		}
+
+		// Create an attempt object, complete with version, entry attempt, and errors.
+		input.Output <- attempt
+	}
 }
 
 type manager struct {
 	sync.RWMutex
 
 	rejected uint32
-	versions map[parser.VersionDefinition]*managerParser
+	testers  map[parser.VersionDefinition]*version
 
 	finished  bool
 	waitGroup sync.WaitGroup
 }
 
+type managerInput struct {
+	Base   record.Base
+	Output chan<- result
+}
+
 func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, error), parsers []parser.VersionParser) *manager {
-	set := make(map[parser.VersionDefinition]*managerParser)
+	set := make(map[parser.VersionDefinition]*version)
 
 	m := manager{
 		RWMutex: sync.RWMutex{},
 
-		versions: set,
+		testers:  set,
 		rejected: 0,
 
 		finished:  false,
@@ -59,52 +95,27 @@ func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, er
 	}
 
 	for _, item := range parsers {
-		version := item.Version()
+		definition := item.Version()
 
-		parser := &managerParser{
+		test := &version{
 			RWMutex:  sync.RWMutex{},
 			Input:    make(chan managerInput),
 			Parser:   item,
 			Rejected: false,
-			Version:  version,
+			Version:  definition,
+			Worker:   worker,
 		}
 
-		set[version] = parser
+		set[definition] = test
 
 		// Increment the wait group.
 		m.waitGroup.Add(1)
 
 		// Create a goroutine that will continuously monitor for base objects and begin conversion once received.
-		go m.parseByVersion(parser.Input, worker, version, parser.Parser, &m.waitGroup)
+		go test.parse(&m.waitGroup)
 	}
 
 	return &m
-}
-
-func (manager) parseByVersion(baseIn <-chan managerInput, worker func(record.Base, parser.VersionParser) (record.Entry, error), version parser.VersionDefinition, parser parser.VersionParser, wg *sync.WaitGroup) {
-	// Continuously loop over the input channel to process log.Base objects as they arrive.
-	result := Result{Version: version}
-	for input := range baseIn {
-		// Do a quick-and-dirty version check and only process against factories that may return a result.
-		result.Rejected = !parser.Check(input.Base)
-		if !result.Rejected {
-			// Run the parser against the active factory (parser).
-			entry, err := worker(input.Base, parser)
-
-			if _, ok := err.(internal.VersionUnmatched); ok {
-				result.Rejected = true
-			} else if err == internal.VersionDateUnmatched || err == internal.VersionMessageUnmatched {
-				result.Rejected = true
-			} else {
-				result.Entry = entry
-				result.Err = err
-			}
-		}
-		// Create a result object, complete with version, entry result, and errors.
-		input.Output <- result
-	}
-
-	wg.Done()
 }
 
 // Iterate through each of the goroutines and close the associated inputs. This
@@ -112,7 +123,7 @@ func (manager) parseByVersion(baseIn <-chan managerInput, worker func(record.Bas
 func (m *manager) Finish() {
 	// Iterate through each version to close the channels causing the parser
 	// method to exit.
-	for _, version := range m.versions {
+	for _, version := range m.testers {
 		// Lock the version to prevent editing.
 		version.Lock()
 
@@ -134,7 +145,7 @@ func (m *manager) Finish() {
 // Given a version definition, return if the version has been rejected,
 // and whether it exists.
 func (m *manager) IsRejected(c parser.VersionDefinition) (rejected bool, found bool) {
-	for definition, parser := range m.versions {
+	for definition, parser := range m.testers {
 		if c.Equals(definition) {
 			// Lock the object for reading.
 			parser.RLock()
@@ -163,40 +174,40 @@ func (m *manager) reject(sticky bool, check func(parser.VersionDefinition) bool)
 
 	// Iterate through each version and run it against the `check()` method.
 	// Any versions that should be rejected will be marked appropriately.
-	for definition, parser := range m.versions {
+	for definition, test := range m.testers {
 		if check(definition) {
 			// Lock the version definition so it cannot be read or modified.
-			parser.Lock()
+			test.Lock()
 
 			// Mark the version as rejected and decrement the global count.
-			parser.Rejected = true
-			parser.sticky = sticky
+			test.Rejected = true
+			test.sticky = sticky
 			m.rejected += 1
 
 			// Unlock the current version definition.
-			parser.Unlock()
+			test.Unlock()
 		}
 	}
 
 	// If all versions are rejected, there is a problem. Each version should
 	// be "un-rejected" excluding those marked "sticky."
-	if m.rejected == uint32(len(m.versions)) {
-		for _, parser := range m.versions {
+	if m.rejected == uint32(len(m.testers)) {
+		for _, test := range m.testers {
 			// Lock the version so it cannot be modified.
-			parser.Lock()
+			test.Lock()
 
 			// Check whether the rejected status should be "sticky," i.e. the
 			// version definition was rejected externally.
-			if !parser.sticky {
+			if !test.sticky {
 				// Clear the rejected flag and continue forward.
-				parser.Rejected = false
+				test.Rejected = false
 
 				// Reduce the global rejected count.
 				m.rejected -= 1
 			}
 
 			// Unlock the version definition.
-			parser.Unlock()
+			test.Unlock()
 		}
 	}
 
@@ -220,16 +231,16 @@ func (m *manager) Reset() {
 	m.Lock()
 	defer m.Unlock()
 
-	for _, parser := range m.versions {
+	for _, test := range m.testers {
 		// Lock the version so it cannot be modified.
-		parser.Lock()
+		test.Lock()
 
 		// Reset the rejected and sticky values.
-		parser.Rejected = false
-		parser.sticky = false
+		test.Rejected = false
+		test.sticky = false
 
 		// Unlock the version.
-		parser.Unlock()
+		test.Unlock()
 	}
 
 	// Reset the rejected count to zero.
@@ -238,15 +249,15 @@ func (m *manager) Reset() {
 
 func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition, error) {
 	// Create a local output channel for each Try(). This
-	output := make(chan Result)
+	output := make(chan result)
 	expected := m.send(base, output)
 
 	if expected == 0 {
-		panic(fmt.Sprintf("no versions to try at line %d", base.LineNumber))
+		panic(fmt.Sprintf("no testers to try at line %d", base.LineNumber))
 	}
 
 	// Create a "winner" object that will be filled with "the winner" out of all the factories attempted.
-	var winner *Result = nil
+	var winner *result = nil
 	for i := 0; i < expected; i += 1 {
 		// Wait for a result from one of the potential factories and call it an attempt. There is no expectation
 		// that results will return in any particular order.
@@ -274,7 +285,7 @@ func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition,
 			winner = &attempt
 		} else if attempt.Err != nil {
 			// Grab the version parser to increment the errors count.
-			versionParser := m.versions[attempt.Version]
+			versionParser := m.testers[attempt.Version]
 
 			// Count the error for future reference (but do it atomically).
 			atomic.AddUint64(&versionParser.Errors, 1)
@@ -288,21 +299,21 @@ func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition,
 
 	// Check for a blank winner, meaning no versions succeeded in the attempt.
 	if winner == nil {
-		winner = &Result{Err: internal.VersionUnmatched{}}
+		winner = &result{Err: internal.VersionUnmatched{}}
 	}
 
 	// Mark the winning version and return the results.
 	return winner.Entry, winner.Version, winner.Err
 }
 
-func (m *manager) send(base record.Base, out chan<- Result) (expected int) {
+func (m *manager) send(base record.Base, out chan<- result) (expected int) {
 	// Lock the manager for reads because the rejected list may have changed.
 	m.Lock()
 	defer m.Unlock()
 
 	// Loop over each factory and provide a copy of the entry.
 	expected = 0
-	for _, factoryDefinition := range m.versions {
+	for _, factoryDefinition := range m.testers {
 		if !factoryDefinition.Rejected {
 			factoryDefinition.Input <- managerInput{base, out}
 			expected += 1
