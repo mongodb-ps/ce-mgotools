@@ -74,13 +74,13 @@ type connstats struct {
 }
 
 func (c *connstats) Finish(index int) error {
-	writer := bufio.NewWriter(c.buffer)
 	instance := c.Instance[index]
 
 	// Capture the file summary and output it to the buffer.
-	instance.summary.Print(writer)
+	instance.summary.Print(c.buffer)
 
 	// Add some spacing and begin processing the connections.
+	writer := bufio.NewWriter(c.buffer)
 	writer.WriteRune('\n')
 
 	var (
@@ -143,6 +143,8 @@ func (c *connstats) Finish(index int) error {
 			ip.Duration += conns[id]
 
 			if completed {
+				ip.Total += 1
+
 				if conns[id] < ip.Min {
 					ip.Min = conns[id]
 				}
@@ -359,10 +361,10 @@ func (c connstats) printIP(ips map[string]connstatsDuration) {
 
 		if dur.Min != maxDuration && dur.Max != minDuration {
 			c.buffer.WriteString(fmt.Sprintf(
-				"dur-avg: %8d  "+
+				"dur-avg: %8.2f  "+
 					"dur-min(s): %8.2f  "+
 					"dur-max(s): %8.2f\n",
-				avg*time.Millisecond,
+				avg.Seconds(),
 				dur.Min.Seconds(),
 				dur.Max.Seconds()))
 		} else {
