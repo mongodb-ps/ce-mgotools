@@ -58,29 +58,28 @@ func (s LogSummary) Print(w io.Writer) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	out := bytes.NewBuffer([]byte{})
-
 	host := s.Host
 	if host != "" && s.Port > 0 {
 		host = fmt.Sprintf("%s:%d", host, s.Port)
 	}
 
-	write := func(out *bytes.Buffer, name, value, empty string) {
+	write := func(out io.Writer, name, value, empty string) {
 		if value == "" && empty == "" {
 			return
 		}
 		if util.StringLength(name) < 11 {
-			out.WriteString(strings.Repeat(" ", 11-util.StringLength(name)))
+			out.Write([]byte(strings.Repeat(" ", 11-util.StringLength(name))))
 		}
-		out.WriteString(name)
-		out.WriteString(": ")
+		out.Write([]byte(name))
+		out.Write([]byte(": "))
 
 		if value != "" {
-			out.WriteString(value)
+			out.Write([]byte(value))
 		} else {
-			out.WriteString(empty)
+			out.Write([]byte(empty))
 		}
-		out.WriteRune('\n')
+
+		out.Write([]byte("\n"))
 	}
 
 	formatTable := func(histogram map[util.DateFormat]int) string {
@@ -121,12 +120,12 @@ func (s LogSummary) Print(w io.Writer) {
 		}
 	}
 
-	write(out, "source", s.Source, "")
-	write(out, "host", host, "unknown")
-	write(out, "start", s.Start.Format("2006 Jan 02 15:04:05.000"), "")
-	write(out, "end", s.End.Format("2006 Jan 02 15:04:05.000"), "")
-	write(out, "date format", formatTable(s.Format), "")
-	write(out, "length", strconv.FormatUint(uint64(s.Length), 10), "0")
+	write(w, "source", s.Source, "")
+	write(w, "host", host, "unknown")
+	write(w, "start", s.Start.Format("2006 Jan 02 15:04:05.000"), "")
+	write(w, "end", s.End.Format("2006 Jan 02 15:04:05.000"), "")
+	write(w, "date format", formatTable(s.Format), "")
+	write(w, "length", strconv.FormatUint(uint64(s.Length), 10), "0")
 
 	var versions = make([]string, 0, len(s.Version))
 	for _, v := range s.Version {
@@ -141,7 +140,7 @@ func (s LogSummary) Print(w io.Writer) {
 
 	if !s.guessed {
 		version := strings.Join(versions, " -> ")
-		write(out, "version", version, "unknown")
+		write(w, "version", version, "unknown")
 	} else {
 		leastVersion := parser.VersionDefinition{Major: 999, Minor: 999, Binary: record.Binary(999)}
 
@@ -157,13 +156,11 @@ func (s LogSummary) Print(w io.Writer) {
 			}
 		}
 
-		write(out, "version", fmt.Sprintf("(guess) >= %s", leastVersion.String()), "")
+		write(w, "version", fmt.Sprintf("(guess) >= %s", leastVersion.String()), "")
 	}
 
-	write(out, "storage", s.Storage, "unknown")
-	out.Write([]byte{'\n'})
-
-	w.Write(out.Bytes())
+	write(w, "storage", s.Storage, "unknown")
+	w.Write([]byte{'\n'})
 }
 
 func (s *LogSummary) Update(entry record.Entry) bool {

@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"bytes"
 	"net"
 	"strconv"
 	"strings"
@@ -41,7 +42,7 @@ func Control(r util.RuneReader, entry record.Entry) (record.Message, error) {
 func Network(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	if entry.Connection == 0 {
 		if r.ExpectString("connection accepted") { // connection accepted from <IP>:<PORT> #<CONN>
-			if addr, port, conn, ok := connectionInit(r.SkipWords(2)); ok {
+			if addr, port, conn, ok := connectionInit(r.SkipWords(3)); ok {
 				return record.MsgConnection{Address: addr, Port: port, Conn: conn, Opened: true}, nil
 			}
 		} else if r.ExpectString("waiting for connections") {
@@ -51,12 +52,12 @@ func Network(r util.RuneReader, entry record.Entry) (record.Message, error) {
 		}
 	} else if entry.Connection > 0 {
 		if r.ExpectString("end connection") {
-			if addr, port, _, ok := connectionInit(&r); ok {
+			if addr, port, ok := connectionTerminate(r.SkipWords(2)); ok {
 				return record.MsgConnection{Address: addr, Port: port, Conn: entry.Connection, Opened: false}, nil
 			}
 		} else if r.ExpectString("received client metadata from") {
 			// Skip "received client metadata" and grab connection information.
-			if addr, port, conn, ok := connectionInit(r.SkipWords(3)); !ok {
+			if addr, port, conn, ok := connectionInit(r.SkipWords(4)); !ok {
 				return nil, internal.MetadataUnmatched
 			} else {
 				if meta, err := mongo.ParseJsonRunes(&r, false); err == nil {
@@ -89,40 +90,36 @@ func Storage(r util.RuneReader, entry record.Entry) (record.Message, error) {
 	return nil, internal.StorageUnmatched
 }
 
-func connectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
-	var (
-		addr   *util.RuneReader
-		buffer string
-		char   rune
-		conn          = 0
-		port          = 0
-		ip     net.IP = nil
-		ok     bool
-	)
-
-	msg.SkipWords(1) // "from"
-	partialAddress, ok := msg.SlurpWord()
+func parseAddress(r *util.RuneReader) (ip net.IP, port uint16, ok bool) {
+	addr, ok := r.SlurpWord()
 	if !ok {
-		return nil, 0, 0, false
+		return nil, 0, false
 	}
 
-	addr = util.NewRuneReader(partialAddress)
-	length := addr.Length()
-	addr.Seek(length, 0)
-	for {
-		if char, ok = addr.Prev(); !ok || char == ':' {
-			addr.Next()
-			break
-		}
+	pos := bytes.IndexRune([]byte(addr), ':')
+	if pos < 1 {
+		return nil, 0, false
+
 	}
 
-	pos := addr.Pos()
-	if buffer, ok = addr.Substr(pos, length-pos); ok {
-		port, _ = strconv.Atoi(buffer)
+	if value, err := strconv.Atoi(addr[pos+1:]); err != nil {
+		return nil, 0, false
+	} else {
+		port = uint16(value)
+	}
+	if pos >= len(addr) {
+		return nil, 0, false
 	}
 
-	if part, ok := addr.Substr(0, pos-1); ok {
-		ip = net.ParseIP(part)
+	ip = net.ParseIP(addr[:pos])
+	ok = true
+	return
+}
+
+func connectionInit(msg *util.RuneReader) (ip net.IP, port uint16, conn int, success bool) {
+	ip, port, success = parseAddress(msg)
+	if !success {
+		return
 	}
 
 	if msgNumber, ok := msg.SlurpWord(); ok {
@@ -136,7 +133,12 @@ func connectionInit(msg *util.RuneReader) (net.IP, uint16, int, bool) {
 		}
 	}
 
-	return ip, uint16(port), conn, true
+	return
+}
+
+func connectionTerminate(msg *util.RuneReader) (ip net.IP, port uint16, success bool) {
+	ip, port, success = parseAddress(msg)
+	return
 }
 
 func StartupInfo(msg string) (record.MsgStartupInfo, error) {

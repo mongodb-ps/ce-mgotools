@@ -16,6 +16,8 @@ type MsgConnection struct {
 	Conn    int
 	Port    uint16
 	Opened  bool
+
+	Exception string
 }
 
 type MsgConnectionMeta struct {
