@@ -1,8 +1,5 @@
 package command
 
-// TODO: Stream input from _mongod_ and tee output
-// TODO: Create better factory model than including parser.EntryFactory
-
 import (
 	"bufio"
 	"errors"
@@ -12,12 +9,9 @@ import (
 	"mgotools/record"
 )
 
-type Flag int
-
 type commandSource <-chan record.Base
 type commandTarget chan<- string
 type commandError chan<- error
-type commandHalt <-chan struct{}
 
 type Input struct {
 	Arguments ArgumentCollection
@@ -32,10 +26,10 @@ type Output struct {
 }
 
 type Command interface {
-	Finish(int) error
+	Finish(int, commandTarget) error
 	Prepare(string, int, ArgumentCollection) error
-	Run(int, commandTarget, commandSource, commandError, commandHalt)
-	Terminate(chan<- string) error
+	Run(int, commandTarget, commandSource, commandError) error
+	Terminate(commandTarget) error
 }
 
 // A method for preparing all the bytes and pieces to pass along to the next step.
@@ -48,10 +42,7 @@ func RunCommand(f Command, in []Input, out Output) error {
 		errorChannel = make(chan error)
 
 		// An output channel that will facilitate moving data from commands to the output handle.
-		outChannel = make(chan string)
-
-		// A fatal channel to halt all input parsers.
-		fatal = make(chan struct{})
+		outputChannel = make(chan string)
 
 		// A way to synchronize multiple goroutines.
 		processSync sync.WaitGroup
@@ -84,12 +75,6 @@ func RunCommand(f Command, in []Input, out Output) error {
 	// Synchronize the several goroutines created in this method.
 	processSync.Add(count)
 
-	// Signal any remaining processes to exit.
-	defer close(fatal)
-	go func() {
-		<-fatal
-	}()
-
 	// There are two output syncs to wait for: output and errors.
 	outputSync.Add(2)
 
@@ -109,7 +94,7 @@ func RunCommand(f Command, in []Input, out Output) error {
 		// Output all received values directly (this may need to change in the future, i.e. should sorting be needed).
 		defer outputSync.Done()
 
-		for line := range outChannel {
+		for line := range outputChannel {
 			outputWriter.WriteString(line + "\n")
 		}
 	}()
@@ -121,10 +106,10 @@ func RunCommand(f Command, in []Input, out Output) error {
 			defer processSync.Done()
 
 			// Start a goroutine to wait each input file handle to finish processing.
-			parseFile(f, index, in[index].Reader, outChannel, errorChannel, fatal)
+			run(f, index, in[index].Reader, outputChannel, errorChannel)
 
 			// Collect any final errors and send them along.
-			if err := f.Finish(index); err != nil {
+			if err := f.Finish(index, outputChannel); err != nil {
 				errorChannel <- err
 			}
 		}(i)
@@ -134,10 +119,10 @@ func RunCommand(f Command, in []Input, out Output) error {
 	processSync.Wait()
 
 	// Allow the command to finalize any pending actions.
-	f.Terminate(outChannel)
+	f.Terminate(outputChannel)
 
 	// Finalize the output processes by closing the out channel.
-	close(outChannel)
+	close(outputChannel)
 	close(errorChannel)
 
 	// Wait for all output goroutines to finish.
@@ -146,7 +131,7 @@ func RunCommand(f Command, in []Input, out Output) error {
 	return nil
 }
 
-func parseFile(f Command, index int, in record.BaseFactory, out chan<- string, errs chan<- error, fatal chan struct{}) {
+func run(f Command, index int, in record.BaseFactory, outputChannel chan<- string, errorChannel chan<- error) {
 	var inputChannel = make(chan record.Base, 1024)
 	var inputWaitGroup sync.WaitGroup
 
@@ -166,7 +151,7 @@ func parseFile(f Command, index int, in record.BaseFactory, out chan<- string, e
 			if err == io.EOF {
 				panic("eof error received before channel close")
 			} else if err != nil {
-				errs <- err
+				errorChannel <- err
 			} else {
 				inputChannel <- base
 			}
@@ -181,7 +166,9 @@ func parseFile(f Command, index int, in record.BaseFactory, out chan<- string, e
 		defer in.Close()
 
 		// Begin running the command.
-		f.Run(index, out, inputChannel, errs, fatal)
+		if err := f.Run(index, outputChannel, inputChannel, errorChannel); err != nil {
+			errorChannel <- err
+		}
 	}()
 
 	// Wait for both goroutines to complete.

@@ -54,6 +54,10 @@ func (s *LogSummary) Guess(versions []parser.VersionDefinition) {
 	s.guessed = true
 }
 
+func (LogSummary) Divider(w io.Writer) {
+	w.Write([]byte("\n------------------------------------------\n"))
+}
+
 func (s LogSummary) Print(w io.Writer) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

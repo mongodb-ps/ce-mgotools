@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+type Flag int
+
 const (
 	Bool Flag = iota
 	Int

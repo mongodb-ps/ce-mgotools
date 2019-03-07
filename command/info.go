@@ -18,8 +18,7 @@ type info struct {
 }
 
 type infoInstance struct {
-	*context.Instance
-
+	context *context.Context
 	output  *bytes.Buffer
 	Summary format.LogSummary
 }
@@ -41,22 +40,21 @@ func init() {
 	})
 }
 
-func (f *info) Finish(index int) error {
+func (f *info) Finish(index int, out commandTarget) error {
 	instance := f.Instance[index]
-	instance.Finish()
-
-	if index > 0 {
-		instance.output.WriteString("\n------------------------------------------\n")
-	}
 
 	if len(instance.Summary.Version) == 0 {
-		versions := f.Instance[index].Versions()
+		versions := f.Instance[index].context.Versions()
 		if len(versions) == 1 {
 			instance.Summary.Version = versions
 		}
 	}
 
 	summary := bytes.NewBuffer([]byte{})
+	if index > 0 {
+		instance.Summary.Divider(summary)
+	}
+
 	instance.Summary.Print(summary)
 
 	_, err := instance.output.WriteTo(summary)
@@ -64,7 +62,7 @@ func (f *info) Finish(index int) error {
 		return err
 	}
 
-	instance.output = summary
+	out <- summary.String()
 	return nil
 }
 
@@ -72,9 +70,9 @@ func (f *info) Prepare(name string, instance int, args ArgumentCollection) error
 	parsers := parser.VersionParserFactory.GetAll()
 
 	f.Instance[instance] = &infoInstance{
-		Instance: context.NewInstance(parsers, util.AllDateParser.Clone()),
-		Summary:  format.NewLogSummary(name),
-		output:   bytes.NewBuffer([]byte{}),
+		context: context.New(parsers, util.DefaultDateParser.Clone()),
+		Summary: format.NewLogSummary(name),
+		output:  bytes.NewBuffer([]byte{}),
 	}
 
 	if args.Booleans["errors"] {
@@ -84,16 +82,15 @@ func (f *info) Prepare(name string, instance int, args ArgumentCollection) error
 	return nil
 }
 
-func (f *info) Run(index int, out commandTarget, in commandSource, errs commandError, halt commandHalt) {
-	exit := false
-	go func() {
-		<-halt
-		exit = true
-	}()
+func (f *info) Run(index int, _ commandTarget, in commandSource, errs commandError) error {
+	var exit error
 
 	// Hold a configuration object for future use.
 	instance := f.Instance[index]
 	summary := &instance.Summary
+
+	// Clean up context resources.
+	defer instance.context.Finish()
 
 	iw := newInfoWriter(instance.output)
 	alert := func(b record.Entry, m string) {
@@ -102,20 +99,18 @@ func (f *info) Run(index int, out commandTarget, in commandSource, errs commandE
 		iw.WriteString(m)
 
 		if iw.Err() != nil {
-			errs <- iw.Err()
-			exit = true
+			exit = iw.Err()
 		}
 	}
 
 	for base := range in {
-		if exit {
+		if exit != nil {
 			// Check for an exit signal (in a worryingly un-atomic way).
-			util.Debug("exit signal received")
-			return
+			return exit
 		}
 
 		// Grab an entry from the base record.
-		entry, err := instance.NewEntry(base)
+		entry, err := instance.context.NewEntry(base)
 
 		// Directly output errors in the info module.
 		if f.outputErrors && err != nil {
@@ -145,17 +140,13 @@ func (f *info) Run(index int, out commandTarget, in commandSource, errs commandE
 	}
 
 	if len(summary.Version) == 0 {
-		summary.Guess(instance.Versions())
+		summary.Guess(instance.context.Versions())
 	}
+
+	return nil
 }
 
-func (f *info) Terminate(out chan<- string) error {
-	// Iterate through each instance and output the table summary and any
-	// messages appended during parsing.
-	for _, instance := range f.Instance {
-		out <- instance.output.String()
-	}
-
+func (f *info) Terminate(commandTarget) error {
 	return nil
 }
 

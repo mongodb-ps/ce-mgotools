@@ -1,8 +1,7 @@
 package util
 
 import (
-	//"github.com/olebedev/when"
-	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 )
@@ -34,27 +33,36 @@ type DateFormat string
 
 type DateParser struct {
 	order []DateFormat
-	lock  sync.Mutex
+	pos   int64
 }
 
-var AllDateParser = DateParser{
+var DefaultDateParser = DateParser{
 	order: []DateFormat{DATE_FORMAT_CTIME, DATE_FORMAT_CTIMENOMS, DATE_FORMAT_CTIMEYEAR, DATE_FORMAT_ISO8602_UTC, DATE_FORMAT_ISO8602_LOCAL},
-	lock:  sync.Mutex{},
 }
 
+// These dates are sorted for binary searching.
 var DATE_DAYS = []string{"Fri", "Mon", "Sat", "Sun", "Thu", "Tue", "Wed"}
 var DATE_MONTHS = []string{"Apr", "Aug", "Dec", "Feb", "Jan", "Jul", "Jun", "Mar", "May", "Nov", "Oct", "Sep"}
 var DATE_YEAR = time.Now().Year()
 
+// Create a new date parser object based on an array of date formats.
 func NewDateParser(formats []DateFormat) *DateParser {
 	return &DateParser{order: formats}
 }
 
+// Clone a DateParser object, returning a new reference. Please note: the order
+// slice is not copied (but is also not modified).
 func (d DateParser) Clone() *DateParser {
-	return &d
+	r := &DateParser{
+		order: d.order,
+		pos:   0,
+	}
+	return r
 }
 
-func (d *DateParser) ParseDate(value string) (time.Time, DateFormat, error) {
+// Parse string _value_ into a time.Time object. The parser always tries the
+// most recent success first (atomically).
+func (d *DateParser) Parse(value string) (time.Time, DateFormat, error) {
 	var (
 		date   time.Time
 		err    error
@@ -62,40 +70,23 @@ func (d *DateParser) ParseDate(value string) (time.Time, DateFormat, error) {
 		picked DateFormat
 	)
 
+	pos := int(atomic.LoadInt64(&d.pos))
+
 	for index = 0; index < len(d.order); index += 1 {
-		if date, err = time.Parse(string(d.order[index]), value); err == nil {
+		offset := (pos + index) % len(d.order)
+
+		if date, err = time.Parse(string(d.order[offset]), value); err == nil {
 			picked = d.order[index]
+
 			if index > 0 && err == nil {
-				d.reorder(index)
+				atomic.StoreInt64(&d.pos, int64(offset))
 			}
+
 			break
 		}
 	}
 
 	return date, picked, err
-}
-
-func (d *DateParser) reorder(index int) {
-	if index > 0 {
-		var (
-			format  DateFormat
-			reorder = make([]DateFormat, len(d.order))
-		)
-
-		d.lock.Lock()
-		copy(reorder, d.order)
-
-		if index == len(d.order) {
-			format, reorder = reorder[len(d.order)-1], reorder[:len(d.order)-1]
-			reorder = append([]DateFormat{format}, reorder...)
-		} else {
-			format := reorder[index]
-			reorder = append([]DateFormat{format}, append(reorder[:index], reorder[index+1:]...)...)
-		}
-
-		d.order = reorder
-		d.lock.Unlock()
-	}
 }
 
 func IsDay(match string) bool {

@@ -104,7 +104,7 @@ func runCommand(c *cli.Context) error {
 		fileCount := 0
 
 		input := make([]command.Input, 0)
-		output := command.Output{os.Stdout, os.Stderr}
+		output := command.Output{Writer: os.Stdout, Error: os.Stderr}
 
 		// Check for pipe usage.
 		pipe, err := os.Stdin.Stat()

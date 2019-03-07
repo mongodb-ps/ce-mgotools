@@ -1,9 +1,5 @@
 package command
 
-// TODO:
-//   filter by IXSCAN (and pattern)
-//   output w/o II
-
 import (
 	"errors"
 	"fmt"
@@ -53,15 +49,11 @@ type filterOptions struct {
 }
 
 type filterInstance struct {
-	*context.Instance
 	commandOptions filterOptions
 
 	ErrorCount uint
 	LineCount  uint
 }
-
-// Enforce compile-time adherance to the
-var _ Command = (*filter)(nil)
 
 func init() {
 	args := Definition{
@@ -87,17 +79,12 @@ func init() {
 		},
 	}
 	init := func() (Command, error) {
-		return &filter{
-			Instance: make(map[int]filterInstance),
-		}, nil
+		return &filter{Instance: make(map[int]filterInstance)}, nil
 	}
 	GetFactory().Register("filter", args, init)
 }
 
-func (f *filter) Finish(index int) error {
-	// Clean up resources before exiting.
-	f.Instance[index].Finish()
-
+func (f *filter) Finish(index int, out commandTarget) error {
 	return nil
 }
 
@@ -203,7 +190,7 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 		case "context":
 			opts.ContextFilter = value
 		case "from":
-			if dateParser, _, err := dateParser.ParseDate(value); err != nil {
+			if dateParser, _, err := dateParser.Parse(value); err != nil {
 				return errors.New("--from flag could not be parsed")
 			} else {
 				opts.FromFilter = dateParser
@@ -240,7 +227,7 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 			}
 			opts.SeverityFilter = record.Severity(value[0])
 		case "to":
-			if dateParser, _, err := dateParser.ParseDate(value); err != nil {
+			if dateParser, _, err := dateParser.Parse(value); err != nil {
 				return errors.New("--to flag could not be parsed")
 			} else {
 				opts.ToFilter = dateParser
@@ -253,36 +240,27 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 		}
 	}
 	f.Instance[instance] = filterInstance{
-		Instance:       context.NewInstance(parser.VersionParserFactory.GetAll(), util.AllDateParser.Clone()),
 		commandOptions: opts,
 	}
 	return nil
 }
 
-func (f *filter) Terminate(out chan<- string) error {
+func (f *filter) Terminate(out commandTarget) error {
 	// Finish any
 	return nil
 }
 
-func (f *filter) Run(instance int, out commandTarget, in commandSource, errs commandError, fatal commandHalt) {
-	exit := 0
+func (f *filter) Run(instance int, out commandTarget, in commandSource, errs commandError) error {
 	options := f.Instance[instance].commandOptions
 
-	go func() {
-		<-fatal
-		exit = 1
-	}()
+	context := context.New(parser.VersionParserFactory.GetAll(), util.DefaultDateParser.Clone())
+	defer context.Finish()
 
 	// Iterate through every record.Base object provided. This is identical
 	// to iterating through every line of a log without multi-line queries.
 	for base := range in {
-		if exit != 0 {
-			// Received an exit signal so immediately exit.
-			break
-		}
-
 		log := f.Instance[instance]
-		entry, err := f.Instance[instance].NewEntry(base)
+		entry, err := context.NewEntry(base)
 
 		if err != nil {
 			log.ErrorCount += 1
@@ -319,6 +297,8 @@ func (f *filter) Run(instance int, out commandTarget, in commandSource, errs com
 
 		out <- line
 	}
+
+	return nil
 }
 
 func (f *filter) Usage() string {

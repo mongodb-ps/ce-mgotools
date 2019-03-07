@@ -12,7 +12,7 @@ import (
 	"mgotools/util"
 )
 
-type Instance struct {
+type Context struct {
 	parserFactory *manager
 	versions      []parser.VersionDefinition
 
@@ -31,8 +31,8 @@ type Instance struct {
 	month      time.Month
 }
 
-func NewInstance(parsers []parser.VersionParser, date *util.DateParser) *Instance {
-	context := Instance{
+func New(parsers []parser.VersionParser, date *util.DateParser) *Context {
+	context := Context{
 		Count:  0,
 		Errors: 0,
 
@@ -53,7 +53,7 @@ func NewInstance(parsers []parser.VersionParser, date *util.DateParser) *Instanc
 	return &context
 }
 
-func (c *Instance) Versions() []parser.VersionDefinition {
+func (c *Context) Versions() []parser.VersionDefinition {
 	versions := make([]parser.VersionDefinition, 0)
 	for _, check := range c.versions {
 		if r, f := c.parserFactory.IsRejected(check); f && !r {
@@ -64,11 +64,11 @@ func (c *Instance) Versions() []parser.VersionDefinition {
 	return versions
 }
 
-func (c *Instance) Finish() {
+func (c *Context) Finish() {
 	c.parserFactory.Finish()
 }
 
-func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
+func (c *Context) NewEntry(base record.Base) (record.Entry, error) {
 	manager := c.parserFactory
 
 	// Attempt to retrieve a version from the base.
@@ -135,13 +135,13 @@ func (c *Instance) NewEntry(base record.Base) (record.Entry, error) {
 	return entry, nil
 }
 
-func (c *Instance) convert(base record.Base, factory parser.VersionParser) (record.Entry, error) {
+func (c *Context) convert(base record.Base, factory parser.VersionParser) (record.Entry, error) {
 	var (
 		err error
 		out = record.Entry{Base: base, DateValid: true, Valid: true}
 	)
 
-	if out.Date, out.Format, err = c.dateParser.ParseDate(base.RawDate); err != nil {
+	if out.Date, out.Format, err = c.dateParser.Parse(base.RawDate); err != nil {
 		return record.Entry{Valid: false}, internal.VersionDateUnmatched
 	}
 

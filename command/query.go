@@ -43,7 +43,6 @@ type query struct {
 }
 
 type queryInstance struct {
-	*context.Instance
 	summary format.LogSummary
 
 	sort []int8
@@ -80,9 +79,8 @@ func init() {
 	GetFactory().Register("query", args, init)
 }
 
-func (s *query) Finish(index int) error {
+func (s *query) Finish(index int, out commandTarget) error {
 	log := s.Log[index]
-	log.Finish()
 
 	values := s.values(log.Patterns)
 	s.sort(values, log.sort)
@@ -98,7 +96,6 @@ func (s *query) Finish(index int) error {
 
 func (s *query) Prepare(name string, instance int, args ArgumentCollection) error {
 	s.Log[instance] = &queryInstance{
-		Instance: context.NewInstance(parser.VersionParserFactory.GetAll(), util.AllDateParser.Clone()),
 		Patterns: make(map[string]queryPattern),
 
 		sort:    []int8{sortSum, sortNamespace, sortOperation, sortPattern},
@@ -129,30 +126,20 @@ func (s *query) Prepare(name string, instance int, args ArgumentCollection) erro
 	return nil
 }
 
-func (s *query) Run(instance int, out commandTarget, in commandSource, errs commandError, halt commandHalt) {
-	exit := false
-
-	// Wait for kill signals.
-	go func() {
-		<-halt
-		exit = true
-	}()
-
+func (s *query) Run(instance int, out commandTarget, in commandSource, errs commandError) error {
 	// Hold a configuration object for future use.
 	log := s.Log[instance]
 
+	context := context.New(parser.VersionParserFactory.GetAll(), util.DefaultDateParser.Clone())
+	defer context.Finish()
+
 	// A function to grab new lines and parse them.
 	for base := range in {
-		if exit {
-			util.Debug("exit signal received")
-			break
-		}
-
 		log.LineCount += 1
 
 		if base.RawMessage == "" {
 			log.ErrorCount += 1
-		} else if entry, err := log.NewEntry(base); err != nil {
+		} else if entry, err := context.NewEntry(base); err != nil {
 			log.ErrorCount += 1
 		} else {
 			// Update the summary with any information available.
@@ -212,10 +199,10 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 	}
 
 	if len(log.summary.Version) == 0 {
-		log.summary.Guess(log.Instance.Versions())
+		log.summary.Guess(context.Versions())
 	}
 
-	return
+	return nil
 }
 
 func (query) sort(values []format.PatternSummary, order []int8) {
@@ -299,7 +286,7 @@ func (query) standardize(crud record.MsgCRUD) (ns string, op string, dur int64, 
 	return
 }
 
-func (s *query) Terminate(out chan<- string) error {
+func (s *query) Terminate(out commandTarget) error {
 	out <- string(s.summaryTable.String())
 	return nil
 }

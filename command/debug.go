@@ -137,13 +137,7 @@ func (d *debugLog) Prepare(name string, instance int, args ArgumentCollection) e
 	return nil
 }
 
-func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs commandError, halt commandHalt) {
-	exit := false
-	go func() {
-		<-halt
-		exit = true
-	}()
-
+func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs commandError) error {
 	type BaseResult struct {
 		Base record.Base
 		Err  error
@@ -168,12 +162,12 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 	waitGroup.Add(1)
 
 	buffer := d.buffer
-	logs := context.NewInstance(factories, util.AllDateParser.Clone())
+	logs := context.New(factories, util.DefaultDateParser.Clone())
 
-	versionLogs := make(map[parser.VersionDefinition]*context.Instance)
+	versionLogs := make(map[parser.VersionDefinition]*context.Context)
 	for _, f := range factories {
 		waitGroup.Add(1)
-		versionLogs[f.Version()] = context.NewInstance([]parser.VersionParser{f}, util.AllDateParser.Clone())
+		versionLogs[f.Version()] = context.New([]parser.VersionParser{f}, util.DefaultDateParser.Clone())
 	}
 
 	for base := range in {
@@ -247,10 +241,11 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 	}()
 
 	waitGroup.Wait()
-	return
+
+	return nil
 }
 
-func (d *debugLog) Terminate(chan<- string) error {
+func (d *debugLog) Terminate(commandTarget) error {
 	return nil
 }
 

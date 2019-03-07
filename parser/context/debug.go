@@ -10,6 +10,6 @@ import (
 	"mgotools/record"
 )
 
-func (c *Instance) Convert(base record.Base, parser parser.VersionParser) (record.Entry, error) {
+func (c *Context) Convert(base record.Base, parser parser.VersionParser) (record.Entry, error) {
 	return c.convert(base, parser)
 }

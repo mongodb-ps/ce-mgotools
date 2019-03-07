@@ -48,9 +48,7 @@ type connection struct {
 }
 
 type connstatsInstance struct {
-	context *context.Instance
-	summary format.LogSummary
-
+	summary     format.LogSummary
 	connections map[int]*connection
 }
 
@@ -73,7 +71,7 @@ type connstats struct {
 	ip   bool
 }
 
-func (c *connstats) Finish(index int) error {
+func (c *connstats) Finish(index int, out commandTarget) error {
 	instance := c.Instance[index]
 
 	// Capture the file summary and output it to the buffer.
@@ -157,15 +155,21 @@ func (c *connstats) Finish(index int) error {
 		}
 	}
 
+	// Print an overview of connections statistics.
 	c.printOverview(opened, closed, uint64(len(ips)), exceps)
+
+	// Print an overview of connection aggregated statistics.
 	c.printDurations(overall.Total, overall.Duration, overall.Min, overall.Max)
 	c.buffer.WriteRune('\n')
 
 	if c.conn {
+		// Print each connection and associated statistics.
 		c.printConn(instance.connections)
+		c.buffer.WriteRune('\n')
 	}
 
 	if c.ip {
+		// Print each unique IP address and associated statistics.
 		c.printIP(ips)
 		c.buffer.WriteRune('\n')
 	}
@@ -175,9 +179,7 @@ func (c *connstats) Finish(index int) error {
 
 func (c *connstats) Prepare(name string, index int, args ArgumentCollection) error {
 	c.Instance[index] = connstatsInstance{
-		summary: format.NewLogSummary(name),
-		context: context.NewInstance(parser.VersionParserFactory.GetAll(), util.AllDateParser.Clone()),
-
+		summary:     format.NewLogSummary(name),
 		connections: make(map[int]*connection),
 	}
 
@@ -193,23 +195,20 @@ func (c *connstats) Prepare(name string, index int, args ArgumentCollection) err
 	return nil
 }
 
-func (c *connstats) Run(index int, out commandTarget, in commandSource, error commandError, halt commandHalt) {
-	var exit = false
-	go func() {
-		<-halt
-		exit = true
-	}()
-
-	instance := c.Instance[index]
-	summary := &instance.summary
+func (c *connstats) Run(index int, _ commandTarget, in commandSource, error commandError) error {
+	context := context.New(parser.VersionParserFactory.GetAll(), util.DefaultDateParser.Clone())
+	defer context.Finish()
 
 	type ConnectionBundle struct {
 		Msg  record.MsgConnection
 		Time time.Time
 	}
 
+	instance := c.Instance[index]
+	summary := &instance.summary
+
 	for base := range in {
-		entry, err := instance.context.NewEntry(base)
+		entry, err := context.NewEntry(base)
 		if err != nil {
 			continue
 		}
@@ -269,9 +268,11 @@ func (c *connstats) Run(index int, out commandTarget, in commandSource, error co
 			ref.Exception = true
 		}
 	}
+
+	return nil
 }
 
-func (c *connstats) Terminate(out chan<- string) error {
+func (c *connstats) Terminate(out commandTarget) error {
 	out <- c.buffer.String()
 	return nil
 }
@@ -329,8 +330,6 @@ func (c connstats) printConn(connections map[int]*connection) {
 				conn.Opened.Format(string(util.DATE_FORMAT_ISO8602_UTC))))
 		}
 	}
-
-	c.buffer.WriteRune('\n')
 }
 
 func (c connstats) printIP(ips map[string]connstatsDuration) {

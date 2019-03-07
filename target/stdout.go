@@ -1,6 +1,8 @@
 package target
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Stdout struct {
 }
