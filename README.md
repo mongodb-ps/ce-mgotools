@@ -32,7 +32,7 @@ The `query` command aggregates the canonicalized version
 ### restart
 `./mgotools restart --help`
 
-##Build
+## Build
 The build process should be straightforward. Running the following commands
 should work on properly configured Go environments:
 ```bash
@@ -40,7 +40,7 @@ should work on properly configured Go environments:
 > git clone https://github.com/jtv4k/mgotools
 > cd mgotools
 > go get 
-> go built 
+> go build 
 ```
 
 A binary named `mgotools` will be generated that can be executed using `./mgotools`.
