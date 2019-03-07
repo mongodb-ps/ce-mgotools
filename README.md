@@ -20,3 +20,27 @@ sub-commands are available.
 
 ### info
 `./mgotools info --help`
+
+### queries
+`./mgotools query --help`
+
+The `query` command aggregates the canonicalized version 
+
+### connstats
+`./mgotools connstats --help`
+
+### restart
+`./mgotools restart --help`
+
+##Build
+The build process should be straightforward. Running the following commands
+should work on properly configured Go environments:
+```bash
+> cd $GOPATH/src
+> git clone https://github.com/jtv4k/mgotools
+> cd mgotools
+> go get 
+> go built 
+```
+
+A binary named `mgotools` will be generated that can be executed using `./mgotools`.
