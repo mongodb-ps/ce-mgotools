@@ -177,8 +177,10 @@ func (s *LogSummary) Update(entry record.Entry) bool {
 		s.Start = entry.Date
 	}
 
-	// Keep the most recent date for log summary purposes.
-	s.End = entry.Date
+	if !entry.Date.IsZero() && entry.DateValid {
+		// Keep the most recent date for log summary purposes.
+		s.End = entry.Date
+	}
 
 	if entry.DateValid {
 		s.Format[entry.Format] += 1

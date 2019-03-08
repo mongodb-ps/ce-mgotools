@@ -76,9 +76,9 @@ func (d *DateParser) Parse(value string) (time.Time, DateFormat, error) {
 		offset := (pos + index) % len(d.order)
 
 		if date, err = time.Parse(string(d.order[offset]), value); err == nil {
-			picked = d.order[index]
+			picked = d.order[offset]
 
-			if index > 0 && err == nil {
+			if index > 0 {
 				atomic.StoreInt64(&d.pos, int64(offset))
 			}
 

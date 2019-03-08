@@ -89,12 +89,15 @@ func (f *info) Run(index int, _ commandTarget, in commandSource, errs commandErr
 	instance := f.Instance[index]
 	summary := &instance.Summary
 
+	// Keep a separate date parser for quick-and-easy entry handling.
+	dateParser := util.DefaultDateParser
+
 	// Clean up context resources.
 	defer instance.context.Finish()
 
 	iw := newInfoWriter(instance.output)
 	alert := func(b record.Entry, m string) {
-		iw.WriteString(b.Date.String())
+		iw.WriteString(b.Date.Format(string(b.Format)))
 		iw.WriteString(fmt.Sprintf("[line %d]", b.LineNumber))
 		iw.WriteString(m)
 
@@ -107,6 +110,23 @@ func (f *info) Run(index int, _ commandTarget, in commandSource, errs commandErr
 		if exit != nil {
 			// Check for an exit signal (in a worryingly un-atomic way).
 			return exit
+		}
+
+		if base.RawContext != "[initandlisten]" {
+			// The only context we care about for updating the summary is
+			// "initandlisten" so skipping all other entries will speed things
+			// up significantly. The summary still needs to be updated since
+			// it maintains a count.
+			date, format, err := dateParser.Parse(base.RawDate)
+
+			summary.Update(record.Entry{
+				Base:      base,
+				Message:   nil,
+				Date:      date,
+				DateValid: err == nil,
+				Format:    format,
+			})
+			continue
 		}
 
 		// Grab an entry from the base record.
