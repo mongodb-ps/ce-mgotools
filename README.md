@@ -15,6 +15,18 @@ There is one binary currently generated. The plan is to build drop-in
 binary replacements for mloginfo and mlogfilter. Until then,
 sub-commands are available.
 
+Each tool may take input from _stdin_ or log files.
+```
+> cat mongod.log | mgotools query
+> mgotools query mongod.log
+```
+
+Additionally, some command line arguments may be passed multiple times to apply
+to multiple log files. For example, `mgotools filter --from 2019-01-01 --from 2018-01-01 mongod1.log mongod2.log`
+
+In this example, the first `from` argument applies to `mongod1.log` and the 
+second `from` argument applies to `mongod2.log`.
+
 ### filter
 `./mgotools filter --help`
 

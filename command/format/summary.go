@@ -137,7 +137,7 @@ func (s LogSummary) Print(w io.Writer) {
 			s.Storage = "MMAPv1"
 		}
 
-		if v.Major > 1 {
+		if v.Major > 1 && (len(versions) == 0 || versions[len(versions)-1] != v.String()) {
 			versions = append(versions, v.String())
 		}
 	}

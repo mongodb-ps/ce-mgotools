@@ -35,12 +35,20 @@ func (r *restart) Finish(index int, out commandTarget) error {
 	writer := bytes.NewBuffer([]byte{})
 
 	instance.summary.Print(writer)
+
+	if len(instance.restarts) == 0 {
+		out <- "  no restarts found"
+		return nil
+	}
+
 	writer.WriteRune('\n')
 	writer.WriteString("RESTARTS\n")
 
 	for _, restart := range r.instance[index].restarts {
-		writer.WriteString(fmt.Sprintf("   %s %s", restart.Date.Format(string(util.DATE_FORMAT_CTIMENOMS)), restart.Startup.String))
+		writer.WriteString(fmt.Sprintf("   %s %s\n", restart.Date.Format(string(util.DATE_FORMAT_CTIMENOMS)), restart.Startup.String()))
 	}
+
+	out <- writer.String()
 
 	return nil
 }
@@ -66,7 +74,6 @@ func (r *restart) Run(index int, out commandTarget, in commandSource, errors com
 		}
 
 		summary.Update(entry)
-
 		if entry.Message == nil {
 			continue
 		} else if restart, ok := entry.Message.(record.MsgVersion); !ok {

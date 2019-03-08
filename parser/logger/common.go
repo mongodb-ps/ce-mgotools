@@ -18,12 +18,17 @@ func Control(r util.RuneReader, entry record.Entry) (record.Message, error) {
 		switch {
 		case r.ExpectString("build info"):
 			return record.MsgBuildInfo{BuildInfo: r.SkipWords(2).Remainder()}, nil
+
 		case r.ExpectString("db version"):
-			return Version(r.SkipWords(2).Remainder(), "mongod")
+			var binary = "mongod"
+			if entry.Context == "mongosMain" || entry.Context == "mongoS" {
+				binary = "mongos"
+			}
+			return Version(r.SkipWords(2).Remainder(), binary)
+
 		case r.ExpectString("MongoDB starting"):
 			return StartupInfo(entry.RawMessage)
-		case r.ExpectString("OpenSSL version"):
-			return Version(r.SkipWords(2).Remainder(), "OpenSSL")
+
 		case r.ExpectString("options"):
 			r.SkipWords(1)
 			return StartupOptions(r.Remainder())
@@ -36,6 +41,7 @@ func Control(r util.RuneReader, entry record.Entry) (record.Message, error) {
 			return record.MsgSignal{String: r.Remainder()}, nil
 		}
 	}
+
 	return nil, internal.ControlUnrecognized
 }
 
@@ -173,15 +179,15 @@ func StartupOptions(msg string) (record.MsgStartupOptions, error) {
 
 func Version(msg string, binary string) (record.MsgVersion, error) {
 	msg = strings.TrimLeft(msg, "v")
-	version := record.MsgVersion{String: msg, Binary: binary}
-	if parts := strings.Split(version.String, "."); len(parts) >= 2 {
+	version := record.MsgVersion{Binary: binary}
+	if parts := strings.Split(msg, "."); len(parts) >= 2 {
 		version.Major, _ = strconv.Atoi(parts[0])
 		version.Minor, _ = strconv.Atoi(parts[1])
 		if len(parts) >= 3 {
 			version.Revision, _ = strconv.Atoi(parts[2])
 		}
 	}
-	if version.String == "" {
+	if msg == "" {
 		return version, internal.UnexpectedVersionFormat
 	}
 	return version, nil
