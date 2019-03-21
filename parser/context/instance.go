@@ -3,6 +3,7 @@ package context
 import (
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"mgotools/internal"
@@ -29,6 +30,8 @@ type Context struct {
 	dateParser *util.DateParser
 	day        int
 	month      time.Month
+
+	shutdown sync.Once
 }
 
 func New(parsers []parser.VersionParser, date *util.DateParser) *Context {
@@ -65,7 +68,7 @@ func (c *Context) Versions() []parser.VersionDefinition {
 }
 
 func (c *Context) Finish() {
-	c.parserFactory.Finish()
+	c.shutdown.Do(c.parserFactory.Finish)
 }
 
 func (c *Context) NewEntry(base record.Base) (record.Entry, error) {

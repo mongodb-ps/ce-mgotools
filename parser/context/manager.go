@@ -121,6 +121,13 @@ func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, er
 // Iterate through each of the goroutines and close the associated inputs. This
 // technically isn't necessary since they'll close on shutdown but
 func (m *manager) Finish() {
+	m.Lock()
+	defer m.Unlock()
+
+	if m.finished {
+		return
+	}
+
 	// Iterate through each version to close the channels causing the parser
 	// method to exit.
 	for _, version := range m.testers {
@@ -137,8 +144,6 @@ func (m *manager) Finish() {
 	// Wait for all instances to exit before returning.
 	m.waitGroup.Wait()
 
-	m.Lock()
-	defer m.Unlock()
 	m.finished = true
 }
 
