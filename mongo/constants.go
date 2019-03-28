@@ -36,6 +36,7 @@ var COMPONENTS = []string{
 	"REPLICATION",   // 3.0, 3.2, 3.4, 3.6
 	"ROLLBACK",      // 3.6
 	"SHARDING",      // 3.0, 3.2, 3.4, 3.6
+	"SH_REFR",       // 2.4
 	"STORAGE",       // 3.0, 3.2, 3.4, 3.6
 	"TOTAL",         // 3.0, 3.2, 3.4, 3.6
 	"TRACKING",      // 3.4, 3.6

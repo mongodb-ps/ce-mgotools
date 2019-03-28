@@ -3,6 +3,7 @@ package command
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -151,7 +152,7 @@ func run(f Command, index int, in record.BaseFactory, outputChannel chan<- strin
 			if err == io.EOF {
 				panic("eof error received before channel close")
 			} else if err != nil {
-				errorChannel <- err
+				errorChannel <- fmt.Errorf("line %d: %s", base.LineNumber, err.Error())
 			} else {
 				inputChannel <- base
 			}
