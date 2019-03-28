@@ -9,17 +9,15 @@ import (
 )
 
 type Version30Parser struct {
-	VersionBaseParser
 	counters    map[string]string
 	versionFlag bool
 }
 
+var errorVersion30Unmatched = internal.VersionUnmatched{Message: "version 3.0"}
+
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version30Parser{
-			VersionBaseParser: VersionBaseParser{
-				ErrorVersion: internal.VersionUnmatched{"version 3.0"},
-			},
 
 			counters: map[string]string{
 				"cursorid":        "cursorid",
@@ -70,7 +68,7 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (record.Message, err
 		return v.crud(false, &r)
 
 	default:
-		return nil, internal.VersionMessageUnmatched
+		return nil, errorVersion30Unmatched
 	}
 }
 

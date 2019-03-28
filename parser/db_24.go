@@ -12,16 +12,14 @@ import (
 )
 
 type Version24Parser struct {
-	VersionBaseParser
 	counters []string
 }
 
+var errorVersion24Unmatched = internal.VersionUnmatched{Message: "version 2.4"}
+
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version24Parser{VersionBaseParser: VersionBaseParser{
-			ErrorVersion: internal.VersionUnmatched{Message: "version 2.4"},
-		},
-
+		return &Version24Parser{
 			// A binary searchable (i.e. sorted) list of counters.
 			counters: []string{
 				"cursorid",
@@ -50,10 +48,10 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
 		// Check for control messages, which is almost everything in 2.4 that is logged at startup.
-		if msg, err := logger.Control(*r, entry); err == nil {
+		if msg, err := D(entry).Control(*r); err == nil {
 			// Most startup messages are part of control.
 			return msg, nil
-		} else if msg, err := logger.Network(*r, entry); err == nil {
+		} else if msg, err := D(entry).Network(*r); err == nil {
 			// Alternatively, we care about basic network actions like new connections being established.
 			return msg, nil
 		}
@@ -112,12 +110,12 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 
 		default:
 			// Check for network connection changes.
-			if msg, err := logger.Network(*r, entry); err == nil {
+			if msg, err := D(entry).Network(*r); err == nil {
 				return msg, nil
 			}
 		}
 	}
-	return nil, v.ErrorVersion
+	return nil, errorVersion24Unmatched
 }
 
 func (v *Version24Parser) Check(base record.Base) bool {

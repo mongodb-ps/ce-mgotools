@@ -9,19 +9,15 @@ import (
 )
 
 type Version34Parser struct {
-	VersionBaseParser
-
 	counters    map[string]string
 	versionFlag bool
 }
 
+var errorVersion34Unmatched = internal.VersionUnmatched{Message: "version 3.2"}
+
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version34Parser{
-			VersionBaseParser: VersionBaseParser{
-				ErrorVersion: internal.VersionUnmatched{Message: "version 3.4"},
-			},
-
 			counters: map[string]string{
 				"cursorid":         "cursorid",
 				"notoreturn":       "ntoreturn",
@@ -62,7 +58,7 @@ func (v *Version34Parser) Check(base record.Base) bool {
 func (v *Version34Parser) command(reader util.RuneReader) (record.MsgCommand, error) {
 	r := &reader
 
-	// Trivia: Version 3.4 was the first to introduce app name metadata.
+	// Trivia: version 3.4 was the first to introduce app name metadata.
 	cmd, err := logger.CommandPreamble(r)
 	if err != nil {
 		return record.MsgCommand{}, err
@@ -81,7 +77,7 @@ func (v *Version34Parser) command(reader util.RuneReader) (record.MsgCommand, er
 	// to earlier versions (e.g. 3.2.x).
 	err = logger.MidLoop(r, "locks:", &cmd.MsgBase, cmd.Counters, cmd.Payload, v.counters)
 	if err != nil {
-		v.versionFlag, err = logger.CheckCounterVersionError(err, v.ErrorVersion)
+		v.versionFlag, err = logger.CheckCounterVersionError(err, errorVersion34Unmatched)
 		return record.MsgCommand{}, err
 	}
 
@@ -95,7 +91,7 @@ func (v *Version34Parser) command(reader util.RuneReader) (record.MsgCommand, er
 		return record.MsgCommand{}, err
 	} else if cmd.Protocol != "op_query" && cmd.Protocol != "op_command" {
 		v.versionFlag = false
-		return record.MsgCommand{}, v.ErrorVersion
+		return record.MsgCommand{}, errorVersion34Unmatched
 	}
 
 	cmd.Duration, err = logger.Duration(r)
@@ -156,16 +152,16 @@ func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, err
 		return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
 	case "CONTROL":
-		return logger.Control(*r, entry)
+		return D(entry).Control(*r)
 
 	case "NETWORK":
-		return logger.Network(*r, entry)
+		return D(entry).Network(*r)
 
 	case "STORAGE":
-		return logger.Storage(*r, entry)
+		return D(entry).Storage(*r)
 	}
 
-	return nil, v.ErrorVersion
+	return nil, errorVersion34Unmatched
 }
 
 func (v *Version34Parser) operation(reader util.RuneReader) (record.MsgOperation, error) {
@@ -178,7 +174,7 @@ func (v *Version34Parser) operation(reader util.RuneReader) (record.MsgOperation
 
 	if !util.ArrayBinaryMatchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
 		v.versionFlag = false
-		return record.MsgOperation{}, v.ErrorVersion
+		return record.MsgOperation{}, errorVersion34Unmatched
 	}
 
 	for {
@@ -187,7 +183,7 @@ func (v *Version34Parser) operation(reader util.RuneReader) (record.MsgOperation
 		// operations.
 		err = logger.MidLoop(r, "collation:", &op.MsgBase, op.Counters, op.Payload, v.counters)
 		if err != nil {
-			v.versionFlag, err = logger.CheckCounterVersionError(err, v.ErrorVersion)
+			v.versionFlag, err = logger.CheckCounterVersionError(err, errorVersion34Unmatched)
 			return record.MsgOperation{}, err
 		} else if r.ExpectString("collation:") {
 			r.SkipWords(1)

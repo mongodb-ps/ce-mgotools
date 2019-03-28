@@ -70,7 +70,7 @@ func init() {
 	GetFactory().Register("debug", args, init)
 }
 
-func (d *debugLog) Finish(int) error {
+func (d *debugLog) Finish(int, commandTarget) error {
 	return nil
 }
 

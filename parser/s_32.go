@@ -5,17 +5,15 @@ import (
 	"mgotools/record"
 )
 
-type Version32SParser struct {
-	VersionBaseParser
-}
+type Version32SParser struct{}
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version32SParser{VersionBaseParser{
-			ErrorVersion: internal.VersionUnmatched{"mongos 3.2"},
-		}}
+		return &Version32SParser{}
 	})
 }
+
+var errorVersion32SUnmatched = internal.VersionUnmatched{"mongos 3.2"}
 
 func (v *Version32SParser) Check(base record.Base) bool {
 	return base.RawSeverity != record.SeverityNone &&
@@ -23,7 +21,7 @@ func (v *Version32SParser) Check(base record.Base) bool {
 }
 
 func (v *Version32SParser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	return logVersionSCommon.NewLogMessage(entry, v.ErrorVersion)
+	return nil, errorVersion32SUnmatched
 }
 
 func (v *Version32SParser) Version() VersionDefinition {

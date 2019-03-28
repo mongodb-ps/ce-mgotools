@@ -1,4 +1,9 @@
 mgotools
 *.log
 *.js
+*.txt
+*.pl
+*.out
+*.a
 .idea
+Logs

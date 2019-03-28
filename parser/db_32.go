@@ -10,19 +10,15 @@ import (
 )
 
 type Version32Parser struct {
-	VersionBaseParser
-
 	counters    map[string]string
 	versionFlag bool
 }
 
+var errorVersion32Unmatched = internal.VersionUnmatched{Message: "version 3.2"}
+
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version32Parser{
-			VersionBaseParser: VersionBaseParser{
-				ErrorVersion: internal.VersionUnmatched{Message: "version 3.2"},
-			},
-
 			counters: map[string]string{
 				"cursorid":         "cursorid",
 				"ntoreturn":        "ntoreturn",
@@ -77,7 +73,7 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, err
 		return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
 	case "CONTROL":
-		return logger.Control(r, entry)
+		return D(entry).Control(r)
 
 	case "NETWORK":
 		if entry.RawContext == "command" {
@@ -85,13 +81,13 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, err
 				return msg, nil
 			}
 		}
-		return logger.Network(r, entry)
+		return D(entry).Network(r)
 
 	case "STORAGE":
-		return logger.Storage(r, entry)
+		return D(entry).Storage(r)
 	}
 
-	return nil, v.ErrorVersion
+	return nil, errorVersion32Unmatched
 }
 
 func (v *Version32Parser) Check(base record.Base) bool {
@@ -107,14 +103,14 @@ func (v Version32Parser) command(reader util.RuneReader) (record.MsgCommand, err
 	if err != nil {
 		return record.MsgCommand{}, err
 	} else if cmd.Agent != "" {
-		// Version 3.2 does not provide an agent string.
+		// version 3.2 does not provide an agent string.
 		v.versionFlag = false
-		return record.MsgCommand{}, v.ErrorVersion
+		return record.MsgCommand{}, errorVersion32Unmatched
 	}
 
 	err = logger.MidLoop(r, "locks:", &cmd.MsgBase, cmd.Counters, cmd.Payload, v.counters)
 	if err != nil {
-		v.versionFlag, err = logger.CheckCounterVersionError(err, v.ErrorVersion)
+		v.versionFlag, err = logger.CheckCounterVersionError(err, errorVersion32Unmatched)
 		return record.MsgCommand{}, err
 	}
 
@@ -178,7 +174,7 @@ func (v *Version32Parser) operation(reader util.RuneReader) (record.MsgOperation
 
 	err = logger.MidLoop(r, "locks:", &op.MsgBase, op.Counters, op.Payload, v.counters)
 	if err != nil {
-		v.versionFlag, err = logger.CheckCounterVersionError(err, v.ErrorVersion)
+		v.versionFlag, err = logger.CheckCounterVersionError(err, errorVersion32Unmatched)
 		return record.MsgOperation{}, err
 	}
 

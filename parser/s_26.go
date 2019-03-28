@@ -5,17 +5,15 @@ import (
 	"mgotools/record"
 )
 
-type Version26SParser struct {
-	VersionBaseParser
-}
+type Version26SParser struct{}
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version26SParser{VersionBaseParser{
-			ErrorVersion: internal.VersionUnmatched{"mongos 2.6"},
-		}}
+		return &Version26SParser{}
 	})
 }
+
+var errorVersion26SUnmatched = internal.VersionUnmatched{Message: "mongos 2.6"}
 
 func (v *Version26SParser) Check(base record.Base) bool {
 	return base.CString &&
@@ -24,7 +22,7 @@ func (v *Version26SParser) Check(base record.Base) bool {
 }
 
 func (v *Version26SParser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	return logVersionSCommon.NewLogMessage(entry, v.ErrorVersion)
+	return nil, errorVersion26SUnmatched
 }
 func (v *Version26SParser) Version() VersionDefinition {
 	return VersionDefinition{Major: 2, Minor: 6, Binary: record.BinaryMongos}

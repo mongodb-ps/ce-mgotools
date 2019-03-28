@@ -5,20 +5,18 @@ import (
 	"mgotools/record"
 )
 
-type Version24SParser struct {
-	VersionBaseParser
-}
+type Version24SParser struct{}
 
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
-		return &Version24SParser{VersionBaseParser{
-			ErrorVersion: internal.VersionUnmatched{"mongos 2.4"},
-		}}
+		return &Version24SParser{}
 	})
 }
 
+var errorVersion24SUnmatched = internal.VersionUnmatched{"mongos 2.4"}
+
 func (v *Version24SParser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	return logVersionSCommon.NewLogMessage(entry, v.ErrorVersion)
+	return nil, errorVersion24SUnmatched
 }
 
 func (v *Version24SParser) Check(base record.Base) bool {

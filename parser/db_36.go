@@ -9,19 +9,15 @@ import (
 )
 
 type Version36Parser struct {
-	VersionBaseParser
-
 	counters    map[string]string
 	versionFlag bool
 }
 
+var errorVersion36Unmatched = internal.VersionUnmatched{Message: "version 3.4"}
+
 func init() {
 	VersionParserFactory.Register(func() VersionParser {
 		return &Version36Parser{
-			VersionBaseParser: VersionBaseParser{
-				ErrorVersion: internal.VersionUnmatched{Message: "version 3.6"},
-			},
-
 			counters: map[string]string{
 				"cursorid":         "cursorid",
 				"notoreturn":       "ntoreturn",
@@ -76,16 +72,16 @@ func (v *Version36Parser) NewLogMessage(entry record.Entry) (record.Message, err
 		return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
 	case "CONTROL":
-		return logger.Control(*r, entry)
+		return D(entry).Control(*r)
 
 	case "NETWORK":
-		return logger.Network(*r, entry)
+		return D(entry).Network(*r)
 
 	case "STORAGE":
-		return logger.Storage(*r, entry)
+		return D(entry).Storage(*r)
 	}
 
-	return nil, v.ErrorVersion
+	return nil, errorVersion36Unmatched
 }
 
 func (v *Version36Parser) command(reader util.RuneReader) (record.MsgCommand, error) {
@@ -141,7 +137,7 @@ func (v *Version36Parser) command(reader util.RuneReader) (record.MsgCommand, er
 		return record.MsgCommand{}, err
 	} else if cmd.Protocol != "op_msg" && cmd.Protocol != "op_query" && cmd.Protocol != "op_command" {
 		v.versionFlag = false
-		return record.MsgCommand{}, v.ErrorVersion
+		return record.MsgCommand{}, errorVersion36Unmatched
 	}
 
 	cmd.Duration, err = logger.Duration(r)
@@ -164,14 +160,14 @@ func (v *Version36Parser) operation(reader util.RuneReader) (record.MsgOperation
 	// is either very broken or a different version.
 	if !util.ArrayBinaryMatchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
 		v.versionFlag = false
-		return record.MsgOperation{}, v.ErrorVersion
+		return record.MsgOperation{}, errorVersion36Unmatched
 	}
 
 	// The next word should always be "command:"
 	if c, ok := r.SlurpWord(); !ok {
 		return record.MsgOperation{}, internal.UnexpectedEOL
 	} else if c != "command:" {
-		return record.MsgOperation{}, v.ErrorVersion
+		return record.MsgOperation{}, errorVersion36Unmatched
 	}
 
 	// There is no bareword like a command (even though the last word was
