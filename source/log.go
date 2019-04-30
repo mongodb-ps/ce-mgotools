@@ -81,7 +81,7 @@ func (Log) NewBase(line string, num uint) (record.Base, error) {
 	if day := base.PreviewWord(1); util.IsDay(day) {
 		base.RawDate = parseCDateString(&base)
 		base.CString = true
-	} else if util.IsIsoString(base.PreviewWord(1)) {
+	} else if util.IsIso8601String(base.PreviewWord(1)) {
 		base.RawDate, _ = base.SlurpWord()
 		base.CString = false
 	}

@@ -34,7 +34,7 @@ func (r *Entry) String() string {
 	if r.Format != "" {
 		buffer.WriteString(string(r.Format))
 	} else {
-		buffer.WriteString(string(util.DATE_FORMAT_ISO8602_UTC))
+		buffer.WriteString(string(util.DateFormatIso8602Utc))
 	}
 	buffer.WriteString(" ")
 	buffer.WriteRune(rune(r.RawSeverity))

@@ -45,7 +45,7 @@ func (r *restart) Finish(index int, out commandTarget) error {
 	writer.WriteString("RESTARTS\n")
 
 	for _, restart := range r.instance[index].restarts {
-		writer.WriteString(fmt.Sprintf("   %s %s\n", restart.Date.Format(string(util.DATE_FORMAT_CTIMENOMS)), restart.Startup.String()))
+		writer.WriteString(fmt.Sprintf("   %s %s\n", restart.Date.Format(string(util.DateFormatCtimenoms)), restart.Startup.String()))
 	}
 
 	out <- writer.String()

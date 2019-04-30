@@ -312,8 +312,8 @@ func (c connstats) printConn(connections map[int]*connection) {
 				"closed: %-18s  "+
 				"dur(s): %8.2f\n",
 				keys[i],
-				conn.Opened.Format(string(util.DATE_FORMAT_ISO8602_UTC)),
-				conn.Closed.Format(string(util.DATE_FORMAT_ISO8602_UTC)),
+				conn.Opened.Format(string(util.DateFormatIso8602Utc)),
+				conn.Closed.Format(string(util.DateFormatIso8602Utc)),
 				conn.Closed.Sub(conn.Opened).Seconds(),
 			))
 		} else if conn.Opened.IsZero() {
@@ -321,13 +321,13 @@ func (c connstats) printConn(connections map[int]*connection) {
 				"opened: n/a                       "+
 				"closed: %-18s\n",
 				keys[i],
-				conn.Closed.Format(string(util.DATE_FORMAT_ISO8602_UTC))))
+				conn.Closed.Format(string(util.DateFormatIso8602Utc))))
 		} else if conn.Closed.IsZero() {
 			c.buffer.WriteString(fmt.Sprintf("%-14d "+
 				"opened: %-18s  "+
 				"closed: n/a\n",
 				keys[i],
-				conn.Opened.Format(string(util.DATE_FORMAT_ISO8602_UTC))))
+				conn.Opened.Format(string(util.DateFormatIso8602Utc))))
 		}
 	}
 }

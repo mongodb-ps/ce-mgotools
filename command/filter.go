@@ -1,5 +1,7 @@
 package command
 
+// TODO: Data scrubbing
+
 import (
 	"errors"
 	"fmt"

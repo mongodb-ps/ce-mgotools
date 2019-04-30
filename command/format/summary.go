@@ -89,14 +89,14 @@ func (s LogSummary) Print(w io.Writer) {
 	formatTable := func(histogram map[util.DateFormat]int) string {
 		formatString := func(format util.DateFormat) string {
 			switch format {
-			case util.DATE_FORMAT_CTIME,
-				util.DATE_FORMAT_CTIMENOMS:
+			case util.DateFormatCtime,
+				util.DateFormatCtimenoms:
 				return "cdate"
-			case util.DATE_FORMAT_CTIMEYEAR:
+			case util.DateFormatCtimeyear:
 				return "cdate-year"
-			case util.DATE_FORMAT_ISO8602_LOCAL:
+			case util.DateFormatIso8602Local:
 				return "iso8602-local"
-			case util.DATE_FORMAT_ISO8602_UTC:
+			case util.DateFormatIso8602Utc:
 				return "iso8602"
 			default:
 				return "unknown"
