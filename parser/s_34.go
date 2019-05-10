@@ -16,7 +16,7 @@ func init() {
 }
 
 func (v *Version34SParser) Check(base record.Base) bool {
-	return base.RawSeverity != record.SeverityNone &&
+	return base.Severity != record.SeverityNone &&
 		base.RawComponent != ""
 }
 

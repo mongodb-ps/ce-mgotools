@@ -73,7 +73,7 @@ func makeScanner(reader *bufio.Reader) (*bufio.Scanner, error) {
 // Generate an Entry from a line of text. This method assumes the entry is *not* JSON.
 func (Log) NewBase(line string, num uint) (record.Base, error) {
 	var (
-		base = record.Base{RuneReader: util.NewRuneReader(line), LineNumber: num, RawSeverity: 0}
+		base = record.Base{RuneReader: util.NewRuneReader(line), LineNumber: num, Severity: record.SeverityNone}
 		pos  int
 	)
 
@@ -103,10 +103,17 @@ func (Log) NewBase(line string, num uint) (record.Base, error) {
 		// the context isn't first so there is likely more available to check
 		for i := 0; i < 4; i += 1 {
 			if part, ok := base.SlurpWord(); ok {
-				if base.RawSeverity == record.SeverityNone && mongo.IsSeverity(part) {
-					base.RawSeverity = record.Severity(part[0])
-					continue
-				} else if base.RawComponent == "" && mongo.IsComponent(part) {
+				if base.Severity == record.SeverityNone &&
+					base.RawComponent == "" &&
+					base.RawContext == "" {
+					severity, ok := record.NewSeverity(part)
+
+					if ok {
+						base.Severity = severity
+						continue
+					}
+				}
+				if base.RawComponent == "" && mongo.IsComponent(part) {
 					base.RawComponent = part
 					continue
 				} else if base.RawContext == "" && part[0] == '[' {

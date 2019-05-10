@@ -318,7 +318,7 @@ func (f *filter) match(entry record.Entry, opts filterOptions) bool {
 		return false
 	} else if opts.ContextFilter != "" && !stringMatchFields(entry.Context, opts.ContextFilter) {
 		return false
-	} else if opts.SeverityFilter > 0 && entry.RawSeverity != opts.SeverityFilter {
+	} else if opts.SeverityFilter > 0 && entry.Severity != opts.SeverityFilter {
 		return false
 	} else if !entry.DateValid || (!opts.FromFilter.IsZero() && opts.FromFilter.After(entry.Date)) || (!opts.ToFilter.IsZero() && opts.ToFilter.Before(entry.Date)) {
 		return false

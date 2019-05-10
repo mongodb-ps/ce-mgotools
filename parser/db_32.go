@@ -92,7 +92,7 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, err
 
 func (v *Version32Parser) Check(base record.Base) bool {
 	return v.versionFlag &&
-		base.RawSeverity != record.SeverityNone &&
+		base.Severity != record.SeverityNone &&
 		base.RawComponent != "" && v.expectedComponents(base.RawComponent)
 }
 

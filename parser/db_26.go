@@ -149,7 +149,7 @@ func (Version26Parser) currentOp(entry record.Entry) bool {
 }
 
 func (Version26Parser) Check(base record.Base) bool {
-	return base.RawSeverity == 0 &&
+	return base.Severity == record.SeverityNone &&
 		base.RawComponent == ""
 }
 

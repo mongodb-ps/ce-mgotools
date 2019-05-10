@@ -3,7 +3,10 @@
 // anything not already contained in the standard go release.
 package mongo
 
-import "mgotools/util"
+import (
+	"mgotools/record"
+	"mgotools/util"
+)
 
 // Use type aliases (instead of type definitions)
 type Object = map[string]interface{}
@@ -144,7 +147,7 @@ var OPERATORS_EXPRESSION = []string{
 }
 
 // The severities variable contains all severities encountered in MongoDB.
-var SEVERITIES = []string{"D", "E", "F", "I", "W"}
+var SEVERITIES = []string{"D1", "D2", "D3", "D4", "D5", "E", "F", "I", "W"}
 
 // IsComponent checks a string value against the possible components array.
 func IsComponent(value string) bool {
@@ -157,7 +160,10 @@ func IsContext(value string) bool {
 	return length > 2 && value[0] == '[' && value[length-1] == ']'
 }
 
-// IsSeverity checks a string value against the severities array.
+// IsSeverity checks a string value against the severities array. This value
+// will mostly be a single letter but can be two for debug levels
+// starting in version 4.2 (SERVER-37743).
 func IsSeverity(value string) bool {
-	return util.StringLength(value) == 1 && util.ArrayBinaryMatchString(value, SEVERITIES)
+	_, ok := record.NewSeverity(value)
+	return ok
 }

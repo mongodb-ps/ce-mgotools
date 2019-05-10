@@ -12,10 +12,9 @@ func S(entry record.Entry) mongos {
 	return mongos(entry)
 }
 
-func (entry mongos) Control(r *util.RuneReader) (record.Message, error) {
+func (entry mongos) Control(r util.RuneReader) (record.Message, error) {
 	switch entry.Context {
-	case "mongosMain",
-		"mongoS":
+	case "mongosMain":
 		if r.ExpectString("MongoS version") {
 			return version(r.SkipWords(2).Remainder(), "mongos")
 		} else if r.ExpectString("options:") {
@@ -27,8 +26,7 @@ func (entry mongos) Control(r *util.RuneReader) (record.Message, error) {
 	return nil, internal.ControlUnrecognized
 }
 
-func (entry mongos) Network(r *util.RuneReader) (record.Message, error) {
-	if entry.Connection > 0 {
-
-	}
+func (entry mongos) Network(r util.RuneReader) (record.Message, error) {
+	// Network messaging is the same for mongos as mongod.
+	return D(record.Entry(entry)).Network(r)
 }

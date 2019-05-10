@@ -17,7 +17,7 @@ var errorVersion26SUnmatched = internal.VersionUnmatched{Message: "mongos 2.6"}
 
 func (v *Version26SParser) Check(base record.Base) bool {
 	return base.CString &&
-		base.RawSeverity == record.SeverityNone &&
+		base.Severity == record.SeverityNone &&
 		base.RawComponent == ""
 }
 

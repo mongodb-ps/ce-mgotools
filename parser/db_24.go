@@ -120,7 +120,7 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 
 func (v *Version24Parser) Check(base record.Base) bool {
 	return base.RawComponent == "" &&
-		base.RawSeverity == record.SeverityNone &&
+		base.Severity == record.SeverityNone &&
 		base.CString
 }
 

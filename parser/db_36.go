@@ -50,7 +50,7 @@ func init() {
 }
 
 func (v *Version36Parser) Check(base record.Base) bool {
-	return base.RawSeverity != record.SeverityNone &&
+	return base.Severity != record.SeverityNone &&
 		base.RawComponent != ""
 }
 

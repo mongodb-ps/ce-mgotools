@@ -74,7 +74,7 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (record.Message, err
 
 func (v *Version30Parser) Check(base record.Base) bool {
 	return v.versionFlag &&
-		base.RawSeverity != record.SeverityNone &&
+		base.Severity != record.SeverityNone &&
 		v.expectedComponents(base.RawComponent)
 }
 

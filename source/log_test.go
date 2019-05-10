@@ -19,8 +19,8 @@ func TestNewBase(tr *testing.T) {
 			t.Error("base.RawContext (2.4) is incorrect")
 		} else if b.RawComponent != "" {
 			t.Error("base.RawComponent (2.4) returned a component")
-		} else if b.RawSeverity != record.SeverityNone {
-			t.Error("base.RawSeverity (2.4) returned a severity")
+		} else if b.Severity != record.SeverityNone {
+			t.Error("base.Severity (2.4) returned a severity")
 		} else if b.RawMessage != "db version v2.4.14" {
 			t.Error("base.RawMessage (2.4) is incorrect")
 		}
@@ -36,8 +36,8 @@ func TestNewBase(tr *testing.T) {
 			t.Error("base.RawContext (2.6) is incorrect")
 		} else if b.RawComponent != "" {
 			t.Error("base.RawComponent (2.6) returned a component")
-		} else if b.RawSeverity != record.SeverityNone {
-			t.Error("base.RawSeverity (2.6) returned a severity")
+		} else if b.Severity != record.SeverityNone {
+			t.Error("base.Severity (2.6) returned a severity")
 		} else if b.RawMessage != "db version v2.6.12" {
 			t.Error("base.RawMessage (2.6) is incorrect")
 		}
@@ -53,8 +53,8 @@ func TestNewBase(tr *testing.T) {
 			t.Error("base.RawContext (3.x) is incorrect")
 		} else if b.RawComponent != "CONTROL" {
 			t.Error("base.RawComponent (3.x) returned a component")
-		} else if b.RawSeverity != 'I' {
-			t.Error("base.RawSeverity (3.x) returned a severity")
+		} else if b.Severity != record.SeverityI {
+			t.Error("base.Severity (3.x) returned a severity")
 		} else if b.RawMessage != "db version v3.0.15" {
 			t.Error("base.RawMessage (3.x) is incorrect")
 		}
@@ -76,7 +76,7 @@ func TestNewBase(tr *testing.T) {
 			t.Error("base.RawComponent cannot be invalid, but returned without error")
 		}
 		if _, err := f.NewBase("2018-01-16T15:00:41.759-0800 ! CONTROL  [initandlisten] ", 1); err == nil {
-			t.Error("base.RawSeverity cannot be invalid, but returned without error")
+			t.Error("base.Severity cannot be invalid, but returned without error")
 		}
 		if _, err := f.NewBase("2018-01-16T15:00:41.759-0800 I CONTROL  ", 1); err == nil {
 			t.Error("base.RawContext is empty, should be an error")

@@ -51,7 +51,7 @@ func init() {
 
 func (v *Version34Parser) Check(base record.Base) bool {
 	return v.versionFlag &&
-		base.RawSeverity != record.SeverityNone &&
+		base.Severity != record.SeverityNone &&
 		base.RawComponent != ""
 }
 

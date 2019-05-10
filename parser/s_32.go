@@ -16,7 +16,7 @@ func init() {
 var errorVersion32SUnmatched = internal.VersionUnmatched{"mongos 3.2"}
 
 func (v *Version32SParser) Check(base record.Base) bool {
-	return base.RawSeverity != record.SeverityNone &&
+	return base.Severity != record.SeverityNone &&
 		base.RawComponent != ""
 }
 

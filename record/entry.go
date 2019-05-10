@@ -37,7 +37,7 @@ func (r *Entry) String() string {
 		buffer.WriteString(string(util.DateFormatIso8602Utc))
 	}
 	buffer.WriteString(" ")
-	buffer.WriteRune(rune(r.RawSeverity))
+	buffer.WriteString(r.Severity.String())
 	buffer.WriteString(" ")
 	buffer.WriteString(r.RawComponent)
 	buffer.WriteString("  ")
