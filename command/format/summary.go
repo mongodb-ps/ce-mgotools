@@ -196,40 +196,51 @@ func (s *LogSummary) Update(entry record.Entry) bool {
 		return false
 
 	case record.MsgStartupInfo:
-		// The server restarted.
-		s.Port = t.Port
-		s.Host = t.Hostname
+		s.options(t.Port, t.Hostname)
+
+	case record.MsgStartupInfoLegacy:
+		s.options(t.Port, t.Hostname)
+		s.version(t.MsgVersion)
 
 	case record.MsgVersion:
-		if t.Major == 2 {
-			s.Storage = "MMAPv1"
-		}
-
-		var binary record.Binary
-		switch t.Binary {
-		case "mongod":
-			binary = record.BinaryMongod
-
-		case "mongos":
-			binary = record.BinaryMongos
-
-		default:
-			binary = record.BinaryAny
-		}
-
-		s.Version = append(s.Version, parser.VersionDefinition{
-			Major:  t.Major,
-			Minor:  t.Minor,
-			Binary: binary,
-		})
-
-		if s.Storage == "" && t.Major < 3 {
-			s.Storage = "MMAPv1"
-		}
+		s.version(t)
 
 	case record.MsgWiredTigerConfig:
 		s.Storage = "WiredTiger"
 	}
 
 	return true
+}
+
+func (s *LogSummary) options(port int, hostname string) {
+	// The server restarted.
+	s.Port = port
+	s.Host = hostname
+}
+
+func (s *LogSummary) version(msg record.MsgVersion) {
+	if msg.Major == 2 {
+		s.Storage = "MMAPv1"
+	} else if (msg.Major == 4 && msg.Minor > 0) || msg.Major > 4 {
+		s.Storage = "WiredTiger"
+	}
+	var binary record.Binary
+	switch msg.Binary {
+	case "mongod":
+		binary = record.BinaryMongod
+
+	case "mongos":
+		binary = record.BinaryMongos
+
+	default:
+		binary = record.BinaryAny
+	}
+	s.Version = append(s.Version, parser.VersionDefinition{
+		Major:  msg.Major,
+		Minor:  msg.Minor,
+		Binary: binary,
+	})
+	if s.Storage == "" && msg.Major < 3 {
+		s.Storage = "MMAPv1"
+	}
 }

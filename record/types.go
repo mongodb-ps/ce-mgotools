@@ -39,6 +39,11 @@ type MsgSignal struct {
 	String string
 }
 
+type MsgStartupInfoLegacy struct {
+	MsgStartupInfo
+	MsgVersion
+}
+
 type MsgStartupInfo struct {
 	DbPath   string
 	Hostname string

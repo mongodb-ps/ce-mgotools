@@ -36,6 +36,7 @@ func (r *Entry) String() string {
 	} else {
 		buffer.WriteString(string(util.DateFormatIso8602Utc))
 	}
+
 	buffer.WriteString(" ")
 	buffer.WriteString(r.Severity.String())
 	buffer.WriteString(" ")

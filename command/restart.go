@@ -76,7 +76,7 @@ func (r *restart) Run(index int, out commandTarget, in commandSource, errors com
 		summary.Update(entry)
 		if entry.Message == nil {
 			continue
-		} else if restart, ok := entry.Message.(record.MsgVersion); !ok {
+		} else if restart, ok := getVersionFromMessage(entry.Message); !ok {
 			continue
 		} else {
 			instance.restarts = append(instance.restarts, struct {
@@ -91,4 +91,14 @@ func (r *restart) Run(index int, out commandTarget, in commandSource, errors com
 
 func (r *restart) Terminate(commandTarget) error {
 	return nil
+}
+
+func getVersionFromMessage(message record.Message) (record.MsgVersion, bool) {
+	if version, ok := message.(record.MsgVersion); ok {
+		return version, true
+	} else if version, ok := message.(record.MsgStartupInfoLegacy); ok {
+		return version.MsgVersion, true
+	} else {
+		return record.MsgVersion{}, false
+	}
 }

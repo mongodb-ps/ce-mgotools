@@ -106,6 +106,19 @@ func (c *Context) NewEntry(base record.Base) (record.Entry, error) {
 		entry.Date = time.Date(year, entry.Date.Month(), entry.Date.Day(), entry.Date.Hour(), entry.Date.Minute(), entry.Date.Second(), entry.Date.Nanosecond(), entry.Date.Location())
 	}
 
+	reject := func(msg record.MsgVersion) {
+		switch msg.Binary {
+		case "mongod":
+			manager.Reject(func(version parser.VersionDefinition) bool {
+				return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongod
+			})
+		case "mongos":
+			manager.Reject(func(version parser.VersionDefinition) bool {
+				return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongos
+			})
+		}
+	}
+
 	// Update index context if it is available.
 	if entry.Message != nil && entry.Connection == 0 {
 		switch msg := entry.Message.(type) {
@@ -116,17 +129,13 @@ func (c *Context) NewEntry(base record.Base) (record.Entry, error) {
 		case record.MsgVersion:
 			// Reject all versions but the current version.
 			manager.Reset()
+			reject(msg)
 
-			switch msg.Binary {
-			case "mongod":
-				manager.Reject(func(version parser.VersionDefinition) bool {
-					return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongod
-				})
-			case "mongos":
-				manager.Reject(func(version parser.VersionDefinition) bool {
-					return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongos
-				})
-			}
+		case record.MsgStartupInfoLegacy:
+			// Reject all versions but the current version, except with
+			// a legacy mongos.
+			manager.Reset()
+			reject(msg.MsgVersion)
 
 		case record.MsgListening:
 			// noop
