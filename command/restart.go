@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"mgotools/command/format"
-	"mgotools/parser"
-	"mgotools/parser/context"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/internal"
+	"mgotools/parser/message"
+	"mgotools/parser/version"
+	"mgotools/target/formatting"
 )
 
 type restart struct {
@@ -17,10 +16,10 @@ type restart struct {
 }
 
 type restartInstance struct {
-	summary  format.LogSummary
+	summary  formatting.Summary
 	restarts []struct {
 		Date    time.Time
-		Startup record.MsgVersion
+		Startup message.Version
 	}
 }
 
@@ -45,7 +44,7 @@ func (r *restart) Finish(index int, out commandTarget) error {
 	writer.WriteString("RESTARTS\n")
 
 	for _, restart := range r.instance[index].restarts {
-		writer.WriteString(fmt.Sprintf("   %s %s\n", restart.Date.Format(string(util.DateFormatCtimenoms)), restart.Startup.String()))
+		writer.WriteString(fmt.Sprintf("   %s %s\n", restart.Date.Format(string(internal.DateFormatCtimenoms)), restart.Startup.String()))
 	}
 
 	out <- writer.String()
@@ -54,7 +53,7 @@ func (r *restart) Finish(index int, out commandTarget) error {
 }
 
 func (r *restart) Prepare(name string, index int, _ ArgumentCollection) error {
-	r.instance[index] = &restartInstance{summary: format.NewLogSummary(name)}
+	r.instance[index] = &restartInstance{summary: formatting.NewSummary(name)}
 
 	return nil
 }
@@ -64,7 +63,7 @@ func (r *restart) Run(index int, out commandTarget, in commandSource, errors com
 	summary := &instance.summary
 
 	// Create a local context object to create record.Entry objects.
-	context := context.New(parser.VersionParserFactory.GetAll(), util.DefaultDateParser.Clone())
+	context := version.New(version.Factory.GetAll(), internal.DefaultDateParser.Clone())
 	defer context.Finish()
 
 	for base := range in {
@@ -81,7 +80,7 @@ func (r *restart) Run(index int, out commandTarget, in commandSource, errors com
 		} else {
 			instance.restarts = append(instance.restarts, struct {
 				Date    time.Time
-				Startup record.MsgVersion
+				Startup message.Version
 			}{Date: entry.Date, Startup: restart})
 		}
 	}
@@ -93,12 +92,12 @@ func (r *restart) Terminate(commandTarget) error {
 	return nil
 }
 
-func getVersionFromMessage(message record.Message) (record.MsgVersion, bool) {
-	if version, ok := message.(record.MsgVersion); ok {
+func getVersionFromMessage(msg message.Message) (message.Version, bool) {
+	if version, ok := msg.(message.Version); ok {
 		return version, true
-	} else if version, ok := message.(record.MsgStartupInfoLegacy); ok {
-		return version.MsgVersion, true
+	} else if version, ok := msg.(message.StartupInfoLegacy); ok {
+		return version.Version, true
 	} else {
-		return record.MsgVersion{}, false
+		return message.Version{}, false
 	}
 }

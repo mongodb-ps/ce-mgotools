@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"time"
 
-	"mgotools/util"
+	"mgotools/internal"
+	"mgotools/parser/message"
 )
 
 // Log examples:
@@ -15,12 +16,12 @@ import (
 
 type Entry struct {
 	Base
-	Message Message
+	Message message.Message
 
 	Connection      int
 	Context         string
 	Date            time.Time
-	Format          util.DateFormat
+	Format          internal.DateFormat
 	DateYearMissing bool
 	DateRollover    int
 	DateValid       bool
@@ -34,7 +35,7 @@ func (r *Entry) String() string {
 	if r.Format != "" {
 		buffer.WriteString(string(r.Format))
 	} else {
-		buffer.WriteString(string(util.DateFormatIso8602Utc))
+		buffer.WriteString(string(internal.DateFormatIso8602Utc))
 	}
 
 	buffer.WriteString(" ")

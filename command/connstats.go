@@ -10,11 +10,10 @@ import (
 	"sort"
 	"time"
 
-	"mgotools/command/format"
-	"mgotools/parser"
-	"mgotools/parser/context"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/internal"
+	"mgotools/parser/message"
+	"mgotools/parser/version"
+	"mgotools/target/formatting"
 )
 
 const minDuration = time.Duration(-1 << 63)
@@ -48,7 +47,7 @@ type connection struct {
 }
 
 type connstatsInstance struct {
-	summary     format.LogSummary
+	summary     formatting.Summary
 	connections map[int]*connection
 }
 
@@ -179,7 +178,7 @@ func (c *connstats) Finish(index int, out commandTarget) error {
 
 func (c *connstats) Prepare(name string, index int, args ArgumentCollection) error {
 	c.Instance[index] = connstatsInstance{
-		summary:     format.NewLogSummary(name),
+		summary:     formatting.NewSummary(name),
 		connections: make(map[int]*connection),
 	}
 
@@ -196,11 +195,11 @@ func (c *connstats) Prepare(name string, index int, args ArgumentCollection) err
 }
 
 func (c *connstats) Run(index int, _ commandTarget, in commandSource, error commandError) error {
-	context := context.New(parser.VersionParserFactory.GetAll(), util.DefaultDateParser.Clone())
+	context := version.New(version.Factory.GetAll(), internal.DefaultDateParser.Clone())
 	defer context.Finish()
 
 	type ConnectionBundle struct {
-		Msg  record.MsgConnection
+		Msg  message.Connection
 		Time time.Time
 	}
 
@@ -222,7 +221,7 @@ func (c *connstats) Run(index int, _ commandTarget, in commandSource, error comm
 			continue
 		}
 
-		conn, ok := entry.Message.(record.MsgConnection)
+		conn, ok := entry.Message.(message.Connection)
 		if !ok && entry.DateValid {
 			continue
 		}
@@ -312,8 +311,8 @@ func (c connstats) printConn(connections map[int]*connection) {
 				"closed: %-18s  "+
 				"dur(s): %8.2f\n",
 				keys[i],
-				conn.Opened.Format(string(util.DateFormatIso8602Utc)),
-				conn.Closed.Format(string(util.DateFormatIso8602Utc)),
+				conn.Opened.Format(string(internal.DateFormatIso8602Utc)),
+				conn.Closed.Format(string(internal.DateFormatIso8602Utc)),
 				conn.Closed.Sub(conn.Opened).Seconds(),
 			))
 		} else if conn.Opened.IsZero() {
@@ -321,13 +320,13 @@ func (c connstats) printConn(connections map[int]*connection) {
 				"opened: n/a                       "+
 				"closed: %-18s\n",
 				keys[i],
-				conn.Closed.Format(string(util.DateFormatIso8602Utc))))
+				conn.Closed.Format(string(internal.DateFormatIso8602Utc))))
 		} else if conn.Closed.IsZero() {
 			c.buffer.WriteString(fmt.Sprintf("%-14d "+
 				"opened: %-18s  "+
 				"closed: n/a\n",
 				keys[i],
-				conn.Opened.Format(string(util.DateFormatIso8602Utc))))
+				conn.Opened.Format(string(internal.DateFormatIso8602Utc))))
 		}
 	}
 }

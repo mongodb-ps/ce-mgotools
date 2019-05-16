@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+// Use type aliases (instead of type definitions)
+type Object = map[string]interface{}
+type Array = []interface{}
+
 type MaxKey struct{}
 type MinKey struct{}
 type Timestamp time.Time

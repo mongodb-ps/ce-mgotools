@@ -1,11 +1,11 @@
-// A logger helper functions exist because there are a lot of similarities
+// A message helper functions exist because there are a lot of similarities
 // between the different log formats. The similarities should have the same
-// code path until the format diverges.
+// code path until the formats diverge.
 //
 // Several different but similar methods are required to keep consistency
 // between data types. Additionally, distinguishing between commands and
 // operation means double the number of functions.
-package logger
+package parser
 
 import (
 	"strconv"
@@ -13,22 +13,22 @@ import (
 
 	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
 )
 
-func CommandPreamble(r *util.RuneReader) (record.MsgCommand, error) {
-	cmd := record.MakeMsgCommand()
+func CommandPreamble(r *internal.RuneReader) (message.Command, error) {
+	cmd := message.MakeMsgCommand()
 
 	if c, n, o, err := Preamble(r); err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	} else if c != "command" {
-		return record.MsgCommand{}, internal.CommandStructure
+		return message.Command{}, internal.CommandStructure
 	} else {
 		if o == "appName" {
 			cmd.Agent, err = r.QuotedString()
 			if err != nil {
-				return record.MsgCommand{}, err
+				return message.Command{}, err
 			}
 
 			o, _ = r.SlurpWord()
@@ -45,7 +45,7 @@ func CommandPreamble(r *util.RuneReader) (record.MsgCommand, error) {
 			cmd.Command = ""
 			r.RewindSlurpWord()
 		} else if op, ok := r.SlurpWord(); !ok {
-			return record.MsgCommand{}, internal.CommandStructure
+			return message.Command{}, internal.CommandStructure
 		} else {
 			// Cases where there are erratic commands will output JSON without
 			// a command name. Record the command name if one exists, otherwise
@@ -57,7 +57,7 @@ func CommandPreamble(r *util.RuneReader) (record.MsgCommand, error) {
 			}
 
 			if cmd.Payload, err = mongo.ParseJsonRunes(r, false); err != nil {
-				return record.MsgCommand{}, err
+				return message.Command{}, err
 			}
 		}
 
@@ -75,9 +75,9 @@ func CheckCounterVersionError(err error, v error) (bool, error) {
 	return false, err
 }
 
-func Crud(op string, counters map[string]int64, payload record.MsgPayload) (record.MsgCRUD, bool) {
+func Crud(op string, counters map[string]int64, payload message.Payload) (message.CRUD, bool) {
 	if payload == nil {
-		return record.MsgCRUD{}, false
+		return message.CRUD{}, false
 	}
 
 	filter, ok := payload["query"].(map[string]interface{})
@@ -120,7 +120,7 @@ func Crud(op string, counters map[string]int64, payload record.MsgPayload) (reco
 		}
 	}
 
-	switch util.StringToLower(op) {
+	switch internal.StringToLower(op) {
 	case "find":
 		return find(comment, cursorId, counters, payload)
 
@@ -146,13 +146,13 @@ func Crud(op string, counters map[string]int64, payload record.MsgPayload) (reco
 		return geoNear(cursorId, filter, payload)
 
 	case "getmore":
-		return record.MsgCRUD{CursorId: cursorId}, true
+		return message.CRUD{CursorId: cursorId}, true
 	}
 
-	return record.MsgCRUD{}, false
+	return message.CRUD{}, false
 }
 
-func cleanQueryWithoutSort(c *record.MsgCRUD, query map[string]interface{}) {
+func cleanQueryWithoutSort(c *message.CRUD, query map[string]interface{}) {
 	c.Sort, _ = query["orderby"].(map[string]interface{})
 	if c.Sort != nil || c.Comment != "" {
 		if query, ok := query["query"].(map[string]interface{}); ok {
@@ -161,20 +161,20 @@ func cleanQueryWithoutSort(c *record.MsgCRUD, query map[string]interface{}) {
 	}
 }
 
-func count(query map[string]interface{}, payload record.MsgPayload) (record.MsgCRUD, bool) {
+func count(query map[string]interface{}, payload message.Payload) (message.CRUD, bool) {
 	if query == nil {
-		return record.MsgCRUD{}, false
+		return message.CRUD{}, false
 	}
 
 	fields, _ := payload["fields"].(map[string]interface{})
-	return record.MsgCRUD{
+	return message.CRUD{
 		Filter:  query,
 		Project: fields,
 	}, true
 }
 
 // A simple function that reduces CRUD checks and returns to a one-liner.
-func CrudOrMessage(obj record.Message, term string, counters map[string]int64, payload record.MsgPayload) record.Message {
+func CrudOrMessage(obj message.Message, term string, counters map[string]int64, payload message.Payload) message.Message {
 	if crud, ok := Crud(term, counters, payload); ok {
 		crud.Message = obj
 		return crud
@@ -185,7 +185,7 @@ func CrudOrMessage(obj record.Message, term string, counters map[string]int64, p
 
 // Returns a duration given a RuneReader. Expects a time in the format
 // of <int>ms.
-func Duration(r *util.RuneReader) (int64, error) {
+func Duration(r *internal.RuneReader) (int64, error) {
 	if word, ok := r.SlurpWord(); !ok {
 		return 0, internal.UnexpectedEOL
 	} else if !strings.HasSuffix(word, "ms") {
@@ -199,8 +199,8 @@ func Duration(r *util.RuneReader) (int64, error) {
 	}
 }
 
-func insert(comment string, counters map[string]int64) (record.MsgCRUD, bool) {
-	crud := record.MsgCRUD{
+func insert(comment string, counters map[string]int64) (message.CRUD, bool) {
+	crud := message.CRUD{
 		Update:  nil,
 		Comment: comment,
 		N:       counters["ninserted"],
@@ -210,7 +210,7 @@ func insert(comment string, counters map[string]int64) (record.MsgCRUD, bool) {
 }
 
 func IntegerKeyValue(source string, target map[string]int64, limit map[string]string) bool {
-	if key, num, ok := util.StringDoubleSplit(source, ':'); ok && num != "" {
+	if key, num, ok := internal.StringDoubleSplit(source, ':'); ok && num != "" {
 		if _, ok := limit[key]; ok {
 			if num == "true" {
 				target[key] = 1
@@ -230,7 +230,7 @@ func IntegerKeyValue(source string, target map[string]int64, limit map[string]st
 	return false
 }
 
-func Exception(r *util.RuneReader) (string, bool) {
+func Exception(r *internal.RuneReader) (string, bool) {
 	start := r.Pos()
 	if exception, ok := r.ScanFor("numYields:"); !ok {
 		r.Seek(start, 0)
@@ -246,13 +246,13 @@ func Exception(r *util.RuneReader) (string, bool) {
 	return "", false
 }
 
-func find(comment string, cursorId int64, counters map[string]int64, payload map[string]interface{}) (record.MsgCRUD, bool) {
+func find(comment string, cursorId int64, counters map[string]int64, payload map[string]interface{}) (message.CRUD, bool) {
 	filter, ok := payload["filter"].(map[string]interface{})
 	if !ok {
-		return record.MsgCRUD{}, false
+		return message.CRUD{}, false
 	}
 
-	c := record.MsgCRUD{
+	c := message.CRUD{
 		Comment:  comment,
 		CursorId: cursorId,
 		Filter:   filter,
@@ -263,12 +263,12 @@ func find(comment string, cursorId int64, counters map[string]int64, payload map
 	return c, true
 }
 
-func findAndModify(cursorId int64, counters map[string]int64, query map[string]interface{}, payload record.MsgPayload) (record.MsgCRUD, bool) {
+func findAndModify(cursorId int64, counters map[string]int64, query map[string]interface{}, payload message.Payload) (message.CRUD, bool) {
 	fields, _ := payload["fields"].(map[string]interface{})
 	sort, _ := payload["sort"].(map[string]interface{})
 	update, _ := payload["update"].(map[string]interface{})
 
-	return record.MsgCRUD{
+	return message.CRUD{
 		CursorId: cursorId,
 		Filter:   query,
 		N:        counters["nModified"],
@@ -278,7 +278,7 @@ func findAndModify(cursorId int64, counters map[string]int64, query map[string]i
 	}, true
 }
 
-func geoNear(cursorId int64, query map[string]interface{}, payload record.MsgPayload) (record.MsgCRUD, bool) {
+func geoNear(cursorId int64, query map[string]interface{}, payload message.Payload) (message.CRUD, bool) {
 	if near, ok := payload["near"].(map[string]interface{}); ok {
 		if _, ok := near["$near"]; !ok {
 			if query == nil {
@@ -288,13 +288,13 @@ func geoNear(cursorId int64, query map[string]interface{}, payload record.MsgPay
 		}
 	}
 
-	return record.MsgCRUD{
+	return message.CRUD{
 		CursorId: cursorId,
 		Filter:   query,
 	}, true
 }
 
-func Locks(r *util.RuneReader) (map[string]interface{}, error) {
+func Locks(r *internal.RuneReader) (map[string]interface{}, error) {
 	if !r.ExpectString("locks:{") {
 		return nil, internal.UnexpectedVersionFormat
 	}
@@ -309,9 +309,9 @@ func Locks(r *util.RuneReader) (map[string]interface{}, error) {
 }
 
 // Loop through the middle portion containing counters until locks.
-func MidLoop(r *util.RuneReader, stop string, base *record.MsgBase, counters map[string]int64, payload record.MsgPayload, check map[string]string) error {
+func MidLoop(r *internal.RuneReader, stop string, base *message.BaseCommand, counters map[string]int64, payload message.Payload, check map[string]string) error {
 	if check == nil {
-		check = mongo.COUNTERS
+		check = record.COUNTERS
 	}
 
 	for s := len(stop); ; {
@@ -339,10 +339,10 @@ func MidLoop(r *util.RuneReader, stop string, base *record.MsgBase, counters map
 
 // Commands may overload the namespace to end in ".$cmd", which should
 // be replaced by the collection name provided in the payload (if it exists).
-func NamespaceReplace(c string, p record.MsgPayload, n string) string {
+func NamespaceReplace(c string, p message.Payload, n string) string {
 	if col, ok := p[c].(string); ok && col != "" {
 		n = n[:strings.IndexRune(n, '.')+1] + col
-	} else if col, ok := p[util.StringToLower(c)].(string); ok && col != "" {
+	} else if col, ok := p[internal.StringToLower(c)].(string); ok && col != "" {
 		n = n[:strings.IndexRune(n, '.')+1] + col
 	}
 	return n
@@ -350,13 +350,13 @@ func NamespaceReplace(c string, p record.MsgPayload, n string) string {
 
 // Operations have a different syntax but output similar information. This
 // method processes lines that are typically WRITE.
-func OperationPreamble(r *util.RuneReader) (record.MsgOperation, error) {
-	op := record.MakeMsgOperation()
+func OperationPreamble(r *internal.RuneReader) (message.Operation, error) {
+	op := message.MakeMsgOperation()
 	// Grab the operation and namespace. Ignore the third portion of the
 	// preamble because the reader will be rewound.
 
 	if c, n, _, err := Preamble(r); err != nil {
-		return record.MsgOperation{}, err
+		return message.Operation{}, err
 	} else {
 		// Rewind the operation name so it can be parsed in the next section.
 		r.RewindSlurpWord()
@@ -371,24 +371,24 @@ func OperationPreamble(r *util.RuneReader) (record.MsgOperation, error) {
 		if err == nil {
 			op.Agent = agent
 		} else {
-			return record.MsgOperation{}, err
+			return message.Operation{}, err
 		}
 	}
 
 	return op, nil
 }
 
-func Payload(r *util.RuneReader) (payload record.MsgPayload, err error) {
+func Payload(r *internal.RuneReader) (payload message.Payload, err error) {
 	if !r.ExpectRune('{') {
-		return record.MsgPayload{}, internal.MisplacedWordException
+		return message.Payload{}, internal.MisplacedWordException
 	}
 
 	payload, err = mongo.ParseJsonRunes(r, false)
 	return
 }
 
-func PlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
-	var out []record.MsgPlanSummary
+func PlanSummary(r *internal.RuneReader) ([]message.PlanSummary, error) {
+	var out []message.PlanSummary
 	for {
 		if op, ok := r.SlurpWord(); !ok {
 			// There are no words, so exit.
@@ -399,7 +399,7 @@ func PlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
 				return nil, err
 			} else {
 				// The plan summary parsed as valid JSON, so record the operation and fall-through.
-				out = append(out, record.MsgPlanSummary{op, summary})
+				out = append(out, message.PlanSummary{op, summary})
 			}
 			if r.NextRune() != ',' {
 				// There are no other plans so exit plan summary parsing.
@@ -411,11 +411,11 @@ func PlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
 			}
 		} else if length := len(op); length > 2 && op[length-1] == ',' {
 			// This is needed for repeated bare words (e.g. planSummary: COLLSCAN, COLLSCAN).
-			out = append(out, record.MsgPlanSummary{op[:length-1], nil})
+			out = append(out, message.PlanSummary{op[:length-1], nil})
 			continue
 		} else {
 			// Finally, the plan summary is boring and only includes a single word (e.g. COLLSCAN).
-			out = append(out, record.MsgPlanSummary{op, nil})
+			out = append(out, message.PlanSummary{op, nil})
 			break
 		}
 	}
@@ -426,7 +426,7 @@ func PlanSummary(r *util.RuneReader) ([]record.MsgPlanSummary, error) {
 	return out, nil
 }
 
-func Preamble(r *util.RuneReader) (cmd, ns, op string, err error) {
+func Preamble(r *internal.RuneReader) (cmd, ns, op string, err error) {
 	if word, ok := r.SlurpWord(); !ok {
 		err = internal.UnexpectedEOL
 		return
@@ -453,7 +453,7 @@ func Preamble(r *util.RuneReader) (cmd, ns, op string, err error) {
 	return
 }
 
-func Protocol(r *util.RuneReader) (string, error) {
+func Protocol(r *internal.RuneReader) (string, error) {
 	if !r.ExpectString("protocol:") {
 		return "", internal.VersionMessageUnmatched
 	}
@@ -465,15 +465,15 @@ func Protocol(r *util.RuneReader) (string, error) {
 	return word[9:], nil
 }
 
-func query(comment string, cursorId int64, counters map[string]int64, query map[string]interface{}) (record.MsgCRUD, bool) {
+func query(comment string, cursorId int64, counters map[string]int64, query map[string]interface{}) (message.CRUD, bool) {
 	// Before all operations were translated to "commands" in the log.
 	if query == nil {
 		// "query" operations can exist without a filter that skip directly
 		// to a plan summary. An empty filter should be returned.
-		query = make(record.MsgFilter)
+		query = make(message.Filter)
 	}
 
-	c := record.MsgCRUD{
+	c := message.CRUD{
 		Comment:  comment,
 		CursorId: cursorId,
 		Filter:   query,
@@ -485,16 +485,16 @@ func query(comment string, cursorId int64, counters map[string]int64, query map[
 	return c, true
 }
 
-func remove(comment string, counters map[string]int64, filter map[string]interface{}) (record.MsgCRUD, bool) {
-	return record.MsgCRUD{
+func remove(comment string, counters map[string]int64, filter map[string]interface{}) (message.CRUD, bool) {
+	return message.CRUD{
 		Filter:  filter,
 		Comment: comment,
 		N:       counters["ndeleted"],
 	}, true
 }
 
-func StringSections(term string, base *record.MsgBase, payload record.MsgPayload, r *util.RuneReader) (ok bool, err error) {
-	switch util.StringToLower(term) {
+func StringSections(term string, base *message.BaseCommand, payload message.Payload, r *internal.RuneReader) (ok bool, err error) {
+	switch internal.StringToLower(term) {
 	case "query:", "update:":
 		// Query and update are hard-coded into the logging code as specifically
 		// placed values in the log line (if a document value exists).
@@ -528,12 +528,12 @@ func StringSections(term string, base *record.MsgBase, payload record.MsgPayload
 	return ok, nil
 }
 
-func update(comment string, counters map[string]int64, filter map[string]interface{}, update map[string]interface{}) (record.MsgCRUD, bool) {
+func update(comment string, counters map[string]int64, filter map[string]interface{}, update map[string]interface{}) (message.CRUD, bool) {
 	if filter == nil && update == nil {
-		return record.MsgCRUD{}, false
+		return message.CRUD{}, false
 	}
 
-	crud := record.MsgCRUD{
+	crud := message.CRUD{
 		Comment: comment,
 		Filter:  filter,
 		Update:  update,

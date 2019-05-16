@@ -3,13 +3,12 @@
 //
 // +build debug
 
-package context
+package version
 
 import (
-	"mgotools/parser"
-	"mgotools/record"
+	"mgotools/parser/record"
 )
 
-func (c *Context) Convert(base record.Base, parser parser.VersionParser) (record.Entry, error) {
+func (c *Context) Convert(base record.Base, parser Parser) (record.Entry, error) {
 	return c.convert(base, parser)
 }

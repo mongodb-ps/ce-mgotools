@@ -16,16 +16,15 @@ import (
 	"unicode"
 
 	"mgotools/internal"
-	"mgotools/util"
 )
 
 // https://docs.mongodb.com/manual/reference/mongodb-extended-json/
 
 func ParseJson(json string, strict bool) (map[string]interface{}, error) {
-	return ParseJsonRunes(util.NewRuneReader(json), strict)
+	return ParseJsonRunes(internal.NewRuneReader(json), strict)
 }
 
-func ParseJsonRunes(r *util.RuneReader, strict bool) (map[string]interface{}, error) {
+func ParseJsonRunes(r *internal.RuneReader, strict bool) (map[string]interface{}, error) {
 	if r.Length() < 2 {
 		return nil, fmt.Errorf("json must contain at least two characters")
 	}
@@ -37,7 +36,7 @@ func ParseJsonRunes(r *util.RuneReader, strict bool) (map[string]interface{}, er
 	return v, e
 }
 
-func parseJson(r *util.RuneReader, strict bool) (map[string]interface{}, error) {
+func parseJson(r *internal.RuneReader, strict bool) (map[string]interface{}, error) {
 	var data = make(map[string]interface{})
 	if current := r.NextRune(); current != '{' {
 		return nil, fmt.Errorf("expected '{' but found '%c'", current)
@@ -126,7 +125,7 @@ func checkRune(r rune, a ...interface{}) bool {
 	return false
 }
 
-func parseArray(r *util.RuneReader, strict bool) ([]interface{}, error) {
+func parseArray(r *internal.RuneReader, strict bool) ([]interface{}, error) {
 	var (
 		c      rune
 		ok     bool = true
@@ -154,7 +153,7 @@ func parseArray(r *util.RuneReader, strict bool) ([]interface{}, error) {
 	return nil, fmt.Errorf("unexpected character '%c' at %d in array", r.NextRune(), r.Pos())
 }
 
-func parseKey(r *util.RuneReader, strict bool) (string, error) {
+func parseKey(r *internal.RuneReader, strict bool) (string, error) {
 	var (
 		err error
 		key string
@@ -206,7 +205,7 @@ func parseKey(r *util.RuneReader, strict bool) (string, error) {
 
 // https://docs.mongodb.com/manual/reference/limits/
 // https://github.com/mongodb/mongo/blob/master/src/mongo/bson/json.cpp
-func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
+func parseValue(r *internal.RuneReader, strict bool) (interface{}, error) {
 	var (
 		err   error
 		value interface{}
@@ -254,7 +253,7 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 		case "undefined":
 			value = Undefined{}
 		default:
-			length := util.StringLength(word)
+			length := internal.StringLength(word)
 			if length == 36 && word[:8] == "objectid" {
 				value, err = parseObjectId(word, strict)
 			} else if length == 5 && word[:5] == "dbref" {
@@ -279,7 +278,7 @@ func parseValue(r *util.RuneReader, strict bool) (interface{}, error) {
 	return value, err
 }
 
-func parseBinData(r *util.RuneReader) (BinData, error) {
+func parseBinData(r *internal.RuneReader) (BinData, error) {
 	// BinData(3, 7B41B8989CD93C2E80E3AA19F4732581)
 	// The RuneReader should be pointing to the beginning of the word.
 	var b BinData
@@ -355,16 +354,16 @@ func parseDataType(m map[string]interface{}) interface{} {
 	return m
 }
 
-func parseDate(r *util.RuneReader) (time.Time, error) {
+func parseDate(r *internal.RuneReader) (time.Time, error) {
 	// new Date(1490821611611)
 	if r.CurrentWord() == "new" {
 		r.SkipWords(1)
 	}
 	// Date(1524927048785)
 	offset := 0
-	if util.StringInsensitiveMatch(r.Peek(5), "date(") {
+	if internal.StringInsensitiveMatch(r.Peek(5), "date(") {
 		offset = 5
-	} else if util.StringInsensitiveMatch(r.Peek(8), "isodate(") {
+	} else if internal.StringInsensitiveMatch(r.Peek(8), "isodate(") {
 		offset = 8
 	} else {
 		return time.Time{}, internal.UnexpectedEOL
@@ -383,7 +382,7 @@ func parseDate(r *util.RuneReader) (time.Time, error) {
 	}
 }
 
-func parseDbRef(r *util.RuneReader) (Ref, error) {
+func parseDbRef(r *internal.RuneReader) (Ref, error) {
 	if !r.ExpectString("DBRef(") {
 		return Ref{}, fmt.Errorf("unexpected word at %d", r.Pos())
 	}
@@ -411,7 +410,7 @@ func parseDbRef(r *util.RuneReader) (Ref, error) {
 	}
 }
 
-func parseNumber(r *util.RuneReader) (interface{}, error) {
+func parseNumber(r *internal.RuneReader) (interface{}, error) {
 	char, ok := r.Next()
 	if !ok {
 		return nil, fmt.Errorf("unexpected end of string")
@@ -444,10 +443,10 @@ func parseNumber(r *util.RuneReader) (interface{}, error) {
 
 func parseObjectId(oid string, strict bool) (value ObjectId, err error) {
 	// ObjectId('59e3fdf682f5ead28303a9cb')
-	if util.StringLength(oid) != 36 {
+	if internal.StringLength(oid) != 36 {
 		return ObjectId{}, internal.UnexpectedLength
 	}
-	if (strict && !strings.HasPrefix(oid, "ObjectId(")) || (!strict && !util.StringInsensitiveMatch(oid[:9], "objectid(")) {
+	if (strict && !strings.HasPrefix(oid, "ObjectId(")) || (!strict && !internal.StringInsensitiveMatch(oid[:9], "objectid(")) {
 		return ObjectId{}, internal.MisplacedWordException
 	}
 	encoded := oid[10:34]
@@ -459,7 +458,7 @@ func parseObjectId(oid string, strict bool) (value ObjectId, err error) {
 	return
 }
 
-func parseTimestamp(r *util.RuneReader) (time.Time, error) {
+func parseTimestamp(r *internal.RuneReader) (time.Time, error) {
 	// The log format is "Timestamp 0|0". The "Timestamp" portion should already
 	// be removed from the reader so continue parsing forward.
 
@@ -475,7 +474,7 @@ func parseTimestamp(r *util.RuneReader) (time.Time, error) {
 	r.Prev()
 
 	// Split into two parts and parse the values into integers.
-	if swall, sns, ok := util.StringDoubleSplit(r.CurrentWord(), '|'); !ok {
+	if swall, sns, ok := internal.StringDoubleSplit(r.CurrentWord(), '|'); !ok {
 		return time.Time{}, internal.MisplacedWordException
 	} else if wall, err := strconv.ParseUint(swall, 10, 32); err != nil {
 		return time.Time{}, internal.UnexpectedValue

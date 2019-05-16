@@ -1,4 +1,4 @@
-package context
+package version
 
 import (
 	"strconv"
@@ -7,34 +7,32 @@ import (
 	"time"
 
 	"mgotools/internal"
-	"mgotools/mongo"
-	"mgotools/parser"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
 )
 
 type Context struct {
 	parserFactory *manager
-	versions      []parser.VersionDefinition
+	versions      []Definition
 
 	Count      int
 	Errors     int
 	Lines      int
-	LastWinner parser.VersionDefinition
+	LastWinner Definition
 
 	DatePreviousMonth time.Month
 	DatePreviousYear  int
 	DateRollover      int
 	DateYearMissing   bool
 
-	dateParser *util.DateParser
+	dateParser *internal.DateParser
 	day        int
 	month      time.Month
 
 	shutdown sync.Once
 }
 
-func New(parsers []parser.VersionParser, date *util.DateParser) *Context {
+func New(parsers []Parser, date *internal.DateParser) *Context {
 	context := Context{
 		Count:  0,
 		Errors: 0,
@@ -45,7 +43,7 @@ func New(parsers []parser.VersionParser, date *util.DateParser) *Context {
 		dateParser: date,
 		day:        time.Now().Day(),
 		month:      time.Now().Month(),
-		versions:   make([]parser.VersionDefinition, len(parsers)),
+		versions:   make([]Definition, len(parsers)),
 	}
 
 	for index, version := range parsers {
@@ -56,8 +54,8 @@ func New(parsers []parser.VersionParser, date *util.DateParser) *Context {
 	return &context
 }
 
-func (c *Context) Versions() []parser.VersionDefinition {
-	versions := make([]parser.VersionDefinition, 0)
+func (c *Context) Versions() []Definition {
+	versions := make([]Definition, 0)
 	for _, check := range c.versions {
 		if r, f := c.parserFactory.IsRejected(check); f && !r {
 			versions = append(versions, check)
@@ -106,14 +104,14 @@ func (c *Context) NewEntry(base record.Base) (record.Entry, error) {
 		entry.Date = time.Date(year, entry.Date.Month(), entry.Date.Day(), entry.Date.Hour(), entry.Date.Minute(), entry.Date.Second(), entry.Date.Nanosecond(), entry.Date.Location())
 	}
 
-	reject := func(msg record.MsgVersion) {
+	reject := func(msg message.Version) {
 		switch msg.Binary {
 		case "mongod":
-			manager.Reject(func(version parser.VersionDefinition) bool {
+			manager.Reject(func(version Definition) bool {
 				return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongod
 			})
 		case "mongos":
-			manager.Reject(func(version parser.VersionDefinition) bool {
+			manager.Reject(func(version Definition) bool {
 				return version.Major != msg.Major || version.Minor != msg.Minor || version.Binary != record.BinaryMongos
 			})
 		}
@@ -122,22 +120,22 @@ func (c *Context) NewEntry(base record.Base) (record.Entry, error) {
 	// Update index context if it is available.
 	if entry.Message != nil && entry.Connection == 0 {
 		switch msg := entry.Message.(type) {
-		case record.MsgStartupInfo, record.MsgBuildInfo:
+		case message.StartupInfo, message.BuildInfo:
 			// Reset all available versions since the server restarted.
 			manager.Reset()
 
-		case record.MsgVersion:
+		case message.Version:
 			// Reject all versions but the current version.
 			manager.Reset()
 			reject(msg)
 
-		case record.MsgStartupInfoLegacy:
+		case message.StartupInfoLegacy:
 			// Reject all versions but the current version, except with
 			// a legacy mongos.
 			manager.Reset()
-			reject(msg.MsgVersion)
+			reject(msg.Version)
 
-		case record.MsgListening:
+		case message.Listening:
 			// noop
 		}
 	}
@@ -147,7 +145,7 @@ func (c *Context) NewEntry(base record.Base) (record.Entry, error) {
 	return entry, nil
 }
 
-func (c *Context) convert(base record.Base, factory parser.VersionParser) (record.Entry, error) {
+func (c *Context) convert(base record.Base, factory Parser) (record.Entry, error) {
 	var (
 		err error
 		out = record.Entry{Base: base, DateValid: true, Valid: true}
@@ -159,18 +157,18 @@ func (c *Context) convert(base record.Base, factory parser.VersionParser) (recor
 
 	// No dates matched so mark the date invalid and reset the count.
 	out.DateYearMissing = out.Date.Year() == 0
-	if util.StringLength(base.RawDate) > 11 {
+	if internal.StringLength(base.RawDate) > 11 {
 		// Compensate for dates that do not append a zero to the date.
 		if base.RawDate[9] == ' ' {
 			base.RawDate = base.RawDate[:8] + "0" + base.RawDate[8:]
 		}
 		// Take a date in ctime format and add the year.
-		base.RawDate = base.RawDate[:10] + " " + strconv.Itoa(util.DATE_YEAR+c.DateRollover) + base.RawDate[10:]
+		base.RawDate = base.RawDate[:10] + " " + strconv.Itoa(internal.DATE_YEAR+c.DateRollover) + base.RawDate[10:]
 	}
 
-	if util.StringLength(out.RawContext) > 2 && mongo.IsContext(out.RawContext) {
-		out.Context = out.RawContext[1 : util.StringLength(out.RawContext)-1]
-		length := util.StringLength(out.Context)
+	if internal.StringLength(out.RawContext) > 2 && record.IsContext(out.RawContext) {
+		out.Context = out.RawContext[1 : internal.StringLength(out.RawContext)-1]
+		length := internal.StringLength(out.Context)
 
 		if strings.HasPrefix(out.Context, "conn") && length > 4 {
 			out.Connection, _ = strconv.Atoi(out.Context[4:])

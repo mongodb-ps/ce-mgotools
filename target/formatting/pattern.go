@@ -1,4 +1,4 @@
-package format
+package formatting
 
 import (
 	"io"
@@ -8,9 +8,9 @@ import (
 	"github.com/olekukonko/tablewriter"
 )
 
-type PatternTable []PatternSummary
+type Table []Pattern
 
-type PatternSummary struct {
+type Pattern struct {
 	Namespace     string
 	Pattern       string
 	Operation     string
@@ -21,7 +21,7 @@ type PatternSummary struct {
 	Sum           int64
 }
 
-func (patterns PatternTable) Print(wrap bool, out io.Writer) {
+func (patterns Table) Print(wrap bool, out io.Writer) {
 	if len(patterns) == 0 {
 		out.Write([]byte("no queries found."))
 		return

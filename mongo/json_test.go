@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"mgotools/util"
+	"mgotools/internal"
 )
 
 func TestParseJson(t *testing.T) {
@@ -132,61 +132,61 @@ func TestParseDataType(t *testing.T) {
 }
 
 func TestBinData(t *testing.T) {
-	bin, err := parseBinData(util.NewRuneReader("BinData(0, 0123456789ABCDEF)"))
+	bin, err := parseBinData(internal.NewRuneReader("BinData(0, 0123456789ABCDEF)"))
 	check := BinData{[]byte{0x1, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF}, 0x0}
 	if err != nil || !bytes.Equal(bin.BinData, check.BinData) || bin.Type != check.Type {
 		t.Errorf("Expected (%x, %x), got (%x, %x)", check.BinData, check.Type, bin.BinData, bin.Type)
 	}
-	bin, err = parseBinData(util.NewRuneReader("BinData(, 0123456789ABCDEF)"))
+	bin, err = parseBinData(internal.NewRuneReader("BinData(, 0123456789ABCDEF)"))
 	if err == nil {
 		t.Error("Expected EOF error, got none")
 	}
 
-	bin, err = parseBinData(util.NewRuneReader("BinData(256, 0123456789ABCDEF)"))
+	bin, err = parseBinData(internal.NewRuneReader("BinData(256, 0123456789ABCDEF)"))
 	if err == nil {
 		t.Error("Expected overflow error, got none")
 	}
 
-	bin, err = parseBinData(util.NewRuneReader("BinData(0, )"))
+	bin, err = parseBinData(internal.NewRuneReader("BinData(0, )"))
 	if err == nil {
 		t.Error("Expected EOF error, got none")
 	}
 
-	bin, err = parseBinData(util.NewRuneReader("BinData(0, x)"))
+	bin, err = parseBinData(internal.NewRuneReader("BinData(0, x)"))
 	if err == nil {
 		t.Error("Expected EOF error, got none")
 	}
 }
 
 func TestParseDbRef(t *testing.T) {
-	ref, err := parseDbRef(util.NewRuneReader("DBRef('test', 0123456789abcdef01234567)"))
+	ref, err := parseDbRef(internal.NewRuneReader("DBRef('test', 0123456789abcdef01234567)"))
 	tid, _ := NewObjectId("0123456789abcdef01234567")
 
 	if err != nil || ref.Name != "test" || !ref.Id.Equals(tid) {
 		t.Errorf("Expected (test, 012345678901234567890123), got (%s, %s) %s", ref.Name, ref.Id, err)
 	}
 
-	_, err = parseDbRef(util.NewRuneReader("ObjectId()"))
+	_, err = parseDbRef(internal.NewRuneReader("ObjectId()"))
 	if err == nil {
 		t.Errorf("Expected DBRef error, got none")
 	}
 
-	ref, err = parseDbRef(util.NewRuneReader("DBRef(xyz, 012345678901234567890123)"))
+	ref, err = parseDbRef(internal.NewRuneReader("DBRef(xyz, 012345678901234567890123)"))
 	if err == nil {
 		t.Errorf("Expected DBRef error, got none")
 	}
 
-	ref, err = parseDbRef(util.NewRuneReader("DBRef('test', 01234567890123456789012"))
+	ref, err = parseDbRef(internal.NewRuneReader("DBRef('test', 01234567890123456789012"))
 	if err == nil {
 		t.Errorf("Expected DBRef error, got none")
 	}
 
-	ref, err = parseDbRef(util.NewRuneReader("DBRef('test', 0123456789012345678901234)"))
+	ref, err = parseDbRef(internal.NewRuneReader("DBRef('test', 0123456789012345678901234)"))
 	if err == nil {
 		t.Errorf("Expected DBRef error, got none")
 	}
 
-	ref, err = parseDbRef(util.NewRuneReader("DBRef('test', abcdefg/:`0123456789012345)"))
+	ref, err = parseDbRef(internal.NewRuneReader("DBRef('test', abcdefg/:`0123456789012345)"))
 	if err == nil {
 		t.Errorf("Expected DBRef error, got none")
 	}
@@ -209,26 +209,26 @@ func TestParseNumber(t *testing.T) {
 		"1 ":          1,
 	}
 	for s, v := range m {
-		if c, err := parseNumber(util.NewRuneReader(s)); c != v || err != nil {
+		if c, err := parseNumber(internal.NewRuneReader(s)); c != v || err != nil {
 			t.Errorf("Parsing number '%s' (%T %v) returned %T %v: %s", s, v, v, c, c, err)
 		}
 	}
 }
 
 func TestParseJsonRunes(t *testing.T) {
-	r := util.NewRuneReader("{a:1}")
+	r := internal.NewRuneReader("{a:1}")
 	if s, err := ParseJsonRunes(r, false); err != nil || !reflect.DeepEqual(s, map[string]interface{}{"a": 1}) {
 		t.Errorf("Rune parsing failed, returned: %#v", s)
 	}
 
-	r = util.NewRuneReader("{a:1}x")
+	r = internal.NewRuneReader("{a:1}x")
 	if s, err := ParseJsonRunes(r, false); err != nil || !reflect.DeepEqual(s, map[string]interface{}{"a": 1}) {
 		t.Errorf("Rune parsing failed, returned: %#v", s)
 	} else if !r.ExpectRune('x') {
 		t.Errorf("Expected 'x', got '%s'", r.Peek(1))
 	}
 
-	r = util.NewRuneReader("{a:1} x")
+	r = internal.NewRuneReader("{a:1} x")
 	if s, err := ParseJsonRunes(r, false); err != nil || !reflect.DeepEqual(s, map[string]interface{}{"a": 1}) {
 		t.Errorf("Rune parsing failed, returned: %#v", s)
 	} else if !r.ExpectRune('x') {

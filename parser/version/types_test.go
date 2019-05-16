@@ -1,16 +1,16 @@
-package parser
+package version
 
 import (
 	"fmt"
 	"strconv"
 	"testing"
 
-	"mgotools/record"
+	"mgotools/parser/record"
 )
 
 func BenchmarkShort(b *testing.B) {
-	t := VersionDefinition{2, 4, 1}
-	for n, f := range map[string]func(VersionDefinition) string{
+	t := Definition{2, 4, 1}
+	for n, f := range map[string]func(Definition) string{
 		"VersionFmtString":    VersionFmtString,
 		"VersoinCompoundItoa": VersionCompoundItoa,
 		"VersionBytesItoa":    VersionBytesItoa,
@@ -25,8 +25,8 @@ func BenchmarkShort(b *testing.B) {
 }
 
 func BenchmarkMediumShort(b *testing.B) {
-	t := VersionDefinition{10, 2, 2}
-	for n, f := range map[string]func(VersionDefinition) string{
+	t := Definition{10, 2, 2}
+	for n, f := range map[string]func(Definition) string{
 		"VersionFmtString":    VersionFmtString,
 		"VersoinCompoundItoa": VersionCompoundItoa,
 		"VersionBytesItoa":    VersionBytesItoa,
@@ -42,8 +42,8 @@ func BenchmarkMediumShort(b *testing.B) {
 }
 
 func BenchmarkShortMedium(b *testing.B) {
-	t := VersionDefinition{2, 10, 2}
-	for n, f := range map[string]func(VersionDefinition) string{
+	t := Definition{2, 10, 2}
+	for n, f := range map[string]func(Definition) string{
 		"VersionFmtString":    VersionFmtString,
 		"VersoinCompoundItoa": VersionCompoundItoa,
 		"VersionBytesItoa":    VersionBytesItoa,
@@ -59,8 +59,8 @@ func BenchmarkShortMedium(b *testing.B) {
 }
 
 func BenchmarkLong(b *testing.B) {
-	t := VersionDefinition{10, 50, 1}
-	for n, f := range map[string]func(VersionDefinition) string{
+	t := Definition{10, 50, 1}
+	for n, f := range map[string]func(Definition) string{
 		"VersionFmtString":    VersionFmtString,
 		"VersoinCompoundItoa": VersionCompoundItoa,
 		"VersionBytesItoa":    VersionBytesItoa,
@@ -74,7 +74,7 @@ func BenchmarkLong(b *testing.B) {
 	}
 }
 
-func VersionFmtString(version VersionDefinition) string {
+func VersionFmtString(version Definition) string {
 	switch version.Binary {
 	case record.BinaryMongod:
 		return fmt.Sprintf("mongod %d.%d", version.Major, version.Minor)
@@ -85,7 +85,7 @@ func VersionFmtString(version VersionDefinition) string {
 	}
 }
 
-func VersionCompoundItoa(version VersionDefinition) string {
+func VersionCompoundItoa(version Definition) string {
 	switch version.Binary {
 	case record.BinaryMongod:
 		return "mongod " + strconv.Itoa(version.Major) + "." + strconv.Itoa(version.Minor)
@@ -96,7 +96,7 @@ func VersionCompoundItoa(version VersionDefinition) string {
 	}
 }
 
-func VersionBytesItoa(version VersionDefinition) string {
+func VersionBytesItoa(version Definition) string {
 	var dst []byte
 	switch version.Binary {
 	case record.BinaryMongod:
@@ -112,7 +112,7 @@ func VersionBytesItoa(version VersionDefinition) string {
 	return string(dst)
 }
 
-func VersionBytes(version VersionDefinition) string {
+func VersionBytes(version Definition) string {
 	var dst [12]byte
 	offset := 0
 

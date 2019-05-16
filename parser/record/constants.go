@@ -1,16 +1,9 @@
 // Package util provides general assistance to the parser and other areas
 // of code. The package is entirely self contained and should not reference
 // anything not already contained in the standard go release.
-package mongo
+package record
 
-import (
-	"mgotools/record"
-	"mgotools/util"
-)
-
-// Use type aliases (instead of type definitions)
-type Object = map[string]interface{}
-type Array = []interface{}
+import "mgotools/internal"
 
 // The constant arrays that follow should *ALWAYS* be in sorted binary order. A lot of methods expect these arrays
 // to be pre-sorted so they can be used with binary searches for fast array comparison. Failure to put these arrays
@@ -151,12 +144,12 @@ var SEVERITIES = []string{"D1", "D2", "D3", "D4", "D5", "E", "F", "I", "W"}
 
 // IsComponent checks a string value against the possible components array.
 func IsComponent(value string) bool {
-	return util.ArrayBinaryMatchString(value, COMPONENTS)
+	return internal.ArrayBinaryMatchString(value, COMPONENTS)
 }
 
 // IsContext checks for a bracketed string ([<string>])
 func IsContext(value string) bool {
-	length := util.StringLength(value)
+	length := internal.StringLength(value)
 	return length > 2 && value[0] == '[' && value[length-1] == ']'
 }
 
@@ -164,6 +157,6 @@ func IsContext(value string) bool {
 // will mostly be a single letter but can be two for debug levels
 // starting in version 4.2 (SERVER-37743).
 func IsSeverity(value string) bool {
-	_, ok := record.NewSeverity(value)
+	_, ok := NewSeverity(value)
 	return ok
 }

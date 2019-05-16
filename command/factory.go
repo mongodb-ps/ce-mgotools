@@ -6,7 +6,7 @@
 package command
 
 import (
-	"mgotools/util"
+	"mgotools/internal"
 
 	"github.com/pkg/errors"
 )
@@ -43,7 +43,7 @@ func (c *factory) GetNames() []string {
 	return keys
 }
 func (c *factory) Get(name string) (Command, error) {
-	name = util.StringToLower(name)
+	name = internal.StringToLower(name)
 	reg, ok := c.registry[name]
 	if !ok {
 		return nil, errors.New("command not registered")
@@ -58,7 +58,7 @@ func (c *factory) Get(name string) (Command, error) {
 	return reg.command, nil
 }
 func (c *factory) GetDefinition(name string) (Definition, bool) {
-	name = util.StringToLower(name)
+	name = internal.StringToLower(name)
 	reg, ok := c.registry[name]
 	if !ok {
 		return Definition{}, false
@@ -71,7 +71,7 @@ func (c *factory) Register(name string, args Definition, create func() (Command,
 	} else if create == nil {
 		panic("command registered without a create method")
 	}
-	name = util.StringToLower(name)
+	name = internal.StringToLower(name)
 	c.registry[name] = factoryDefinition{
 		args,
 		create,

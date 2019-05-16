@@ -9,9 +9,8 @@ import (
 	"sync"
 	"unicode"
 
-	"mgotools/mongo"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/internal"
+	"mgotools/parser/record"
 )
 
 var ErrorParsingDate = errors.New("unrecognized date format")
@@ -32,7 +31,7 @@ type Log struct {
 }
 
 // Enforce the interface at compile time.
-var _ record.BaseFactory = (*Log)(nil)
+var _ Factory = (*Log)(nil)
 
 func NewLog(base io.ReadCloser) (*Log, error) {
 	reader := bufio.NewReader(base)
@@ -73,15 +72,15 @@ func makeScanner(reader *bufio.Reader) (*bufio.Scanner, error) {
 // Generate an Entry from a line of text. This method assumes the entry is *not* JSON.
 func (Log) NewBase(line string, num uint) (record.Base, error) {
 	var (
-		base = record.Base{RuneReader: util.NewRuneReader(line), LineNumber: num, Severity: record.SeverityNone}
+		base = record.Base{RuneReader: internal.NewRuneReader(line), LineNumber: num, Severity: record.SeverityNone}
 		pos  int
 	)
 
 	// Check for a day in the first portion of the string, which represents version <= 2.4
-	if day := base.PreviewWord(1); util.IsDay(day) {
+	if day := base.PreviewWord(1); internal.IsDay(day) {
 		base.RawDate = parseCDateString(&base)
 		base.CString = true
-	} else if util.IsIso8601String(base.PreviewWord(1)) {
+	} else if internal.IsIso8601String(base.PreviewWord(1)) {
 		base.RawDate, _ = base.SlurpWord()
 		base.CString = false
 	}
@@ -113,7 +112,7 @@ func (Log) NewBase(line string, num uint) (record.Base, error) {
 						continue
 					}
 				}
-				if base.RawComponent == "" && mongo.IsComponent(part) {
+				if base.RawComponent == "" && record.IsComponent(part) {
 					base.RawComponent = part
 					continue
 				} else if base.RawContext == "" && part[0] == '[' {
@@ -195,10 +194,10 @@ func parseCDateString(r *record.Base) string {
 	}
 
 	switch {
-	case !util.IsDay(target[0]):
-	case !util.IsMonth(target[1]):
-	case !util.IsNumeric(target[2]):
-	case !util.IsTime(target[3]):
+	case !internal.IsDay(target[0]):
+	case !internal.IsMonth(target[1]):
+	case !internal.IsNumeric(target[2]):
+	case !internal.IsTime(target[3]):
 		r.Seek(start, 0)
 		return ""
 	}

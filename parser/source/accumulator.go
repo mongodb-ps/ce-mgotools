@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"io"
 
-	"mgotools/record"
+	"mgotools/parser/record"
 )
 
 const OutputBuffer = 128
@@ -29,7 +29,7 @@ type accumulator struct {
 }
 
 var _ io.ReadCloser = (*accumulator)(nil)
-var _ record.BaseFactory = (*accumulator)(nil)
+var _ Factory = (*accumulator)(nil)
 
 type accumulatorResult struct {
 	Base  record.Base

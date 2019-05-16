@@ -1,11 +1,11 @@
-package record
+package message
 
 import (
 	"bytes"
 	"strconv"
 )
 
-func (m MsgVersion) String() string {
+func (m Version) String() string {
 	out := bytes.NewBuffer([]byte{})
 
 	if m.Binary != "" {
@@ -29,84 +29,84 @@ func (m MsgVersion) String() string {
 	return out.String()
 }
 
-func MsgBaseFromMessage(msg Message) (*MsgBase, bool) {
+func MsgBaseFromMessage(msg Message) (*BaseCommand, bool) {
 	if msg == nil {
-		return &MsgBase{}, false
+		return &BaseCommand{}, false
 	}
 	switch t := msg.(type) {
-	case MsgBase:
+	case BaseCommand:
 		return &t, true
-	case MsgCommand:
-		return &t.MsgBase, true
-	case MsgCommandLegacy:
-		return &t.MsgBase, true
-	case MsgOperation:
-		return &t.MsgBase, true
-	case MsgOperationLegacy:
-		return &t.MsgBase, true
+	case Command:
+		return &t.BaseCommand, true
+	case CommandLegacy:
+		return &t.BaseCommand, true
+	case Operation:
+		return &t.BaseCommand, true
+	case OperationLegacy:
+		return &t.BaseCommand, true
 	default:
-		return &MsgBase{}, false
+		return &BaseCommand{}, false
 	}
 }
 
-func MsgPayloadFromMessage(msg Message) (*MsgPayload, bool) {
+func MsgPayloadFromMessage(msg Message) (*Payload, bool) {
 	if msg == nil {
-		return &MsgPayload{}, false
+		return &Payload{}, false
 	}
 	switch t := msg.(type) {
-	case MsgCommand:
+	case Command:
 		return &t.Payload, true
-	case MsgCommandLegacy:
+	case CommandLegacy:
 		return &t.Payload, true
-	case MsgOperation:
+	case Operation:
 		return &t.Payload, true
-	case MsgOperationLegacy:
+	case OperationLegacy:
 		return &t.Payload, true
 	default:
-		return &MsgPayload{}, false
+		return &Payload{}, false
 	}
 }
 
-func MakeMsgCommand() MsgCommand {
-	return MsgCommand{
-		MsgBase: MsgBase{
+func MakeMsgCommand() Command {
+	return Command{
+		BaseCommand: BaseCommand{
 			Counters: make(map[string]int64),
 		},
 		Command: "",
-		Payload: make(MsgPayload),
+		Payload: make(Payload),
 		Locks:   make(map[string]interface{}),
 	}
 }
 
-func MakeMsgOperation() MsgOperation {
-	return MsgOperation{
-		MsgBase: MsgBase{
+func MakeMsgOperation() Operation {
+	return Operation{
+		BaseCommand: BaseCommand{
 			Counters: make(map[string]int64),
 		},
 		Operation: "",
-		Payload:   make(MsgPayload),
+		Payload:   make(Payload),
 		Locks:     make(map[string]interface{}),
 	}
 }
 
-func MakeMsgCommandLegacy() MsgCommandLegacy {
-	return MsgCommandLegacy{
-		MsgBase: MsgBase{
+func MakeMsgCommandLegacy() CommandLegacy {
+	return CommandLegacy{
+		BaseCommand: BaseCommand{
 			Counters: make(map[string]int64),
 		},
 		Command: "",
-		Payload: make(MsgPayload),
+		Payload: make(Payload),
 		Locks:   make(map[string]int64),
 	}
 }
 
-func MakeMsgOperationLegacy() MsgOperationLegacy {
-	return MsgOperationLegacy{
-		MsgBase: MsgBase{
+func MakeMsgOperationLegacy() OperationLegacy {
+	return OperationLegacy{
+		BaseCommand: BaseCommand{
 			Counters: make(map[string]int64),
 		},
 		Operation: "",
-		Payload:   make(MsgPayload),
+		Payload:   make(Payload),
 		Locks:     make(map[string]int64),
 	}
 }

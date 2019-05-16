@@ -1,7 +1,7 @@
 package record
 
 import (
-	"mgotools/util"
+	"mgotools/internal"
 )
 
 type Severity int
@@ -28,14 +28,8 @@ const (
 	BinaryMongos
 )
 
-type BaseFactory interface {
-	Next() bool
-	Get() (Base, error)
-	Close() error
-}
-
 type Base struct {
-	*util.RuneReader
+	*internal.RuneReader
 
 	CString      bool
 	LineNumber   uint

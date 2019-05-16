@@ -12,9 +12,11 @@ import (
 	"os"
 	"path/filepath"
 
+	_ "mgotools/parser"
+
 	"mgotools/command"
-	"mgotools/source"
-	"mgotools/util"
+	"mgotools/internal"
+	"mgotools/parser/source"
 
 	"github.com/urfave/cli"
 )
@@ -138,7 +140,7 @@ func runCommand(c *cli.Context) error {
 			size := int64(0)
 
 			if s, err := os.Stat(path); os.IsNotExist(err) {
-				util.Debug("%s skipped (%s)", path, err)
+				internal.Debug("%s skipped (%s)", path, err)
 				continue
 			} else {
 				size = s.Size()

@@ -2,10 +2,9 @@ package parser
 
 import (
 	"mgotools/internal"
-	"mgotools/mongo"
-	"mgotools/parser/logger"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
+	"mgotools/parser/version"
 )
 
 type Version30Parser struct {
@@ -16,7 +15,7 @@ type Version30Parser struct {
 var errorVersion30Unmatched = internal.VersionUnmatched{Message: "version 3.0"}
 
 func init() {
-	VersionParserFactory.Register(func() VersionParser {
+	version.Factory.Register(func() version.Parser {
 		return &Version30Parser{
 
 			counters: map[string]string{
@@ -48,8 +47,8 @@ func init() {
 	})
 }
 
-func (v *Version30Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	r := *util.NewRuneReader(entry.RawMessage)
+func (v *Version30Parser) NewLogMessage(entry record.Entry) (message.Message, error) {
+	r := *internal.NewRuneReader(entry.RawMessage)
 
 	// MDB 3.0 outputs commands and operations in a format almost identical to
 	// MDB 2.6, which means we can use the legacy parser to handle the parsing.
@@ -78,39 +77,39 @@ func (v *Version30Parser) Check(base record.Base) bool {
 		v.expectedComponents(base.RawComponent)
 }
 
-func (v *Version30Parser) command(r *util.RuneReader) (record.MsgCommand, error) {
-	cmd, err := logger.CommandPreamble(r)
+func (v *Version30Parser) command(r *internal.RuneReader) (message.Command, error) {
+	cmd, err := CommandPreamble(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	}
 
-	err = logger.MidLoop(r, "locks:", &cmd.MsgBase, cmd.Counters, cmd.Payload, v.counters)
+	err = MidLoop(r, "locks:", &cmd.BaseCommand, cmd.Counters, cmd.Payload, v.counters)
 	if err != nil {
 		if err == internal.CounterUnrecognized {
 			v.versionFlag = false
 			err = internal.VersionUnmatched{Message: "counter unrecognized"}
 		}
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	}
 
-	cmd.Locks, err = logger.Locks(r)
+	cmd.Locks, err = Locks(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	}
 
-	cmd.Duration, err = logger.Duration(r)
+	cmd.Duration, err = Duration(r)
 	if err != nil {
 		r.RewindSlurpWord()
 		if r.ExpectString("protocol:") {
 			v.versionFlag = false
 		}
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	}
 
 	return cmd, nil
 }
 
-func (v Version30Parser) crud(command bool, r *util.RuneReader) (record.Message, error) {
+func (v Version30Parser) crud(command bool, r *internal.RuneReader) (message.Message, error) {
 	if command {
 		// This should be similar to handling in version 2.6.
 		c, err := v.command(r)
@@ -118,7 +117,7 @@ func (v Version30Parser) crud(command bool, r *util.RuneReader) (record.Message,
 			return nil, err
 		}
 
-		return logger.CrudOrMessage(c, c.Command, c.Counters, c.Payload), nil
+		return CrudOrMessage(c, c.Command, c.Counters, c.Payload), nil
 
 	} else {
 		o, err := v.operation(r)
@@ -126,7 +125,7 @@ func (v Version30Parser) crud(command bool, r *util.RuneReader) (record.Message,
 			return nil, err
 		}
 
-		return logger.CrudOrMessage(o, o.Operation, o.Counters, o.Payload), nil
+		return CrudOrMessage(o, o.Operation, o.Counters, o.Payload), nil
 	}
 }
 
@@ -156,32 +155,32 @@ func (v *Version30Parser) expectedComponents(c string) bool {
 	}
 }
 
-func (v Version30Parser) operation(r *util.RuneReader) (record.MsgOperation, error) {
-	op, err := logger.OperationPreamble(r)
+func (v Version30Parser) operation(r *internal.RuneReader) (message.Operation, error) {
+	op, err := OperationPreamble(r)
 	if err != nil {
 		return op, err
 	}
 
-	err = logger.MidLoop(r, "locks:", &op.MsgBase, op.Counters, op.Payload, v.counters)
+	err = MidLoop(r, "locks:", &op.BaseCommand, op.Counters, op.Payload, v.counters)
 	if err != nil {
-		return record.MsgOperation{}, err
-	} else if !util.ArrayBinaryMatchString(op.Operation, mongo.OPERATIONS) {
-		return record.MsgOperation{}, internal.OperationStructure
+		return message.Operation{}, err
+	} else if !internal.ArrayBinaryMatchString(op.Operation, record.OPERATIONS) {
+		return message.Operation{}, internal.OperationStructure
 	}
 
-	op.Locks, err = logger.Locks(r)
+	op.Locks, err = Locks(r)
 	if err != nil {
-		return record.MsgOperation{}, err
+		return message.Operation{}, err
 	}
 
-	op.Duration, err = logger.Duration(r)
+	op.Duration, err = Duration(r)
 	if err != nil {
-		return record.MsgOperation{}, err
+		return message.Operation{}, err
 	}
 
 	return op, nil
 }
 
-func (v *Version30Parser) Version() VersionDefinition {
-	return VersionDefinition{Major: 3, Minor: 0, Binary: record.BinaryMongod}
+func (v *Version30Parser) Version() version.Definition {
+	return version.Definition{Major: 3, Minor: 0, Binary: record.BinaryMongod}
 }

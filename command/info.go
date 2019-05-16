@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"fmt"
 
-	"mgotools/command/format"
-	"mgotools/parser"
-	"mgotools/parser/context"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/internal"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
+	"mgotools/parser/version"
+	"mgotools/target/formatting"
 )
 
 type info struct {
@@ -18,9 +18,9 @@ type info struct {
 }
 
 type infoInstance struct {
-	context *context.Context
+	context *version.Context
 	output  *bytes.Buffer
-	Summary format.LogSummary
+	Summary formatting.Summary
 }
 
 func init() {
@@ -67,11 +67,11 @@ func (f *info) Finish(index int, out commandTarget) error {
 }
 
 func (f *info) Prepare(name string, instance int, args ArgumentCollection) error {
-	parsers := parser.VersionParserFactory.GetAll()
+	parsers := version.Factory.GetAll()
 
 	f.Instance[instance] = &infoInstance{
-		context: context.New(parsers, util.DefaultDateParser.Clone()),
-		Summary: format.NewLogSummary(name),
+		context: version.New(parsers, internal.DefaultDateParser.Clone()),
+		Summary: formatting.NewSummary(name),
 		output:  bytes.NewBuffer([]byte{}),
 	}
 
@@ -90,7 +90,7 @@ func (f *info) Run(index int, _ commandTarget, in commandSource, errs commandErr
 	summary := &instance.Summary
 
 	// Keep a separate date parser for quick-and-easy entry handling.
-	dateParser := util.DefaultDateParser
+	dateParser := internal.DefaultDateParser
 
 	// Clean up context resources.
 	defer instance.context.Finish()
@@ -142,7 +142,7 @@ func (f *info) Run(index int, _ commandTarget, in commandSource, errs commandErr
 			continue
 		}
 
-		if t, ok := entry.Message.(record.MsgStartupInfo); ok {
+		if t, ok := entry.Message.(message.StartupInfo); ok {
 			if summary.Host == t.Hostname && summary.Port > 0 && summary.Port != t.Port {
 				alert(entry, fmt.Sprintf(
 					"The server restarted on a new port (%d -> %d).",

@@ -2,7 +2,7 @@
 // checking each version for failure conditions, and no longer attempting
 // versions that fail.
 
-package context
+package version
 
 import (
 	"fmt"
@@ -10,14 +10,13 @@ import (
 	"sync/atomic"
 
 	"mgotools/internal"
-	"mgotools/parser"
-	"mgotools/record"
+	"mgotools/parser/record"
 )
 
 type result struct {
 	Entry   record.Entry
 	Err     error
-	Version parser.VersionDefinition
+	Version Definition
 
 	Rejected bool
 }
@@ -27,9 +26,9 @@ type version struct {
 
 	Errors  uint64
 	Input   chan managerInput
-	Parser  parser.VersionParser
-	Version parser.VersionDefinition
-	Worker  func(record.Base, parser.VersionParser) (record.Entry, error)
+	Parser  Parser
+	Version Definition
+	Worker  func(record.Base, Parser) (record.Entry, error)
 
 	Rejected bool
 	sticky   bool
@@ -70,7 +69,7 @@ type manager struct {
 	sync.RWMutex
 
 	rejected uint32
-	testers  map[parser.VersionDefinition]*version
+	testers  map[Definition]*version
 
 	finished  bool
 	waitGroup sync.WaitGroup
@@ -81,8 +80,8 @@ type managerInput struct {
 	Output chan<- result
 }
 
-func newManager(worker func(record.Base, parser.VersionParser) (record.Entry, error), parsers []parser.VersionParser) *manager {
-	set := make(map[parser.VersionDefinition]*version)
+func newManager(worker func(record.Base, Parser) (record.Entry, error), parsers []Parser) *manager {
+	set := make(map[Definition]*version)
 
 	m := manager{
 		RWMutex: sync.RWMutex{},
@@ -149,7 +148,7 @@ func (m *manager) Finish() {
 
 // Given a version definition, return if the version has been rejected,
 // and whether it exists.
-func (m *manager) IsRejected(c parser.VersionDefinition) (rejected bool, found bool) {
+func (m *manager) IsRejected(c Definition) (rejected bool, found bool) {
 	for definition, parser := range m.testers {
 		if c.Equals(definition) {
 			// Lock the object for reading.
@@ -171,7 +170,7 @@ func (m *manager) IsRejected(c parser.VersionDefinition) (rejected bool, found b
 // An internal method for rejecting a version definition parser. The sticky
 // attribute will prevent the version from resetting later unless no other
 // versions are available to Try().
-func (m *manager) reject(sticky bool, check func(parser.VersionDefinition) bool) bool {
+func (m *manager) reject(sticky bool, check func(Definition) bool) bool {
 	// The `rejected` variable will be checked so the read mutex will be set
 	// for the duration of this method.
 	m.RLock()
@@ -222,7 +221,7 @@ func (m *manager) reject(sticky bool, check func(parser.VersionDefinition) bool)
 
 // Removes a version from the list of available. New calls to Try() will avoid
 // checking rejected versions.
-func (m *manager) Reject(check func(parser.VersionDefinition) bool) bool {
+func (m *manager) Reject(check func(Definition) bool) bool {
 	// The assumption is that an external Reject() should be sticky since it
 	// did not result from a parsing failure. An example of this might be
 	// a version line appearing in the log file.
@@ -252,7 +251,7 @@ func (m *manager) Reset() {
 	m.rejected = 0
 }
 
-func (m *manager) Try(base record.Base) (record.Entry, parser.VersionDefinition, error) {
+func (m *manager) Try(base record.Base) (record.Entry, Definition, error) {
 	// Create a local output channel for each Try(). This
 	output := make(chan result)
 	expected := m.send(base, output)

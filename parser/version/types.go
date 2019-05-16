@@ -1,45 +1,48 @@
-package parser
+package version
 
 import (
-	"mgotools/record"
+	"strconv"
+
+	"mgotools/parser/message"
+	"mgotools/parser/record"
 )
 
 /*
- * VersionParserFactory
+ * Factory
  */
 
-// Global VersionParserFactory to register different version files.
-var VersionParserFactory = &logVersionParserFactory{factories: make([]VersionParser, 0, 64)}
+// Global Factory to register different version files.
+var Factory = &factory{factories: make([]Parser, 0, 64)}
 
-type VersionParser interface {
+type Parser interface {
 	Check(base record.Base) bool
-	NewLogMessage(record.Entry) (record.Message, error)
-	Version() VersionDefinition
+	NewLogMessage(record.Entry) (message.Message, error)
+	Version() Definition
 }
 
-type logVersionParserFactory struct {
-	factories []VersionParser
+type factory struct {
+	factories []Parser
 }
 
-func (f *logVersionParserFactory) GetAll() []VersionParser {
+func (f *factory) GetAll() []Parser {
 	return f.factories
 }
 
-func (f *logVersionParserFactory) Register(init func() VersionParser) {
+func (f *factory) Register(init func() Parser) {
 	f.factories = append(f.factories, init())
 }
 
 /*
- * VersionDefinition
+ * Definition
  */
-type VersionDefinition struct {
+type Definition struct {
 	Major  int
 	Minor  int
 	Binary record.Binary
 }
 
 // Compares two versions. a < b == -1, a > b == 1, a = b == 0
-func (a *VersionDefinition) Compare(b VersionDefinition) int {
+func (a *Definition) Compare(b Definition) int {
 	switch {
 	case a.Major == b.Major && a.Minor == b.Minor:
 		return 0
@@ -53,11 +56,11 @@ func (a *VersionDefinition) Compare(b VersionDefinition) int {
 	panic("version comparison failed")
 }
 
-func (a *VersionDefinition) Equals(b VersionDefinition) bool {
+func (a *Definition) Equals(b Definition) bool {
 	return a.Compare(b) == 0 && a.Binary == b.Binary
 }
 
-func (v VersionDefinition) String() string {
+func (v Definition) String() string {
 	var dst [12]byte
 	offset := 0
 
@@ -69,7 +72,7 @@ func (v VersionDefinition) String() string {
 	case record.BinaryAny:
 		dst = [12]byte{'m', 'o', 'n', 'g', 'o', '?', ' ', 0, '.', '.'}
 	default:
-		panic("unexpected binary")
+		panic("unexpected binary " + strconv.Itoa(int(v.Binary)))
 	}
 
 	if v.Major < 10 {

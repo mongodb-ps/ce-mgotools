@@ -15,11 +15,11 @@ import (
 	"strings"
 	"sync"
 
+	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser"
-	"mgotools/parser/context"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
+	"mgotools/parser/version"
 
 	"github.com/fatih/color"
 )
@@ -36,7 +36,7 @@ type debugLog struct {
 	lineNumber []uint
 
 	limitVersion bool
-	versions     []parser.VersionDefinition
+	versions     []version.Definition
 
 	outputBuffer []outputResult
 
@@ -113,13 +113,13 @@ func (d *debugLog) Prepare(name string, instance int, args ArgumentCollection) e
 	for _, versionString := range strings.Split(versionArg, ",") {
 		parts := strings.Split(versionString, ".")
 		if len(parts) == 3 {
-			d.versions = append(d.versions, parser.VersionDefinition{
+			d.versions = append(d.versions, version.Definition{
 				Major:  parseInt(parts[0]),
 				Minor:  parseInt(parts[1]),
 				Binary: parseBinary(parts[2]),
 			})
 		} else if len(parts) == 2 {
-			d.versions = append(d.versions, parser.VersionDefinition{
+			d.versions = append(d.versions, version.Definition{
 				Major:  parseInt(parts[0]),
 				Minor:  parseInt(parts[1]),
 				Binary: record.BinaryAny,
@@ -144,14 +144,14 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 	}
 
 	type MessageResult struct {
-		Msg record.Message
+		Msg message.Message
 		Err error
 	}
 
 	// Instantiate a list of factories. All factories will be run by default
 	// unless the --version switch is provided.
-	factories := make([]parser.VersionParser, 0)
-	for _, check := range parser.VersionParserFactory.GetAll() {
+	factories := make([]version.Parser, 0)
+	for _, check := range version.Factory.GetAll() {
 		if !d.limitVersion || d.checkVersion(check) {
 			factories = append(factories, check)
 		}
@@ -162,12 +162,12 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 	waitGroup.Add(1)
 
 	buffer := d.buffer
-	logs := context.New(factories, util.DefaultDateParser.Clone())
+	logs := version.New(factories, internal.DefaultDateParser.Clone())
 
-	versionLogs := make(map[parser.VersionDefinition]*context.Context)
+	versionLogs := make(map[version.Definition]*version.Context)
 	for _, f := range factories {
 		waitGroup.Add(1)
-		versionLogs[f.Version()] = context.New([]parser.VersionParser{f}, util.DefaultDateParser.Clone())
+		versionLogs[f.Version()] = version.New([]version.Parser{f}, internal.DefaultDateParser.Clone())
 	}
 
 	for base := range in {
@@ -175,7 +175,7 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 			continue
 		}
 
-		messages := make(map[parser.VersionDefinition]MessageResult)
+		messages := make(map[version.Definition]MessageResult)
 
 		if !d.object {
 			buffer(fmt.Sprintf("%5d: ", base.LineNumber), base.String())
@@ -208,7 +208,7 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 					buffer(prefix, d.formatObject(r.Msg))
 
 					if d.patternize {
-						if p, ok := record.MsgPayloadFromMessage(r.Msg); ok && p != nil {
+						if p, ok := message.MsgPayloadFromMessage(r.Msg); ok && p != nil {
 							pattern := mongo.NewPattern(*p)
 							buffer(prefix+color.WhiteString("--> "), pattern.String())
 						}
@@ -287,7 +287,7 @@ func (d *debugLog) checkLine(current uint) bool {
 	return false
 }
 
-func (d *debugLog) checkVersion(current parser.VersionParser) bool {
+func (d *debugLog) checkVersion(current version.Parser) bool {
 	for _, versionMatch := range d.versions {
 		if versionMatch.Binary == record.BinaryAny && versionMatch.Compare(current.Version()) == 0 {
 			return true

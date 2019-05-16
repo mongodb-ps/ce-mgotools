@@ -3,7 +3,7 @@ package source
 import (
 	"testing"
 
-	"mgotools/record"
+	"mgotools/parser/record"
 )
 
 func TestNewBase(tr *testing.T) {

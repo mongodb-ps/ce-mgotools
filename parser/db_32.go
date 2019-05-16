@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	"mgotools/internal"
-	"mgotools/parser/logger"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
+	"mgotools/parser/version"
 )
 
 type Version32Parser struct {
@@ -17,7 +17,7 @@ type Version32Parser struct {
 var errorVersion32Unmatched = internal.VersionUnmatched{Message: "version 3.2"}
 
 func init() {
-	VersionParserFactory.Register(func() VersionParser {
+	version.Factory.Register(func() version.Parser {
 		return &Version32Parser{
 			counters: map[string]string{
 				"cursorid":         "cursorid",
@@ -50,8 +50,8 @@ func init() {
 	})
 }
 
-func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	r := *util.NewRuneReader(entry.RawMessage)
+func (v *Version32Parser) NewLogMessage(entry record.Entry) (message.Message, error) {
+	r := *internal.NewRuneReader(entry.RawMessage)
 
 	switch entry.RawComponent {
 	case "COMMAND":
@@ -61,7 +61,7 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			return cmd, err
 		}
 
-		return logger.CrudOrMessage(cmd, cmd.Command, cmd.Counters, cmd.Payload), nil
+		return CrudOrMessage(cmd, cmd.Command, cmd.Counters, cmd.Payload), nil
 
 	case "WRITE":
 		// insert, remove, update = WRITE
@@ -70,7 +70,7 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			return op, err
 		}
 
-		return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
+		return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
 	case "CONTROL":
 		return D(entry).Control(r)
@@ -96,40 +96,40 @@ func (v *Version32Parser) Check(base record.Base) bool {
 		base.RawComponent != "" && v.expectedComponents(base.RawComponent)
 }
 
-func (v Version32Parser) command(reader util.RuneReader) (record.MsgCommand, error) {
+func (v Version32Parser) command(reader internal.RuneReader) (message.Command, error) {
 	r := &reader
 
-	cmd, err := logger.CommandPreamble(r)
+	cmd, err := CommandPreamble(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	} else if cmd.Agent != "" {
 		// version 3.2 does not provide an agent string.
 		v.versionFlag = false
-		return record.MsgCommand{}, errorVersion32Unmatched
+		return message.Command{}, errorVersion32Unmatched
 	}
 
-	err = logger.MidLoop(r, "locks:", &cmd.MsgBase, cmd.Counters, cmd.Payload, v.counters)
+	err = MidLoop(r, "locks:", &cmd.BaseCommand, cmd.Counters, cmd.Payload, v.counters)
 	if err != nil {
-		v.versionFlag, err = logger.CheckCounterVersionError(err, errorVersion32Unmatched)
-		return record.MsgCommand{}, err
+		v.versionFlag, err = CheckCounterVersionError(err, errorVersion32Unmatched)
+		return message.Command{}, err
 	}
 
-	cmd.Locks, err = logger.Locks(r)
+	cmd.Locks, err = Locks(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	}
 
-	cmd.Protocol, err = logger.Protocol(r)
+	cmd.Protocol, err = Protocol(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	} else if cmd.Protocol != "op_query" && cmd.Protocol != "op_command" {
 		v.versionFlag = false
-		return record.MsgCommand{}, internal.VersionUnmatched{Message: fmt.Sprintf("unexpected protocol %s", cmd.Protocol)}
+		return message.Command{}, internal.VersionUnmatched{Message: fmt.Sprintf("unexpected protocol %s", cmd.Protocol)}
 	}
 
-	cmd.Duration, err = logger.Duration(r)
+	cmd.Duration, err = Duration(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	}
 
 	return cmd, nil
@@ -164,33 +164,33 @@ func (v *Version32Parser) expectedComponents(c string) bool {
 	}
 }
 
-func (v *Version32Parser) operation(reader util.RuneReader) (record.MsgOperation, error) {
+func (v *Version32Parser) operation(reader internal.RuneReader) (message.Operation, error) {
 	r := &reader
 
-	op, err := logger.OperationPreamble(r)
+	op, err := OperationPreamble(r)
 	if err != nil {
 		return op, err
 	}
 
-	err = logger.MidLoop(r, "locks:", &op.MsgBase, op.Counters, op.Payload, v.counters)
+	err = MidLoop(r, "locks:", &op.BaseCommand, op.Counters, op.Payload, v.counters)
 	if err != nil {
-		v.versionFlag, err = logger.CheckCounterVersionError(err, errorVersion32Unmatched)
-		return record.MsgOperation{}, err
+		v.versionFlag, err = CheckCounterVersionError(err, errorVersion32Unmatched)
+		return message.Operation{}, err
 	}
 
-	op.Locks, err = logger.Locks(r)
+	op.Locks, err = Locks(r)
 	if err != nil {
-		return record.MsgOperation{}, err
+		return message.Operation{}, err
 	}
 
-	op.Duration, err = logger.Duration(r)
+	op.Duration, err = Duration(r)
 	if err != nil {
-		return record.MsgOperation{}, err
+		return message.Operation{}, err
 	}
 
 	return op, nil
 }
 
-func (v *Version32Parser) Version() VersionDefinition {
-	return VersionDefinition{Major: 3, Minor: 2, Binary: record.BinaryMongod}
+func (v *Version32Parser) Version() version.Definition {
+	return version.Definition{Major: 3, Minor: 2, Binary: record.BinaryMongod}
 }

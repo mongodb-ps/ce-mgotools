@@ -7,7 +7,8 @@ import (
 	"io"
 	"sync"
 
-	"mgotools/record"
+	"mgotools/parser/record"
+	"mgotools/parser/source"
 )
 
 type commandSource <-chan record.Base
@@ -18,7 +19,7 @@ type Input struct {
 	Arguments ArgumentCollection
 	Name      string
 	Length    int64
-	Reader    record.BaseFactory
+	Reader    source.Factory
 }
 
 type Output struct {
@@ -132,7 +133,7 @@ func RunCommand(f Command, in []Input, out Output) error {
 	return nil
 }
 
-func run(f Command, index int, in record.BaseFactory, outputChannel chan<- string, errorChannel chan<- error) {
+func run(f Command, index int, in source.Factory, outputChannel chan<- string, errorChannel chan<- error) {
 	var inputChannel = make(chan record.Base, 1024)
 	var inputWaitGroup sync.WaitGroup
 

@@ -3,9 +3,9 @@ package parser
 import (
 	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser/logger"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
+	"mgotools/parser/version"
 )
 
 type Version34Parser struct {
@@ -16,7 +16,7 @@ type Version34Parser struct {
 var errorVersion34Unmatched = internal.VersionUnmatched{Message: "version 3.2"}
 
 func init() {
-	VersionParserFactory.Register(func() VersionParser {
+	version.Factory.Register(func() version.Parser {
 		return &Version34Parser{
 			counters: map[string]string{
 				"cursorid":         "cursorid",
@@ -55,13 +55,13 @@ func (v *Version34Parser) Check(base record.Base) bool {
 		base.RawComponent != ""
 }
 
-func (v *Version34Parser) command(reader util.RuneReader) (record.MsgCommand, error) {
+func (v *Version34Parser) command(reader internal.RuneReader) (message.Command, error) {
 	r := &reader
 
 	// Trivia: version 3.4 was the first to introduce app name metadata.
-	cmd, err := logger.CommandPreamble(r)
+	cmd, err := CommandPreamble(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	}
 
 	if r.ExpectString("originatingCommand:") {
@@ -69,34 +69,34 @@ func (v *Version34Parser) command(reader util.RuneReader) (record.MsgCommand, er
 		cmd.Payload["originatingCommand"], err = mongo.ParseJsonRunes(r, false)
 
 		if err != nil {
-			return record.MsgCommand{}, err
+			return message.Command{}, err
 		}
 	}
 
 	// Commands cannot have a "collation:" section, so this should be identical
 	// to earlier versions (e.g. 3.2.x).
-	err = logger.MidLoop(r, "locks:", &cmd.MsgBase, cmd.Counters, cmd.Payload, v.counters)
+	err = MidLoop(r, "locks:", &cmd.BaseCommand, cmd.Counters, cmd.Payload, v.counters)
 	if err != nil {
-		v.versionFlag, err = logger.CheckCounterVersionError(err, errorVersion34Unmatched)
-		return record.MsgCommand{}, err
+		v.versionFlag, err = CheckCounterVersionError(err, errorVersion34Unmatched)
+		return message.Command{}, err
 	}
 
-	cmd.Locks, err = logger.Locks(r)
+	cmd.Locks, err = Locks(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	}
 
-	cmd.Protocol, err = logger.Protocol(r)
+	cmd.Protocol, err = Protocol(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	} else if cmd.Protocol != "op_query" && cmd.Protocol != "op_command" {
 		v.versionFlag = false
-		return record.MsgCommand{}, errorVersion34Unmatched
+		return message.Command{}, errorVersion34Unmatched
 	}
 
-	cmd.Duration, err = logger.Duration(r)
+	cmd.Duration, err = Duration(r)
 	if err != nil {
-		return record.MsgCommand{}, err
+		return message.Command{}, err
 	}
 
 	return cmd, nil
@@ -132,8 +132,8 @@ func (v *Version34Parser) expectedComponents(c string) bool {
 	}
 }
 
-func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	r := util.NewRuneReader(entry.RawMessage)
+func (v *Version34Parser) NewLogMessage(entry record.Entry) (message.Message, error) {
+	r := internal.NewRuneReader(entry.RawMessage)
 	switch entry.RawComponent {
 	case "COMMAND":
 		cmd, err := v.command(*r)
@@ -141,7 +141,7 @@ func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			return nil, err
 		}
 
-		return logger.CrudOrMessage(cmd, cmd.Command, cmd.Counters, cmd.Payload), nil
+		return CrudOrMessage(cmd, cmd.Command, cmd.Counters, cmd.Payload), nil
 
 	case "WRITE":
 		op, err := v.operation(*r)
@@ -149,7 +149,7 @@ func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			return nil, err
 		}
 
-		return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
+		return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
 	case "CONTROL":
 		return D(entry).Control(*r)
@@ -164,32 +164,32 @@ func (v *Version34Parser) NewLogMessage(entry record.Entry) (record.Message, err
 	return nil, errorVersion34Unmatched
 }
 
-func (v *Version34Parser) operation(reader util.RuneReader) (record.MsgOperation, error) {
+func (v *Version34Parser) operation(reader internal.RuneReader) (message.Operation, error) {
 	r := &reader
 
-	op, err := logger.OperationPreamble(r)
+	op, err := OperationPreamble(r)
 	if err != nil {
-		return record.MsgOperation{}, err
+		return message.Operation{}, err
 	}
 
-	if !util.ArrayBinaryMatchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
+	if !internal.ArrayBinaryMatchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
 		v.versionFlag = false
-		return record.MsgOperation{}, errorVersion34Unmatched
+		return message.Operation{}, errorVersion34Unmatched
 	}
 
 	for {
 		// Collation appears in this version for the first time and doesn't
 		// appear in any subsequent versions. It also only appears on WRITE
 		// operations.
-		err = logger.MidLoop(r, "collation:", &op.MsgBase, op.Counters, op.Payload, v.counters)
+		err = MidLoop(r, "collation:", &op.BaseCommand, op.Counters, op.Payload, v.counters)
 		if err != nil {
-			v.versionFlag, err = logger.CheckCounterVersionError(err, errorVersion34Unmatched)
-			return record.MsgOperation{}, err
+			v.versionFlag, err = CheckCounterVersionError(err, errorVersion34Unmatched)
+			return message.Operation{}, err
 		} else if r.ExpectString("collation:") {
 			r.SkipWords(1)
 			op.Payload["collation"], err = mongo.ParseJsonRunes(r, false)
 			if err != nil {
-				return record.MsgOperation{}, err
+				return message.Operation{}, err
 			}
 		} else {
 			// This condition occurs after reaching "locks:".
@@ -197,19 +197,19 @@ func (v *Version34Parser) operation(reader util.RuneReader) (record.MsgOperation
 		}
 	}
 
-	op.Locks, err = logger.Locks(r)
+	op.Locks, err = Locks(r)
 	if err != nil {
-		return record.MsgOperation{}, err
+		return message.Operation{}, err
 	}
 
-	op.Duration, err = logger.Duration(r)
+	op.Duration, err = Duration(r)
 	if err != nil {
-		return record.MsgOperation{}, err
+		return message.Operation{}, err
 	}
 
 	return op, nil
 }
 
-func (v *Version34Parser) Version() VersionDefinition {
-	return VersionDefinition{Major: 3, Minor: 4, Binary: record.BinaryMongod}
+func (v *Version34Parser) Version() version.Definition {
+	return version.Definition{Major: 3, Minor: 4, Binary: record.BinaryMongod}
 }

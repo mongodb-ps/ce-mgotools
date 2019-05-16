@@ -1,4 +1,4 @@
-package logger
+package parser
 
 import (
 	"fmt"
@@ -6,8 +6,7 @@ import (
 	"testing"
 
 	"mgotools/internal"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
 )
 
 func TestCheckCounterVersionError(t *testing.T) {
@@ -43,22 +42,22 @@ func TestCommandPreamble(t *testing.T) {
 		Cmd     string
 		Ns      string
 		Agent   string
-		Payload record.MsgPayload
+		Payload message.Payload
 		Err     error
 	}
 
 	s := map[string]PreambleResult{
-		`command test.$cmd appName: "MongoDB Shell" command: isMaster { isMaster: 1, forShell: 1 }`: {"isMaster", "test.$cmd", "MongoDB Shell", record.MsgPayload{"isMaster": 1, "forShell": 1}, nil},
+		`command test.$cmd appName: "MongoDB Shell" command: isMaster { isMaster: 1, forShell: 1 }`: {"isMaster", "test.$cmd", "MongoDB Shell", message.Payload{"isMaster": 1, "forShell": 1}, nil},
 
-		`command test.$cmd command: isMaster { isMaster: 1, forShell: 1 }`: {"isMaster", "test.$cmd", "", record.MsgPayload{"isMaster": 1, "forShell": 1}, nil},
+		`command test.$cmd command: isMaster { isMaster: 1, forShell: 1 }`: {"isMaster", "test.$cmd", "", message.Payload{"isMaster": 1, "forShell": 1}, nil},
 
-		`command test.$cmd planSummary: IXSCAN { a: 1 }`: {"", "test.$cmd", "", record.MsgPayload{}, nil},
+		`command test.$cmd planSummary: IXSCAN { a: 1 }`: {"", "test.$cmd", "", message.Payload{}, nil},
 
-		`command test.$cmd command: drop { drop: "$cmd" }`: {"drop", "test.$cmd", "", record.MsgPayload{"drop": "$cmd"}, nil},
+		`command test.$cmd command: drop { drop: "$cmd" }`: {"drop", "test.$cmd", "", message.Payload{"drop": "$cmd"}, nil},
 
-		`command test command: dropDatabase { dropDatabase: 1 }`: {"dropDatabase", "test", "", record.MsgPayload{"dropDatabase": 1}, nil},
+		`command test command: dropDatabase { dropDatabase: 1 }`: {"dropDatabase", "test", "", message.Payload{"dropDatabase": 1}, nil},
 
-		`command test.$cmd command: { a: 1 }`: {"command", "test.$cmd", "", record.MsgPayload{"a": 1}, nil},
+		`command test.$cmd command: { a: 1 }`: {"command", "test.$cmd", "", message.Payload{"a": 1}, nil},
 
 		`command test.$cmd`: {"", "", "", nil, internal.UnexpectedEOL},
 
@@ -70,7 +69,7 @@ func TestCommandPreamble(t *testing.T) {
 	}
 
 	for m, r := range s {
-		cmd, err := CommandPreamble(util.NewRuneReader(m))
+		cmd, err := CommandPreamble(internal.NewRuneReader(m))
 		if (err != nil && r.Err == nil) || (err == nil && r.Err != nil) || err != nil && r.Err != nil && err.Error() != r.Err.Error() {
 			t.Errorf("Error mismatch: expected '%s', got '%s'", r.Err, err)
 		}
@@ -106,7 +105,7 @@ func TestDuration(t *testing.T) {
 		`ok`:   {0, internal.MisplacedWordException},
 	}
 	for m, r := range s {
-		n, e := Duration(util.NewRuneReader(m))
+		n, e := Duration(internal.NewRuneReader(m))
 		if n != r.N || e != r.E {
 			t.Errorf("Expected (%v, %s), got (%v, %s)", r.N, r.E, n, e)
 		}
@@ -114,39 +113,39 @@ func TestDuration(t *testing.T) {
 }
 
 func TestPreamble(t *testing.T) {
-	cmd, ns, op, err := Preamble(util.NewRuneReader("command test.$cmd command:"))
+	cmd, ns, op, err := Preamble(internal.NewRuneReader("command test.$cmd command:"))
 	if cmd != "command" || ns != "test.$cmd" || op != "command" || err != nil {
 		t.Errorf("Values differ (%s, %s, %s, %s)", cmd, ns, op, err)
 	}
 
-	cmd, ns, op, err = Preamble(util.NewRuneReader("query test query:"))
+	cmd, ns, op, err = Preamble(internal.NewRuneReader("query test query:"))
 	if cmd != "query" || ns != "test" || op != "query" || err != nil {
 		t.Errorf("Expected 'test', got %s (err: %s)", ns, err)
 	}
 
-	cmd, ns, op, err = Preamble(util.NewRuneReader("update test.$cmd query:"))
+	cmd, ns, op, err = Preamble(internal.NewRuneReader("update test.$cmd query:"))
 	if cmd != "update" || ns != "test.$cmd" || op != "query" || err != nil {
 		t.Errorf("Values differ (%s, %s, %s, %s)", cmd, ns, op, err)
 	}
 
-	cmd, ns, op, err = Preamble(util.NewRuneReader("command test.$cmd appName: \"agent\" command:"))
+	cmd, ns, op, err = Preamble(internal.NewRuneReader("command test.$cmd appName: \"agent\" command:"))
 	if cmd != "command" || ns != "test.$cmd" || op != "appName" || err != nil {
 		t.Errorf("Preamble failed, got (cmd: %s, ns: %s, op: %s, err: %s)", cmd, ns, op, err)
 	}
 
-	cmd, ns, op, err = Preamble(util.NewRuneReader("command test.$cmd query"))
+	cmd, ns, op, err = Preamble(internal.NewRuneReader("command test.$cmd query"))
 	if cmd != "command" || ns != "test.$cmd" || op != "query" || err != nil {
 		t.Errorf("Preamble failed, got (cmd: %s, ns: %s, op: %s, err: %s)", cmd, ns, op, err)
 	}
 
-	cmd, ns, op, err = Preamble(util.NewRuneReader(""))
+	cmd, ns, op, err = Preamble(internal.NewRuneReader(""))
 	if err != internal.UnexpectedEOL {
 		t.Errorf("Expected UnexpectedEOL error, got %s", err)
 	}
 }
 
 func TestOperationPreamble(t *testing.T) {
-	op, err := OperationPreamble(util.NewRuneReader("insert test.$cmd query: { a: 1 }"))
+	op, err := OperationPreamble(internal.NewRuneReader("insert test.$cmd query: { a: 1 }"))
 	if op.Operation != "insert" || op.Namespace != "test.$cmd" || err != nil {
 		t.Errorf("Values differ (%s, %s, %s)", op.Operation, op.Namespace, err)
 	}

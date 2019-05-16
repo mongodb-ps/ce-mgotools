@@ -6,9 +6,9 @@ import (
 
 	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser/logger"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
+	"mgotools/parser/version"
 )
 
 type Version24Parser struct {
@@ -18,7 +18,7 @@ type Version24Parser struct {
 var errorVersion24Unmatched = internal.VersionUnmatched{Message: "version 2.4"}
 
 func init() {
-	VersionParserFactory.Register(func() VersionParser {
+	version.Factory.Register(func() version.Parser {
 		return &Version24Parser{
 			// A binary searchable (i.e. sorted) list of counters.
 			counters: []string{
@@ -43,8 +43,8 @@ func init() {
 	})
 }
 
-func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, error) {
-	r := util.NewRuneReader(entry.RawMessage)
+func (v *Version24Parser) NewLogMessage(entry record.Entry) (message.Message, error) {
+	r := internal.NewRuneReader(entry.RawMessage)
 	switch {
 	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
 		// Check for control messages, which is almost everything in 2.4 that is logged at startup.
@@ -68,7 +68,7 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 				return nil, err
 			}
 
-			if crud, ok := logger.Crud(op.Operation, op.Counters, op.Payload); ok {
+			if crud, ok := Crud(op.Operation, op.Counters, op.Payload); ok {
 				if op.Operation == "query" {
 					// Standardize with newer versions to queries appear as finds.
 					op.Operation = "find"
@@ -86,14 +86,14 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 			if op, err := v.parse24WithPayload(r, true); err != nil {
 				return nil, err
 			} else {
-				cmd := record.MakeMsgCommandLegacy()
+				cmd := message.MakeMsgCommandLegacy()
 				cmd.Command = op.Operation
 				cmd.Duration = op.Duration
-				cmd.Namespace = logger.NamespaceReplace(op.Operation, op.Payload, op.Namespace)
+				cmd.Namespace = NamespaceReplace(op.Operation, op.Payload, op.Namespace)
 				cmd.Locks = op.Locks
 				cmd.Payload = op.Payload
 
-				return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
+				return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 			}
 
 		case r.ExpectString("insert"):
@@ -106,7 +106,7 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (record.Message, err
 				return nil, err
 			}
 
-			return logger.CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
+			return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
 		default:
 			// Check for network connection changes.
@@ -124,24 +124,24 @@ func (v *Version24Parser) Check(base record.Base) bool {
 		base.CString
 }
 
-func (v *Version24Parser) Version() VersionDefinition {
-	return VersionDefinition{Major: 2, Minor: 4, Binary: record.BinaryMongod}
+func (v *Version24Parser) Version() version.Definition {
+	return version.Definition{Major: 2, Minor: 4, Binary: record.BinaryMongod}
 }
 
-func (v Version24Parser) parse24WithPayload(r *util.RuneReader, command bool) (record.MsgOperationLegacy, error) {
+func (v Version24Parser) parse24WithPayload(r *internal.RuneReader, command bool) (message.OperationLegacy, error) {
 	// command test.$cmd command: { getlasterror: 1.0, w: 1.0 } ntoreturn:1 keyUpdates:0  reslen:67 0ms
 	// query test.foo query: { b: 1.0 } ntoreturn:0 ntoskip:0 nscanned:10 keyUpdates:0 locks(micros) r:146 nreturned:1 reslen:64 0ms
 	// update vcm_audit.payload.files query: { _id: ObjectId('000000000000000000000000') } update: { _id: ObjectId('000000000000000000000000') } idhack:1 nupdated:1 upsert:1 keyUpdates:0 locks(micros) w:33688 194ms
-	op := record.MakeMsgOperationLegacy()
+	op := message.MakeMsgOperationLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 
 	if cmd := r.PreviewWord(1); cmd == "" {
-		return record.MsgOperationLegacy{}, internal.UnexpectedEOL
+		return message.OperationLegacy{}, internal.UnexpectedEOL
 	} else if cmd != "command:" && command {
-		return record.MsgOperationLegacy{}, internal.CommandStructure
+		return message.OperationLegacy{}, internal.CommandStructure
 	} else if cmd != "query:" && !command {
-		return record.MsgOperationLegacy{}, internal.OperationStructure
+		return message.OperationLegacy{}, internal.OperationStructure
 	}
 
 	// Define the target for key:value finds (start with counters and end with
@@ -178,8 +178,8 @@ ParamLoop:
 							// A query exists so continue forward until we
 							// find something that looks like a key:value.
 							for ; ok; param, ok = r.SlurpWord() {
-								if key, _, ok := util.StringDoubleSplit(param, ':'); ok {
-									if util.ArrayBinaryMatchString(key, v.counters) {
+								if key, _, ok := internal.StringDoubleSplit(param, ':'); ok {
+									if internal.ArrayBinaryMatchString(key, v.counters) {
 										// I dislike using labels, but it's
 										// quick, easy, and perfectly fine here.
 										continue ParamLoop
@@ -199,7 +199,7 @@ ParamLoop:
 			}
 			// For whatever reason, numYields has a space between it and the
 			// number (e.g. "numYields: 5").
-			if !util.IsNumericRune(r.NextRune()) {
+			if !internal.IsNumericRune(r.NextRune()) {
 				continue
 			} else {
 				// Re-add so the parseIntegerKeyValueErratic will succeed.
@@ -216,9 +216,9 @@ ParamLoop:
 
 	return op, nil
 }
-func (Version24Parser) parse24WithoutPayload(r *util.RuneReader) (record.MsgOperationLegacy, error) {
+func (Version24Parser) parse24WithoutPayload(r *internal.RuneReader) (message.OperationLegacy, error) {
 	// insert test.system.indexes ninserted:1 keyUpdates:0 locks(micros) w:10527 10ms
-	op := record.MakeMsgOperationLegacy()
+	op := message.MakeMsgOperationLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 	target := op.Counters
@@ -228,9 +228,9 @@ func (Version24Parser) parse24WithoutPayload(r *util.RuneReader) (record.MsgOper
 			continue
 		} else if param == "locks:{" {
 			// Wrong version, so exit.
-			return record.MsgOperationLegacy{}, internal.VersionUnmatched{}
+			return message.OperationLegacy{}, internal.VersionUnmatched{}
 		}
-		logger.IntegerKeyValue(param, target, mongo.COUNTERS)
+		IntegerKeyValue(param, target, record.COUNTERS)
 	}
 	if dur, ok := r.SlurpWord(); ok && strings.HasSuffix(dur, "ms") {
 		op.Duration, _ = strconv.ParseInt(dur[0:len(dur)-3], 10, 64)
@@ -238,12 +238,12 @@ func (Version24Parser) parse24WithoutPayload(r *util.RuneReader) (record.MsgOper
 	return op, nil
 }
 
-func (Version24Parser) parseIntegerKeyValueErratic(param string, target map[string]int64, r *util.RuneReader) {
-	if !logger.IntegerKeyValue(param, target, mongo.COUNTERS) && param[len(param)-1] == ':' {
+func (Version24Parser) parseIntegerKeyValueErratic(param string, target map[string]int64, r *internal.RuneReader) {
+	if !IntegerKeyValue(param, target, record.COUNTERS) && param[len(param)-1] == ':' {
 		param = param[0 : len(param)-1]
 		if num, err := strconv.ParseInt(r.PreviewWord(1), 10, 64); err == nil {
-			if _, ok := mongo.COUNTERS[param]; ok {
-				target[mongo.COUNTERS[param]] = num
+			if _, ok := record.COUNTERS[param]; ok {
+				target[record.COUNTERS[param]] = num
 				r.SlurpWord()
 			} else {
 				panic("unexpected counter type " + param + " found")

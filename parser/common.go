@@ -8,11 +8,10 @@ import (
 
 	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
 )
 
-func connectionInit(msg *util.RuneReader) (ip net.IP, port uint16, conn int, success bool) {
+func connectionInit(msg *internal.RuneReader) (ip net.IP, port uint16, conn int, success bool) {
 	ip, port, success = parseAddress(msg)
 	if !success {
 		return
@@ -32,12 +31,12 @@ func connectionInit(msg *util.RuneReader) (ip net.IP, port uint16, conn int, suc
 	return
 }
 
-func connectionTerminate(msg *util.RuneReader) (ip net.IP, port uint16, success bool) {
+func connectionTerminate(msg *internal.RuneReader) (ip net.IP, port uint16, success bool) {
 	ip, port, success = parseAddress(msg)
 	return
 }
 
-func parseAddress(r *util.RuneReader) (ip net.IP, port uint16, ok bool) {
+func parseAddress(r *internal.RuneReader) (ip net.IP, port uint16, ok bool) {
 	addr, ok := r.SlurpWord()
 	if !ok {
 		return nil, 0, false
@@ -63,10 +62,10 @@ func parseAddress(r *util.RuneReader) (ip net.IP, port uint16, ok bool) {
 	return
 }
 
-func startupInfo(msg string) (record.MsgStartupInfo, error) {
-	if optionsRegex, err := util.GetRegexRegistry().Compile(`([^=\s]+)=([^\s]+)`); err == nil {
+func startupInfo(msg string) (message.StartupInfo, error) {
+	if optionsRegex, err := internal.GetRegexRegistry().Compile(`([^=\s]+)=([^\s]+)`); err == nil {
 		matches := optionsRegex.FindAllStringSubmatch(msg, -1)
-		startupInfo := record.MsgStartupInfo{}
+		startupInfo := message.StartupInfo{}
 
 		for _, match := range matches {
 			switch match[1] {
@@ -82,20 +81,20 @@ func startupInfo(msg string) (record.MsgStartupInfo, error) {
 		}
 		return startupInfo, nil
 	}
-	return record.MsgStartupInfo{}, internal.NoStartupArgumentsFound
+	return message.StartupInfo{}, internal.NoStartupArgumentsFound
 }
 
-func startupOptions(msg string) (record.MsgStartupOptions, error) {
+func startupOptions(msg string) (message.StartupOptions, error) {
 	opt, err := mongo.ParseJson(msg, false)
 	if err != nil {
-		return record.MsgStartupOptions{}, err
+		return message.StartupOptions{}, err
 	}
-	return record.MsgStartupOptions{String: msg, Options: opt}, nil
+	return message.StartupOptions{String: msg, Options: opt}, nil
 }
 
-func version(msg string, binary string) (record.MsgVersion, error) {
+func makeVersion(msg string, binary string) (message.Version, error) {
 	msg = strings.TrimLeft(msg, "v")
-	version := record.MsgVersion{Binary: binary}
+	version := message.Version{Binary: binary}
 
 	if parts := strings.Split(msg, "."); len(parts) >= 2 {
 		version.Major, _ = strconv.Atoi(parts[0])

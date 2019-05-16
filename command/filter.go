@@ -10,10 +10,9 @@ import (
 
 	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser"
-	"mgotools/parser/context"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
+	"mgotools/parser/version"
 )
 
 type filter struct {
@@ -103,8 +102,8 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 		argCount:                 len(args.Booleans) + len(args.Integers) + len(args.Strings),
 	}
 
-	util.Debug("Options: %+v %+v %+v", args.Booleans, args.Integers, args.Strings)
-	dateParser := util.NewDateParser([]util.DateFormat{
+	internal.Debug("Options: %+v %+v %+v", args.Booleans, args.Integers, args.Strings)
+	dateParser := internal.NewDateParser([]internal.DateFormat{
 		"2006",
 		"2006-01-02",
 		"2006-01-02T15:04:05",
@@ -185,7 +184,7 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 		case "command":
 			opts.CommandFilter = value
 		case "component":
-			if !util.ArgumentMatchOptions(mongo.COMPONENTS, value) {
+			if !internal.ArgumentMatchOptions(record.COMPONENTS, value) {
 				return errors.New("--component is not a recognized component")
 			}
 			opts.ComponentFilter = value
@@ -219,12 +218,12 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 			} else if opts.PatternFilter = mongo.NewPattern(pattern); err != nil {
 				return fmt.Errorf("failed to transform pattern")
 			} else {
-				util.Debug("argument pattern: %+v", opts.PatternFilter)
+				internal.Debug("argument pattern: %+v", opts.PatternFilter)
 			}
 		case "operation":
 			opts.OperationFilter = value
 		case "severity":
-			if !util.ArgumentMatchOptions(mongo.SEVERITIES, value) {
+			if !internal.ArgumentMatchOptions(record.SEVERITIES, value) {
 				return errors.New("--severity is not a recognized severity")
 			}
 			opts.SeverityFilter = record.Severity(value[0])
@@ -255,7 +254,7 @@ func (f *filter) Terminate(out commandTarget) error {
 func (f *filter) Run(instance int, out commandTarget, in commandSource, errs commandError) error {
 	options := f.Instance[instance].commandOptions
 
-	context := context.New(parser.VersionParserFactory.GetAll(), util.DefaultDateParser.Clone())
+	context := version.New(version.Factory.GetAll(), internal.DefaultDateParser.Clone())
 	defer context.Finish()
 
 	// Iterate through every record.Base object provided. This is identical
@@ -343,8 +342,8 @@ func (f *filter) match(entry record.Entry, opts filterOptions) bool {
 		return false
 	}
 
-	// Try converting into a base MsgCommand object and do comparisons if the filter succeeds.
-	base, ok := record.MsgBaseFromMessage(entry.Message)
+	// Try converting into a base Command object and do comparisons if the filter succeeds.
+	base, ok := message.MsgBaseFromMessage(entry.Message)
 	if opts.FasterFilter > 0 && (!ok || time.Duration(base.Duration) > opts.FasterFilter) {
 		return false
 	} else if opts.SlowerFilter > 0 && (!ok || time.Duration(base.Duration) < opts.SlowerFilter) {
@@ -353,8 +352,8 @@ func (f *filter) match(entry record.Entry, opts filterOptions) bool {
 		return false
 	}
 
-	// Try convergent to a MsgCommandLegacy object and compare filters based on that object type.
-	crud, ok := entry.Message.(record.MsgCRUD)
+	// Try convergent to a CommandLegacy object and compare filters based on that object type.
+	crud, ok := entry.Message.(message.CRUD)
 	if !opts.PatternFilter.IsEmpty() && (!ok || !checkQueryPattern(crud.Filter, opts.PatternFilter)) {
 		return false
 	}
@@ -375,17 +374,17 @@ func checkQueryPattern(query map[string]interface{}, check mongo.Pattern) bool {
 	return check.Equals(mongo.NewPattern(query))
 }
 
-func getCmdOrOpFromMessage(msg record.Message) string {
+func getCmdOrOpFromMessage(msg message.Message) string {
 	switch t := msg.(type) {
-	case record.MsgOperation:
+	case message.Operation:
 		return t.Operation
-	case record.MsgOperationLegacy:
+	case message.OperationLegacy:
 		return t.Operation
-	case record.MsgCommand:
+	case message.Command:
 		return t.Command
-	case record.MsgCommandLegacy:
+	case message.CommandLegacy:
 		return t.Command
-	case record.MsgCRUD:
+	case message.CRUD:
 		return getCmdOrOpFromMessage(t.Message)
 	default:
 		return ""
@@ -393,8 +392,8 @@ func getCmdOrOpFromMessage(msg record.Message) string {
 }
 
 func stringMatchFields(value string, check string) bool {
-	for _, item := range util.ArgumentSplit(check) {
-		if util.StringInsensitiveMatch(item, value) {
+	for _, item := range internal.ArgumentSplit(check) {
+		if internal.StringInsensitiveMatch(item, value) {
 			return true
 		}
 	}

@@ -1,4 +1,4 @@
-package format
+package formatting
 
 import (
 	"bytes"
@@ -9,28 +9,29 @@ import (
 	"sync"
 	"time"
 
-	"mgotools/parser"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/internal"
+	"mgotools/parser/message"
+	"mgotools/parser/record"
+	"mgotools/parser/version"
 )
 
-type LogSummary struct {
+type Summary struct {
 	Source  string
 	Host    string
 	Port    int
 	Start   time.Time
 	End     time.Time
-	Format  map[util.DateFormat]int
+	Format  map[internal.DateFormat]int
 	Length  uint
-	Version []parser.VersionDefinition
+	Version []version.Definition
 	Storage string
 
 	mutex   sync.Mutex
 	guessed bool
 }
 
-func NewLogSummary(name string) LogSummary {
-	return LogSummary{
+func NewSummary(name string) Summary {
+	return Summary{
 		Source:  name,
 		Host:    "",
 		Port:    0,
@@ -39,11 +40,11 @@ func NewLogSummary(name string) LogSummary {
 		Length:  0,
 		Version: nil,
 		Storage: "",
-		Format:  make(map[util.DateFormat]int),
+		Format:  make(map[internal.DateFormat]int),
 	}
 }
 
-func (s *LogSummary) Guess(versions []parser.VersionDefinition) {
+func (s *Summary) Guess(versions []version.Definition) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -54,11 +55,11 @@ func (s *LogSummary) Guess(versions []parser.VersionDefinition) {
 	s.guessed = true
 }
 
-func (LogSummary) Divider(w io.Writer) {
-	w.Write([]byte("\n------------------------------------------\n"))
+func (Summary) Divider(w io.Writer) {
+	_, _ = w.Write([]byte("\n------------------------------------------\n"))
 }
 
-func (s LogSummary) Print(w io.Writer) {
+func (s Summary) Print(w io.Writer) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -71,8 +72,8 @@ func (s LogSummary) Print(w io.Writer) {
 		if value == "" && empty == "" {
 			return
 		}
-		if util.StringLength(name) < 11 {
-			out.Write([]byte(strings.Repeat(" ", 11-util.StringLength(name))))
+		if internal.StringLength(name) < 11 {
+			out.Write([]byte(strings.Repeat(" ", 11-internal.StringLength(name))))
 		}
 		out.Write([]byte(name))
 		out.Write([]byte(": "))
@@ -86,17 +87,17 @@ func (s LogSummary) Print(w io.Writer) {
 		out.Write([]byte("\n"))
 	}
 
-	formatTable := func(histogram map[util.DateFormat]int) string {
-		formatString := func(format util.DateFormat) string {
+	formatTable := func(histogram map[internal.DateFormat]int) string {
+		formatString := func(format internal.DateFormat) string {
 			switch format {
-			case util.DateFormatCtime,
-				util.DateFormatCtimenoms:
+			case internal.DateFormatCtime,
+				internal.DateFormatCtimenoms:
 				return "cdate"
-			case util.DateFormatCtimeyear:
+			case internal.DateFormatCtimeyear:
 				return "cdate-year"
-			case util.DateFormatIso8602Local:
+			case internal.DateFormatIso8602Local:
 				return "iso8602-local"
-			case util.DateFormatIso8602Utc:
+			case internal.DateFormatIso8602Utc:
 				return "iso8602"
 			default:
 				return "unknown"
@@ -146,7 +147,7 @@ func (s LogSummary) Print(w io.Writer) {
 		version := strings.Join(versions, " -> ")
 		write(w, "version", version, "unknown")
 	} else {
-		leastVersion := parser.VersionDefinition{Major: 999, Minor: 999, Binary: record.Binary(999)}
+		leastVersion := version.Definition{Major: 999, Minor: 999, Binary: record.Binary(999)}
 
 		for _, version := range s.Version {
 			if version.Major < leastVersion.Major && leastVersion.Major > 0 {
@@ -160,14 +161,16 @@ func (s LogSummary) Print(w io.Writer) {
 			}
 		}
 
-		write(w, "version", fmt.Sprintf("(guess) >= %s", leastVersion.String()), "")
+		if leastVersion.Major < 999 && leastVersion.Minor < 999 && int(leastVersion.Binary) < 999 {
+			write(w, "version", fmt.Sprintf("(guess) >= %s", leastVersion.String()), "")
+		}
 	}
 
 	write(w, "storage", s.Storage, "unknown")
 	w.Write([]byte{'\n'})
 }
 
-func (s *LogSummary) Update(entry record.Entry) bool {
+func (s *Summary) Update(entry record.Entry) bool {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
@@ -195,30 +198,30 @@ func (s *LogSummary) Update(entry record.Entry) bool {
 	case nil:
 		return false
 
-	case record.MsgStartupInfo:
+	case message.StartupInfo:
 		s.options(t.Port, t.Hostname)
 
-	case record.MsgStartupInfoLegacy:
+	case message.StartupInfoLegacy:
 		s.options(t.Port, t.Hostname)
-		s.version(t.MsgVersion)
+		s.version(t.Version)
 
-	case record.MsgVersion:
+	case message.Version:
 		s.version(t)
 
-	case record.MsgWiredTigerConfig:
+	case message.WiredTigerConfig:
 		s.Storage = "WiredTiger"
 	}
 
 	return true
 }
 
-func (s *LogSummary) options(port int, hostname string) {
+func (s *Summary) options(port int, hostname string) {
 	// The server restarted.
 	s.Port = port
 	s.Host = hostname
 }
 
-func (s *LogSummary) version(msg record.MsgVersion) {
+func (s *Summary) version(msg message.Version) {
 	if msg.Major == 2 {
 		s.Storage = "MMAPv1"
 	} else if (msg.Major == 4 && msg.Minor > 0) || msg.Major > 4 {
@@ -235,7 +238,7 @@ func (s *LogSummary) version(msg record.MsgVersion) {
 	default:
 		binary = record.BinaryAny
 	}
-	s.Version = append(s.Version, parser.VersionDefinition{
+	s.Version = append(s.Version, version.Definition{
 		Major:  msg.Major,
 		Minor:  msg.Minor,
 		Binary: binary,

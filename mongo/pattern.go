@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"sort"
 
+	"mgotools/internal"
 	"mgotools/mongo/sorter"
-	"mgotools/util"
+	"mgotools/parser/record"
 )
 
 type Pattern struct {
@@ -39,7 +40,7 @@ func compress(c interface{}) interface{} {
 	switch t := c.(type) {
 	case map[string]interface{}:
 		for key := range t {
-			if !util.ArrayInsensitiveMatchString(OPERATORS_COMPARISON, key) {
+			if !internal.ArrayInsensitiveMatchString(record.OPERATORS_COMPARISON, key) {
 				return t
 			}
 		}
@@ -62,18 +63,18 @@ func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
 	for key := range s {
 		switch t := s[key].(type) {
 		case map[string]interface{}:
-			if !expr || util.ArrayInsensitiveMatchString(OPERATORS_COMPARISON, key) {
+			if !expr || internal.ArrayInsensitiveMatchString(record.OPERATORS_COMPARISON, key) {
 				s[key] = compress(createPattern(t, true))
-			} else if util.ArrayInsensitiveMatchString(OPERATORS_EXPRESSION, key) {
+			} else if internal.ArrayInsensitiveMatchString(record.OPERATORS_EXPRESSION, key) {
 				s[key] = createPattern(t, false)
-			} else if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) {
+			} else if internal.ArrayInsensitiveMatchString(record.OPERATORS_LOGICAL, key) {
 				s[key] = createPattern(t, false)
 			} else {
 				s[key] = V{}
 			}
 
 		case []interface{}:
-			if util.ArrayInsensitiveMatchString(OPERATORS_LOGICAL, key) {
+			if internal.ArrayInsensitiveMatchString(record.OPERATORS_LOGICAL, key) {
 				v := createArray(t, false)
 				if isValueArray(v) {
 					s[key] = v
@@ -82,7 +83,7 @@ func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
 					sort.Sort(r)
 					s[key] = r.Interface()
 				}
-			} else if util.ArrayInsensitiveMatchString(OPERATORS_EXPRESSION, key) {
+			} else if internal.ArrayInsensitiveMatchString(record.OPERATORS_EXPRESSION, key) {
 				s[key] = compress(createArray(t, true))
 			} else {
 				s[key] = V{}

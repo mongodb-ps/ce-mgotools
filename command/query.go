@@ -12,12 +12,11 @@ import (
 	"sort"
 	"sync"
 
-	"mgotools/command/format"
+	"mgotools/internal"
 	"mgotools/mongo"
-	"mgotools/parser"
-	"mgotools/parser/context"
-	"mgotools/record"
-	"mgotools/util"
+	"mgotools/parser/message"
+	"mgotools/parser/version"
+	"mgotools/target/formatting"
 
 	"github.com/pkg/errors"
 )
@@ -43,7 +42,7 @@ type query struct {
 }
 
 type queryInstance struct {
-	summary format.LogSummary
+	summary formatting.Summary
 
 	sort []int8
 
@@ -54,7 +53,7 @@ type queryInstance struct {
 }
 
 type queryPattern struct {
-	format.PatternSummary
+	formatting.Pattern
 
 	cursorId int64
 	p95      []int64
@@ -99,7 +98,7 @@ func (s *query) Prepare(name string, instance int, args ArgumentCollection) erro
 		Patterns: make(map[string]queryPattern),
 
 		sort:    []int8{sortSum, sortNamespace, sortOperation, sortPattern},
-		summary: format.NewLogSummary(name),
+		summary: formatting.NewSummary(name),
 	}
 
 	s.wrap = args.Booleans["wrap"]
@@ -115,7 +114,7 @@ func (s *query) Prepare(name string, instance int, args ArgumentCollection) erro
 		"sum":       sortSum,
 	}
 
-	for _, opt := range util.ArgumentSplit(args.Strings["sort"]) {
+	for _, opt := range internal.ArgumentSplit(args.Strings["sort"]) {
 		val, ok := sortOptions[opt]
 		if !ok {
 			return errors.New("unexpected sort option")
@@ -130,7 +129,7 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 	// Hold a configuration object for future use.
 	log := s.Log[instance]
 
-	context := context.New(parser.VersionParserFactory.GetAll(), util.DefaultDateParser.Clone())
+	context := version.New(version.Factory.GetAll(), internal.DefaultDateParser.Clone())
 	defer context.Finish()
 
 	// A function to grab new lines and parse them.
@@ -146,7 +145,7 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 			log.summary.Update(entry)
 
 			// Ignore any messages that aren't CRUD related.
-			crud, ok := entry.Message.(record.MsgCRUD)
+			crud, ok := entry.Message.(message.CRUD)
 			if !ok {
 				// Ignore non-CRUD operations for query purposes.
 				continue
@@ -161,7 +160,7 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 				continue
 			}
 
-			op = util.StringToLower(op)
+			op = internal.StringToLower(op)
 
 			switch op {
 			case "find":
@@ -183,7 +182,7 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 
 				if !ok {
 					pattern = queryPattern{
-						PatternSummary: format.PatternSummary{
+						Pattern: formatting.Pattern{
 							Min:       math.MaxInt64,
 							Namespace: ns,
 							Operation: op,
@@ -205,7 +204,7 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 	return nil
 }
 
-func (query) sort(values []format.PatternSummary, order []int8) {
+func (query) sort(values []formatting.Pattern, order []int8) {
 	sort.Slice(values, func(i, j int) bool {
 		for _, field := range order {
 			switch field {
@@ -255,25 +254,25 @@ func (query) sort(values []format.PatternSummary, order []int8) {
 	})
 }
 
-func (query) standardize(crud record.MsgCRUD) (ns string, op string, dur int64, ok bool) {
+func (query) standardize(crud message.CRUD) (ns string, op string, dur int64, ok bool) {
 	ok = true
 	switch cmd := crud.Message.(type) {
-	case record.MsgCommand:
+	case message.Command:
 		dur = cmd.Duration
 		ns = cmd.Namespace
 		op = cmd.Command
 
-	case record.MsgCommandLegacy:
+	case message.CommandLegacy:
 		dur = cmd.Duration
 		ns = cmd.Namespace
 		op = cmd.Command
 
-	case record.MsgOperation:
+	case message.Operation:
 		dur = cmd.Duration
 		ns = cmd.Namespace
 		op = cmd.Operation
 
-	case record.MsgOperationLegacy:
+	case message.OperationLegacy:
 		dur = cmd.Duration
 		ns = cmd.Namespace
 		op = cmd.Operation
@@ -306,8 +305,8 @@ func (query) update(s queryPattern, dur int64) queryPattern {
 	return s
 }
 
-func (s *query) values(patterns map[string]queryPattern) format.PatternTable {
-	values := make([]format.PatternSummary, 0, len(s.Log))
+func (s *query) values(patterns map[string]queryPattern) formatting.Table {
+	values := make([]formatting.Pattern, 0, len(s.Log))
 	for _, pattern := range patterns {
 		sort.Slice(pattern.p95, func(i, j int) bool { return pattern.p95[i] <= pattern.p95[j] })
 
@@ -317,16 +316,16 @@ func (s *query) values(patterns map[string]queryPattern) format.PatternTable {
 
 			if float64(int64(index)) == index {
 				// Check for a whole number (i.e. an exact 95th percentile value).
-				pattern.PatternSummary.N95Percentile = float64(pattern.p95[int(index)])
+				pattern.Pattern.N95Percentile = float64(pattern.p95[int(index)])
 			} else if index > 1 {
 				// Take the average of two values around the 95th percentile.
-				pattern.PatternSummary.N95Percentile = (float64(pattern.p95[int(index)-1] + pattern.p95[int(index)])) / 2
+				pattern.Pattern.N95Percentile = (float64(pattern.p95[int(index)-1] + pattern.p95[int(index)])) / 2
 			} else {
-				pattern.PatternSummary.N95Percentile = math.NaN()
+				pattern.Pattern.N95Percentile = math.NaN()
 			}
 		}
 
-		values = append(values, pattern.PatternSummary)
+		values = append(values, pattern.Pattern)
 	}
 	return values
 }
