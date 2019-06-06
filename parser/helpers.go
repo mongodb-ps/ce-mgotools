@@ -18,7 +18,7 @@ import (
 )
 
 func CommandPreamble(r *internal.RuneReader) (message.Command, error) {
-	cmd := message.MakeMsgCommand()
+	cmd := message.MakeCommand()
 
 	if c, n, o, err := Preamble(r); err != nil {
 		return message.Command{}, err
@@ -351,7 +351,7 @@ func NamespaceReplace(c string, p message.Payload, n string) string {
 // Operations have a different syntax but output similar information. This
 // method processes lines that are typically WRITE.
 func OperationPreamble(r *internal.RuneReader) (message.Operation, error) {
-	op := message.MakeMsgOperation()
+	op := message.MakeOperation()
 	// Grab the operation and namespace. Ignore the third portion of the
 	// preamble because the reader will be rewound.
 

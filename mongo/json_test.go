@@ -33,7 +33,9 @@ func TestParseJson(t *testing.T) {
 		`{"key": /(?:)/i }`:                      {"key": Regex{"(?:)", "i"}},
 		`{"key": Timestamp 492000|16}`:           {"key": time.Unix(492000, 16)},
 		`{"key":Timestamp 0|0}`:                  {"key": time.Unix(0, 0)},
-		`{"object":{"key1":"value1" , "key2" : "value2" } }`: {"object": map[string]interface{}{"key1": "value1", "key2": "value2"}},
+		`{"key": Timestamp(341000, 8)}`:          {"key": time.Unix(341000, 8)},
+		`{"key": UUID("00000000-0000-0000-0000-000000000001")}`: {"key": BinData{[]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, 4}},
+		`{"object":{"key1":"value1" , "key2" : "value2" } }`:    {"object": map[string]interface{}{"key1": "value1", "key2": "value2"}},
 	}
 
 	for source, target := range s1 {
@@ -211,6 +213,79 @@ func TestParseNumber(t *testing.T) {
 	for s, v := range m {
 		if c, err := parseNumber(internal.NewRuneReader(s)); c != v || err != nil {
 			t.Errorf("Parsing number '%s' (%T %v) returned %T %v: %s", s, v, v, c, c, err)
+		}
+	}
+}
+
+func TestParseTimestamp(t *testing.T) {
+	success := map[string]time.Time{
+		`Timestamp(1,2)`:          time.Unix(1, 2),
+		`timestamp(1, 2)`:         time.Unix(1, 2),
+		`Timestamp(6420000, 780)`: time.Unix(6420000, 780),
+		`Timestamp( 1, 0 )`:       time.Unix(1, 0),
+	}
+
+	fail := []string{
+		`Timestamp()`,
+		`timestamp(,1)`,
+		`Timestamp 0|0`,
+		`timestamp(0,`,
+		`timestamp(0,0`,
+		`Timestamp(0)`,
+	}
+
+	for s, v := range success {
+		r := internal.NewRuneReader(s)
+		if c, err := parseTimestamp(r); err != nil {
+			t.Errorf("Parsing timestamp '%s' failed: %s", s, err)
+		} else if !c.Equal(v) {
+			t.Errorf("Parsing timestamps not equal: expected %s, got %s", v, c)
+		}
+	}
+
+	for _, v := range fail {
+		r := internal.NewRuneReader(v)
+		if _, err := parseTimestamp(r); err == nil {
+			t.Errorf("Parsing timestamp succeeded, should have failed: %s", v)
+		}
+	}
+}
+
+func TestParseUuid(t *testing.T) {
+	success := map[string]BinData{
+		`UUID("00")`:   {[]byte{0}, 4},
+		`uuid("ff")`:   {[]byte{0xff}, 4},
+		`UUID("88ff")`: {[]byte{0x88, 0xff}, 4},
+		`UUID("7fffffff-0000-1111-2222-123456789012")`: {[]byte{0x7f, 0xff, 0xff, 0xff, 0, 0, 0x11, 0x11, 0x22, 0x22, 0x12, 0x34, 0x56, 0x78, 0x90, 0x12}, 4},
+		`UUID("01-0000-0000-0000-000000000001")`:       {[]byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, 4},
+		`uuid("0")`:                                    {[]byte{0}, 4},
+	}
+
+	fail := []string{
+		`uid("ff")`,
+		`uuid()`,
+		`uuid("")`,
+		`uuid("ff"`,
+		`uuid(0)`,
+	}
+
+	for v, c := range success {
+		r := internal.NewRuneReader(v)
+		s, err := parseUuid(r)
+		if err != nil {
+			t.Errorf("Parsing UUID '%s' failed: %s", v, err)
+		} else if c.Type != s.Type {
+			t.Errorf("Parsing UUID '%s' has type mismatch: expected %d, got %d", v, c.Type, s.Type)
+		} else if !bytes.Equal(c.BinData, s.BinData) {
+			t.Errorf("Parsing UUID '%s' failed: expected %x, got %x", v, c.BinData, s.BinData)
+		}
+	}
+
+	for _, v := range fail {
+		r := internal.NewRuneReader(v)
+		_, err := parseUuid(r)
+		if err == nil {
+			t.Errorf("Parsing UUID succeeded, expected error: %s", v)
 		}
 	}
 }

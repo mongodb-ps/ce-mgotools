@@ -86,7 +86,7 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (message.Message, er
 			if op, err := v.parse24WithPayload(r, true); err != nil {
 				return nil, err
 			} else {
-				cmd := message.MakeMsgCommandLegacy()
+				cmd := message.MakeCommandLegacy()
 				cmd.Command = op.Operation
 				cmd.Duration = op.Duration
 				cmd.Namespace = NamespaceReplace(op.Operation, op.Payload, op.Namespace)
@@ -132,7 +132,7 @@ func (v Version24Parser) parse24WithPayload(r *internal.RuneReader, command bool
 	// command test.$cmd command: { getlasterror: 1.0, w: 1.0 } ntoreturn:1 keyUpdates:0  reslen:67 0ms
 	// query test.foo query: { b: 1.0 } ntoreturn:0 ntoskip:0 nscanned:10 keyUpdates:0 locks(micros) r:146 nreturned:1 reslen:64 0ms
 	// update vcm_audit.payload.files query: { _id: ObjectId('000000000000000000000000') } update: { _id: ObjectId('000000000000000000000000') } idhack:1 nupdated:1 upsert:1 keyUpdates:0 locks(micros) w:33688 194ms
-	op := message.MakeMsgOperationLegacy()
+	op := message.MakeOperationLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 
@@ -218,7 +218,7 @@ ParamLoop:
 }
 func (Version24Parser) parse24WithoutPayload(r *internal.RuneReader) (message.OperationLegacy, error) {
 	// insert test.system.indexes ninserted:1 keyUpdates:0 locks(micros) w:10527 10ms
-	op := message.MakeMsgOperationLegacy()
+	op := message.MakeOperationLegacy()
 	op.Operation, _ = r.SlurpWord()
 	op.Namespace, _ = r.SlurpWord()
 	target := op.Counters

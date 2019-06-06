@@ -208,7 +208,7 @@ func (d *debugLog) Run(instance int, out commandTarget, in commandSource, errs c
 					buffer(prefix, d.formatObject(r.Msg))
 
 					if d.patternize {
-						if p, ok := message.MsgPayloadFromMessage(r.Msg); ok && p != nil {
+						if p, ok := message.PayloadFromMessage(r.Msg); ok && p != nil {
 							pattern := mongo.NewPattern(*p)
 							buffer(prefix+color.WhiteString("--> "), pattern.String())
 						}

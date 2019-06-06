@@ -29,7 +29,7 @@ func (m Version) String() string {
 	return out.String()
 }
 
-func MsgBaseFromMessage(msg Message) (*BaseCommand, bool) {
+func BaseFromMessage(msg Message) (*BaseCommand, bool) {
 	if msg == nil {
 		return &BaseCommand{}, false
 	}
@@ -49,7 +49,7 @@ func MsgBaseFromMessage(msg Message) (*BaseCommand, bool) {
 	}
 }
 
-func MsgPayloadFromMessage(msg Message) (*Payload, bool) {
+func PayloadFromMessage(msg Message) (*Payload, bool) {
 	if msg == nil {
 		return &Payload{}, false
 	}
@@ -67,7 +67,7 @@ func MsgPayloadFromMessage(msg Message) (*Payload, bool) {
 	}
 }
 
-func MakeMsgCommand() Command {
+func MakeCommand() Command {
 	return Command{
 		BaseCommand: BaseCommand{
 			Counters: make(map[string]int64),
@@ -78,7 +78,7 @@ func MakeMsgCommand() Command {
 	}
 }
 
-func MakeMsgOperation() Operation {
+func MakeOperation() Operation {
 	return Operation{
 		BaseCommand: BaseCommand{
 			Counters: make(map[string]int64),
@@ -89,7 +89,7 @@ func MakeMsgOperation() Operation {
 	}
 }
 
-func MakeMsgCommandLegacy() CommandLegacy {
+func MakeCommandLegacy() CommandLegacy {
 	return CommandLegacy{
 		BaseCommand: BaseCommand{
 			Counters: make(map[string]int64),
@@ -100,7 +100,7 @@ func MakeMsgCommandLegacy() CommandLegacy {
 	}
 }
 
-func MakeMsgOperationLegacy() OperationLegacy {
+func MakeOperationLegacy() OperationLegacy {
 	return OperationLegacy{
 		BaseCommand: BaseCommand{
 			Counters: make(map[string]int64),

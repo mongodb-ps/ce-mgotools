@@ -88,7 +88,7 @@ func (v *Version26Parser) NewLogMessage(entry record.Entry) (message.Message, er
 
 func (Version26Parser) command(r *internal.RuneReader) (message.CommandLegacy, error) {
 	var err error
-	cmd := message.MakeMsgCommandLegacy()
+	cmd := message.MakeCommandLegacy()
 
 	if c, n, o, err := Preamble(r); err != nil {
 		return message.CommandLegacy{}, err
@@ -158,7 +158,7 @@ func (Version26Parser) operation(r *internal.RuneReader) (message.OperationLegac
 	// insert test.foo query: { _id: ObjectId('5a331671de4f2a133f17884b'), a: 2.0 } ninserted:1 keyUpdates:0 numYields:0 locks(micros) w:10 0ms
 	// remove test.foo query: { a: { $gte: 9.0 } } ndeleted:1 keyUpdates:0 numYields:0 locks(micros) w:63 0ms
 	// update test.foo query: { a: { $gte: 8.0 } } update: { $set: { b: 1.0 } } nscanned:9 nscannedObjects:9 nMatched:1 nModified:1 keyUpdates:0 numYields:0 locks(micros) w:135 0ms
-	op := message.MakeMsgOperationLegacy()
+	op := message.MakeOperationLegacy()
 
 	if c, n, _, err := Preamble(r); err != nil {
 		return message.OperationLegacy{}, err

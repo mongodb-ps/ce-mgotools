@@ -343,7 +343,7 @@ func (f *filter) match(entry record.Entry, opts filterOptions) bool {
 	}
 
 	// Try converting into a base Command object and do comparisons if the filter succeeds.
-	base, ok := message.MsgBaseFromMessage(entry.Message)
+	base, ok := message.BaseFromMessage(entry.Message)
 	if opts.FasterFilter > 0 && (!ok || time.Duration(base.Duration) > opts.FasterFilter) {
 		return false
 	} else if opts.SlowerFilter > 0 && (!ok || time.Duration(base.Duration) < opts.SlowerFilter) {

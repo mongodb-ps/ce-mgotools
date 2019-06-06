@@ -244,26 +244,32 @@ func parseValue(r *internal.RuneReader, strict bool) (interface{}, error) {
 			value = false
 		case "null":
 			value = nil
-		case "MaxKey":
+		case "maxkey":
 			value = MaxKey{}
-		case "MinKey":
+		case "minkey":
 			value = MinKey{}
 		case "timestamp":
-			value, err = parseTimestamp(r)
+			value, err = parseTimestampLegacy(r.ChompWS())
 		case "undefined":
 			value = Undefined{}
 		default:
 			length := internal.StringLength(word)
-			if length == 36 && word[:8] == "objectid" {
-				value, err = parseObjectId(word, strict)
-			} else if length == 5 && word[:5] == "dbref" {
+			if length == 5 && word[:5] == "dbref" {
 				r.Prev()
 				value, err = parseDbRef(r)
 			} else if length == 3 && word == "new" {
 				value, err = parseDate(r)
+			} else if length == 36 && word[:8] == "objectid" {
+				value, err = parseObjectId(word, strict)
+			} else if length > 4 && word[:4] == "uuid" {
+				r.RewindSlurpWord()
+				value, err = parseUuid(r)
 			} else if length > 7 && word[:7] == "bindata" {
 				r.RewindSlurpWord()
 				value, err = parseBinData(r)
+			} else if length > 11 && word[:9] == "timestamp" {
+				r.RewindSlurpWord()
+				value, err = parseTimestamp(r)
 			} else {
 				return nil, fmt.Errorf("unrecognized type beginning with '%c' at %d", r.NextRune(), r.Pos())
 			}
@@ -297,7 +303,7 @@ func parseBinData(r *internal.RuneReader) (BinData, error) {
 	}
 
 	// Get the data itself.
-	c, ok := r.SlurpWord()
+	c, ok := r.ScanFor(')')
 	if !ok || len(c) < 2 {
 		return BinData{}, internal.UnexpectedEOL
 	} else if hex, err := hex.DecodeString(c[:len(c)-1]); err != nil {
@@ -459,11 +465,51 @@ func parseObjectId(oid string, strict bool) (value ObjectId, err error) {
 }
 
 func parseTimestamp(r *internal.RuneReader) (time.Time, error) {
+	// The timestamp data type is represented as Timestamp(0, 0). The RuneReader
+	// pointer should be at Timestamp.
+	if internal.StringToLower(r.Peek(10)) != "timestamp(" {
+		return time.Time{}, internal.UnexpectedValue
+	}
+
+	var wall int64
+	var ext int64
+
+	r.Skip(10)
+	if term, ok := r.ChompWS().ScanFor(","); !ok {
+		return time.Time{}, internal.UnexpectedEOL
+	} else if len(term) == 1 {
+		return time.Time{}, internal.UnexpectedValue
+	} else {
+		value, err := strconv.ParseInt(term[:len(term)-1], 10, 64)
+		if err != nil {
+			return time.Time{}, err
+		}
+		wall = value
+	}
+
+	if !r.ScanUntilRune(')') {
+		return time.Time{}, internal.UnexpectedEOL
+	} else if term := strings.Trim(r.CurrentWord(), " "); term == "" {
+		return time.Time{}, internal.UnexpectedValue
+	} else {
+		value, err := strconv.ParseInt(term, 10, 64)
+		if err != nil {
+			return time.Time{}, err
+		}
+		ext = value
+	}
+
+	if r, ok := r.ChompWS().Next(); !ok {
+		return time.Time{}, internal.UnexpectedEOL
+	} else if r != ')' {
+		return time.Time{}, internal.UnexpectedValue
+	}
+	return time.Unix(wall, ext), nil
+}
+
+func parseTimestampLegacy(r *internal.RuneReader) (time.Time, error) {
 	// The log format is "Timestamp 0|0". The "Timestamp" portion should already
 	// be removed from the reader so continue parsing forward.
-
-	// Start by removing any extra spaces from before the value.
-	r.ChompWS()
 
 	// Next scan until a space, comma, curly bracket indicating end of value.
 	if term, ok := r.ScanFor(unicode.White_Space, ',', '}'); term == "" && !ok {
@@ -483,5 +529,32 @@ func parseTimestamp(r *internal.RuneReader) (time.Time, error) {
 	} else {
 		// The wall clock portion gets converted and eventually stored as a uint.
 		return time.Unix(int64(wall), int64(ns)), nil
+	}
+}
+
+// Data type introduced in version 4.0
+func parseUuid(r *internal.RuneReader) (value BinData, err error) {
+	term, ok := r.ScanFor(')')
+	if !ok {
+		return BinData{}, internal.UnexpectedEOL
+	} else if len(term) < 9 {
+		return BinData{}, internal.UnexpectedLength
+	}
+
+	term = internal.StringToLower(term)
+	if term[0:5] != "uuid(" || term[len(term)-1] != ')' {
+		return BinData{}, internal.UnexpectedValue
+	} else {
+		data := strings.Trim(term[6:len(term)-2], "\"")
+		data = strings.Replace(data, "-", "", -1)
+		if len(data)%2 == 1 {
+			data = "0" + data
+		}
+
+		value.BinData = make([]byte, len(data)/2, len(data)/2)
+		value.Type = 4 // UUID
+
+		value.BinData, err = hex.DecodeString(data)
+		return
 	}
 }
