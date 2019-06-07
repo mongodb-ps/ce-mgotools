@@ -89,6 +89,7 @@ type Command struct {
 	Locks    map[string]interface{}
 	Payload  Payload
 	Protocol string
+	Storage  map[string]interface{}
 }
 
 // remove, update, query, insert
@@ -99,6 +100,7 @@ type Operation struct {
 	Locks     map[string]interface{}
 	Operation string
 	Payload   Payload
+	Storage   map[string]interface{}
 }
 
 type CommandLegacy struct {

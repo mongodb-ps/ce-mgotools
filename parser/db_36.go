@@ -9,11 +9,10 @@ import (
 )
 
 type Version36Parser struct {
-	counters    map[string]string
-	versionFlag bool
+	counters map[string]string
 }
 
-var errorVersion36Unmatched = internal.VersionUnmatched{Message: "version 3.4"}
+var errorVersion36Unmatched = internal.VersionUnmatched{Message: "version 3.6"}
 
 func init() {
 	version.Factory.Register(func() version.Parser {
@@ -43,8 +42,6 @@ func init() {
 				"numYields":        "numYields",
 				"reslen":           "reslen",
 			},
-
-			versionFlag: true,
 		}
 	})
 }
@@ -136,7 +133,6 @@ func (v *Version36Parser) command(reader internal.RuneReader) (message.Command, 
 	if err != nil {
 		return message.Command{}, err
 	} else if cmd.Protocol != "op_msg" && cmd.Protocol != "op_query" && cmd.Protocol != "op_command" {
-		v.versionFlag = false
 		return message.Command{}, errorVersion36Unmatched
 	}
 
@@ -159,7 +155,6 @@ func (v *Version36Parser) operation(reader internal.RuneReader) (message.Operati
 	// Check against the expected list of operations. Anything not in this list
 	// is either very broken or a different version.
 	if !internal.ArrayBinaryMatchString(op.Operation, []string{"command", "commandReply", "compressed", "getmore", "insert", "killcursors", "msg", "none", "query", "remove", "reply", "update"}) {
-		v.versionFlag = false
 		return message.Operation{}, errorVersion36Unmatched
 	}
 

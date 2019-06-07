@@ -465,6 +465,19 @@ func Protocol(r *internal.RuneReader) (string, error) {
 	return word[9:], nil
 }
 
+func Storage(r *internal.RuneReader) (out map[string]interface{}, err error) {
+	if !r.ExpectString("storage:{") {
+		return nil, internal.VersionMessageUnmatched
+	}
+
+	// Skip "storage:"
+	r.Skip(8)
+
+	// Parse out the storage JSON and return any error directly.
+	out, err = mongo.ParseJsonRunes(r, false)
+	return
+}
+
 func query(comment string, cursorId int64, counters map[string]int64, query map[string]interface{}) (message.CRUD, bool) {
 	// Before all operations were translated to "commands" in the log.
 	if query == nil {
