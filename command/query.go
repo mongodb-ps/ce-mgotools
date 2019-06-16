@@ -7,9 +7,11 @@ package command
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 
 	"mgotools/internal"
@@ -37,6 +39,7 @@ const N95MaxSamples = 16 * 1024 * 1024
 type query struct {
 	Log map[int]*queryInstance
 
+	group        []string
 	summaryTable *bytes.Buffer
 	wrap         bool
 }
@@ -66,6 +69,7 @@ func init() {
 	args := Definition{
 		Usage: "output statistics about query patterns",
 		Flags: []Argument{
+			{Name: "group", Type: String, Usage: "group by options (default: col,db,op,pattern)"},
 			{Name: "sort", ShortName: "s", Type: String, Usage: "sort by namespace, pattern, count, min, max, 95%, and/or sum (comma separated for multiple)"},
 			{Name: "wrap", Type: Bool, Usage: "line wrapping of query table"},
 		},
@@ -102,6 +106,22 @@ func (s *query) Prepare(name string, instance int, args ArgumentCollection) erro
 	}
 
 	s.wrap = args.Booleans["wrap"]
+	s.group = []string{"col", "db", "op", "pattern"}
+
+	if group, ok := args.Strings["group"]; ok {
+		s.group = []string{}
+		for _, item := range strings.Split(group, ",") {
+			item = strings.TrimSpace(item)
+			switch item {
+			case "col", "db", "op", "pattern":
+				s.group = append(s.group, item)
+			default:
+				return fmt.Errorf("unrecognized group option '%s'", item)
+			}
+		}
+
+		sort.Strings(s.group)
+	}
 
 	sortOptions := map[string]int8{
 		"namespace": sortNamespace,
@@ -131,6 +151,23 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 
 	context := version.New(version.Factory.GetAll(), internal.DefaultDateParser.Clone())
 	defer context.Finish()
+
+	makeKey := func(db, col, op, query string) string {
+		out := make([]string, len(s.group))
+		for index, key := range s.group {
+			switch key {
+			case "col":
+				out[index] = col
+			case "db":
+				out[index] = db
+			case "op":
+				out[index] = op
+			case "pattern":
+				out[index] = query
+			}
+		}
+		return strings.Join(out, "")
+	}
 
 	// A function to grab new lines and parse them.
 	for base := range in {
@@ -177,8 +214,24 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 			}
 
 			if op != "" && query != "" {
-				key := ns + ":" + op + ":" + query
+				db, col, _ := internal.StringDoubleSplit(ns, '.')
+				key := makeKey(db, col, op, query)
+
 				pattern, ok := log.Patterns[key]
+				if !internal.ArrayBinaryMatchString("col", s.group) {
+					col = ""
+					ns = db
+				}
+				if !internal.ArrayBinaryMatchString("db", s.group) {
+					db = ""
+					ns = col
+				}
+				if !internal.ArrayBinaryMatchString("op", s.group) {
+					op = ""
+				}
+				if !internal.ArrayBinaryMatchString("pattern", s.group) {
+					query = ""
+				}
 
 				if !ok {
 					pattern = queryPattern{
@@ -250,7 +303,7 @@ func (query) sort(values []formatting.Pattern, order []int8) {
 				return values[i].Count >= values[j].Count
 			}
 		}
-		return true
+		return false
 	})
 }
 

@@ -17,6 +17,7 @@ var COMPONENTS = []string{
 	"ASIO",          // 3.2, 3.4, 3.6
 	"BRIDGE",        // 3.0, 3.2, 3.4, 3.6
 	"COMMAND",       // 3.0, 3.2, 3.4, 3.6
+	"CONNPOOL",      // 4.0
 	"CONTROL",       // 3.0, 3.2, 3.4, 3.6
 	"DEFAULT",       // 3.0, 3.2, 3.4, 3.6
 	"EXECUTOR",      // 3.2, 3.4, 3.6
@@ -28,8 +29,8 @@ var COMPONENTS = []string{
 	"NETWORK",       // 3.0, 3.2, 3.4, 3.6
 	"QUERY",         // 3.0, 3.2, 3.4, 3.6
 	"REPL",          // 3.0, 3.2, 3.4, 3.6
-	"REPL_HB",       // 3.6
 	"REPLICATION",   // 3.0, 3.2, 3.4, 3.6
+	"REPL_HB",       // 3.6
 	"ROLLBACK",      // 3.6
 	"SHARDING",      // 3.0, 3.2, 3.4, 3.6
 	"SH_REFR",       // 2.4

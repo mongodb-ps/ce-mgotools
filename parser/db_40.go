@@ -252,6 +252,7 @@ func (v *Version40Parser) expectedComponents(c string) bool {
 		"ASIO",
 		"BRIDGE",
 		"COMMAND",
+		"CONNPOOL",
 		"CONTROL",
 		"DEFAULT",
 		"EXECUTOR",
