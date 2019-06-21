@@ -9,37 +9,6 @@ import "mgotools/internal"
 // to be pre-sorted so they can be used with binary searches for fast array comparison. Failure to put these arrays
 // in proper binary order will because these methods to fail.
 
-// The components array contains all component strings.
-var COMPONENTS = []string{
-	"-",
-	"ACCESS",        // 3.0, 3.2, 3.4, 3.6
-	"ACCESSCONTROL", // 3.0, 3.2, 3.4, 3.6
-	"ASIO",          // 3.2, 3.4, 3.6
-	"BRIDGE",        // 3.0, 3.2, 3.4, 3.6
-	"COMMAND",       // 3.0, 3.2, 3.4, 3.6
-	"CONNPOOL",      // 4.0
-	"CONTROL",       // 3.0, 3.2, 3.4, 3.6
-	"DEFAULT",       // 3.0, 3.2, 3.4, 3.6
-	"EXECUTOR",      // 3.2, 3.4, 3.6
-	"FTDC",          // 3.2, 3.4, 3.6
-	"GEO",           // 3.0, 3.2, 3.4, 3.6
-	"HEARTBEATS",    // 3.6
-	"INDEX",         // 3.0, 3.2, 3.4, 3.6
-	"JOURNAL",       // 3.0, 3.2, 3.4, 3.6
-	"NETWORK",       // 3.0, 3.2, 3.4, 3.6
-	"QUERY",         // 3.0, 3.2, 3.4, 3.6
-	"REPL",          // 3.0, 3.2, 3.4, 3.6
-	"REPLICATION",   // 3.0, 3.2, 3.4, 3.6
-	"REPL_HB",       // 3.6
-	"ROLLBACK",      // 3.6
-	"SHARDING",      // 3.0, 3.2, 3.4, 3.6
-	"SH_REFR",       // 2.4
-	"STORAGE",       // 3.0, 3.2, 3.4, 3.6
-	"TOTAL",         // 3.0, 3.2, 3.4, 3.6
-	"TRACKING",      // 3.4, 3.6
-	"WRITE",         // 3.0, 3.2, 3.4, 3.6
-}
-
 // ref: /mongo/src/mongo/db/curop.cpp
 var COUNTERS = map[string]string{
 	"cursorExhausted":  "cursorExhausted",
@@ -140,24 +109,8 @@ var OPERATORS_EXPRESSION = []string{
 	"$where",
 }
 
-// The severities variable contains all severities encountered in MongoDB.
-var SEVERITIES = []string{"D1", "D2", "D3", "D4", "D5", "E", "F", "I", "W"}
-
-// IsComponent checks a string value against the possible components array.
-func IsComponent(value string) bool {
-	return internal.ArrayBinaryMatchString(value, COMPONENTS)
-}
-
 // IsContext checks for a bracketed string ([<string>])
 func IsContext(value string) bool {
 	length := internal.StringLength(value)
 	return length > 2 && value[0] == '[' && value[length-1] == ']'
-}
-
-// IsSeverity checks a string value against the severities array. This value
-// will mostly be a single letter but can be two for debug levels
-// starting in version 4.2 (SERVER-37743).
-func IsSeverity(value string) bool {
-	_, ok := NewSeverity(value)
-	return ok
 }

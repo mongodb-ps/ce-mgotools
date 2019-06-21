@@ -101,31 +101,43 @@ func (Log) NewBase(line string, num uint) (record.Base, error) {
 	} else {
 		// the context isn't first so there is likely more available to check
 		for i := 0; i < 4; i += 1 {
-			if part, ok := base.SlurpWord(); ok {
-				if base.Severity == record.SeverityNone &&
-					base.RawComponent == "" &&
-					base.RawContext == "" {
-					severity, ok := record.NewSeverity(part)
-
-					if ok {
-						base.Severity = severity
-						continue
-					}
-				}
-				if base.RawComponent == "" && record.IsComponent(part) {
-					base.RawComponent = part
-					continue
-				} else if base.RawContext == "" && part[0] == '[' {
-					base.RewindSlurpWord()
-					if r, err := base.EnclosedString(']', false); err == nil {
-						base.RawContext = r
-						continue
-					}
-				}
-
-				base.RewindSlurpWord()
+			part, ok := base.SlurpWord()
+			if !ok {
+				// EOL
 				break
 			}
+
+			if base.Severity == record.SeverityNone &&
+				base.Component == record.ComponentNone &&
+				base.RawContext == "" {
+				severity, ok := record.NewSeverity(part)
+
+				if ok {
+					base.Severity = severity
+					continue
+				}
+			}
+
+			if base.Component == record.ComponentNone &&
+				base.RawContext == "" {
+				component, ok := record.NewComponent(part)
+
+				if ok {
+					base.Component = component
+					continue
+				}
+			}
+
+			if base.RawContext == "" && part[0] == '[' {
+				base.RewindSlurpWord()
+				if r, err := base.EnclosedString(']', false); err == nil {
+					base.RawContext = r
+					continue
+				}
+			}
+
+			base.RewindSlurpWord()
+			break
 		}
 	}
 
@@ -179,6 +191,11 @@ func (f Log) get() (record.Base, error) {
 		return f.NewBase(f.Scanner.Text(), f.line)
 	}
 	return record.Base{}, io.EOF
+}
+
+func isComponent(c string) bool {
+	_, ok := record.NewComponent(c)
+	return ok
 }
 
 // Take a parts array ([]string { "Sun", "Jan", "02", "15:04:05" }) and combined into a single element

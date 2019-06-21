@@ -48,33 +48,33 @@ func init() {
 
 func (v *Version36Parser) Check(base record.Base) bool {
 	return base.Severity != record.SeverityNone &&
-		base.RawComponent != ""
+		base.Component != record.ComponentNone
 }
 
 func (v *Version36Parser) NewLogMessage(entry record.Entry) (message.Message, error) {
 	r := internal.NewRuneReader(entry.RawMessage)
-	switch entry.RawComponent {
-	case "COMMAND":
+	switch entry.Component {
+	case record.ComponentCommand:
 		cmd, err := v.command(*r)
 		if err != nil {
 			return nil, err
 		}
 		return CrudOrMessage(cmd, cmd.Command, cmd.Counters, cmd.Payload), nil
 
-	case "WRITE":
+	case record.ComponentWrite:
 		op, err := v.operation(*r)
 		if err != nil {
 			return nil, err
 		}
 		return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
-	case "CONTROL":
+	case record.ComponentControl:
 		return D(entry).Control(*r)
 
-	case "NETWORK":
+	case record.ComponentNetwork:
 		return D(entry).Network(*r)
 
-	case "STORAGE":
+	case record.ComponentStorage:
 		return D(entry).Storage(*r)
 	}
 
@@ -231,33 +231,33 @@ func (v *Version36Parser) Version() version.Definition {
 	return version.Definition{Major: 3, Minor: 6, Binary: record.BinaryMongod}
 }
 
-func (v *Version36Parser) expectedComponents(c string) bool {
+func (v *Version36Parser) expectedComponents(c record.Component) bool {
 	switch c {
-	case "ACCESS",
-		"ACCESSCONTROL",
-		"ASIO",
-		"BRIDGE",
-		"COMMAND",
-		"CONTROL",
-		"DEFAULT",
-		"EXECUTOR",
-		"FTDC",
-		"GEO",
-		"HEARTBEATS",
-		"INDEX",
-		"JOURNAL",
-		"NETWORK",
-		"QUERY",
-		"REPL",
-		"REPL_HB",
-		"REPLICATION",
-		"ROLLBACK",
-		"SHARDING",
-		"STORAGE",
-		"TOTAL",
-		"TRACKING",
-		"WRITE",
-		"-":
+	case record.ComponentAccess,
+		record.ComponentAccessControl,
+		record.ComponentASIO,
+		record.ComponentBridge,
+		record.ComponentCommand,
+		record.ComponentControl,
+		record.ComponentDefault,
+		record.ComponentExecutor,
+		record.ComponentFTDC,
+		record.ComponentGeo,
+		record.ComponentHeartbeats,
+		record.ComponentIndex,
+		record.ComponentJournal,
+		record.ComponentNetwork,
+		record.ComponentQuery,
+		record.ComponentRepl,
+		record.ComponentReplHB,
+		record.ComponentReplication,
+		record.ComponentRollback,
+		record.ComponentSharding,
+		record.ComponentStorage,
+		record.ComponentTotal,
+		record.ComponentTracking,
+		record.ComponentWrite,
+		record.ComponentUnknown:
 		return true
 	default:
 		return false

@@ -54,8 +54,8 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (message.Message, er
 	// MDB 2.6, which means we can use the legacy parser to handle the parsing.
 	// The major difference is we have a component, so there's no need to
 	// specially parse preamble (query, remove, command, etc).
-	switch entry.RawComponent {
-	case "COMMAND":
+	switch entry.Component {
+	case record.ComponentCommand:
 		c := r.PreviewWord(1)
 		if c == "query" || c == "getmore" {
 			return v.crud(false, &r)
@@ -63,7 +63,7 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (message.Message, er
 			return v.crud(true, &r)
 		}
 
-	case "WRITE":
+	case record.ComponentWrite:
 		return v.crud(false, &r)
 
 	default:
@@ -74,7 +74,7 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (message.Message, er
 func (v *Version30Parser) Check(base record.Base) bool {
 	return v.versionFlag &&
 		base.Severity != record.SeverityNone &&
-		v.expectedComponents(base.RawComponent)
+		v.expectedComponents(base.Component)
 }
 
 func (v *Version30Parser) command(r *internal.RuneReader) (message.Command, error) {
@@ -129,26 +129,26 @@ func (v Version30Parser) crud(command bool, r *internal.RuneReader) (message.Mes
 	}
 }
 
-func (v *Version30Parser) expectedComponents(c string) bool {
+func (v *Version30Parser) expectedComponents(c record.Component) bool {
 	switch c {
-	case "ACCESS",
-		"ACCESSCONTROL",
-		"BRIDGE",
-		"COMMAND",
-		"CONTROL",
-		"DEFAULT",
-		"GEO",
-		"INDEX",
-		"JOURNAL",
-		"NETWORK",
-		"QUERY",
-		"REPL",
-		"REPLICATION",
-		"SHARDING",
-		"STORAGE",
-		"TOTAL",
-		"WRITE",
-		"-":
+	case record.ComponentAccess,
+		record.ComponentAccessControl,
+		record.ComponentBridge,
+		record.ComponentCommand,
+		record.ComponentControl,
+		record.ComponentDefault,
+		record.ComponentGeo,
+		record.ComponentIndex,
+		record.ComponentJournal,
+		record.ComponentNetwork,
+		record.ComponentQuery,
+		record.ComponentRepl,
+		record.ComponentReplication,
+		record.ComponentSharding,
+		record.ComponentStorage,
+		record.ComponentTotal,
+		record.ComponentWrite,
+		record.ComponentUnknown:
 		return true
 	default:
 		return false

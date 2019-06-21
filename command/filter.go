@@ -27,7 +27,7 @@ type filterOptions struct {
 
 	AppNameFilter            string
 	CommandFilter            string
-	ComponentFilter          string
+	ComponentFilter          record.Component
 	ConnectionFilter         int
 	ContextFilter            string
 	ExecutionDurationMinimum int
@@ -184,10 +184,13 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 		case "command":
 			opts.CommandFilter = value
 		case "component":
-			if !internal.ArgumentMatchOptions(record.COMPONENTS, value) {
-				return errors.New("--component is not a recognized component")
+			for _, component := range strings.Split(value, ",") {
+				if parsed, ok := record.NewComponent(internal.StringToUpper(component)); !ok {
+					return errors.New("--component is not a recognized component")
+				} else {
+					opts.ComponentFilter = opts.ComponentFilter | parsed
+				}
 			}
-			opts.ComponentFilter = value
 		case "context":
 			opts.ContextFilter = value
 		case "from":
@@ -223,10 +226,13 @@ func (f *filter) Prepare(name string, instance int, args ArgumentCollection) err
 		case "operation":
 			opts.OperationFilter = value
 		case "severity":
-			if !internal.ArgumentMatchOptions(record.SEVERITIES, value) {
-				return errors.New("--severity is not a recognized severity")
+			for _, severity := range strings.Split(value, ",") {
+				if parsed, ok := record.NewSeverity(severity); !ok {
+					return errors.New("--severity is not a recognized severity")
+				} else {
+					opts.SeverityFilter = opts.SeverityFilter | parsed
+				}
 			}
-			opts.SeverityFilter = record.Severity(value[0])
 		case "to":
 			if dateParser, _, err := dateParser.Parse(value); err != nil {
 				return errors.New("--to flag could not be parsed")
@@ -274,8 +280,8 @@ func (f *filter) Run(instance int, out commandTarget, in commandSource, errs com
 		}
 
 		var line string
-		if entry, modified := f.modify(entry, options); modified {
-			line = entry.String()
+		if modified, ok := f.modify(entry, options); ok {
+			line = modified.String()
 		} else {
 			line = base.String()
 		}
@@ -313,16 +319,16 @@ func (f *filter) match(entry record.Entry, opts filterOptions) bool {
 		return false
 	} else if opts.ConnectionFilter > -1 && entry.Connection != opts.ConnectionFilter {
 		return false
-	} else if opts.ComponentFilter != "" && !stringMatchFields(entry.RawComponent, opts.ComponentFilter) {
+	} else if opts.ComponentFilter > 0 && !bitMatchFields(uint64(entry.Component), uint64(opts.ComponentFilter)) {
 		return false
 	} else if opts.ContextFilter != "" && !stringMatchFields(entry.Context, opts.ContextFilter) {
 		return false
-	} else if opts.SeverityFilter > 0 && entry.Severity != opts.SeverityFilter {
+	} else if opts.SeverityFilter > 0 && !bitMatchFields(uint64(entry.Severity), uint64(opts.SeverityFilter)) {
 		return false
 	} else if !entry.DateValid || (!opts.FromFilter.IsZero() && opts.FromFilter.After(entry.Date)) || (!opts.ToFilter.IsZero() && opts.ToFilter.Before(entry.Date)) {
 		return false
-	} else if opts.WordFilter != "" && strings.Contains(entry.String(), opts.WordFilter) {
-
+	} else if opts.WordFilter != "" && !strings.Contains(entry.String(), opts.WordFilter) {
+		return false
 	} else if entry.Message == nil && (opts.FasterFilter > 0 ||
 		opts.SlowerFilter > 0 ||
 		opts.CommandFilter != "" ||
@@ -389,6 +395,10 @@ func getCmdOrOpFromMessage(msg message.Message) string {
 	default:
 		return ""
 	}
+}
+
+func bitMatchFields(value uint64, check uint64) bool {
+	return value&check == value
 }
 
 func stringMatchFields(value string, check string) bool {

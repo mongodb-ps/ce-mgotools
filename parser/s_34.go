@@ -19,7 +19,7 @@ func init() {
 
 func (v *Version34SParser) Check(base record.Base) bool {
 	return base.Severity != record.SeverityNone &&
-		base.RawComponent != ""
+		base.Component != record.ComponentNone
 }
 
 func (v *Version34SParser) NewLogMessage(entry record.Entry) (message.Message, error) {

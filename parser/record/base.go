@@ -4,20 +4,177 @@ import (
 	"mgotools/internal"
 )
 
+type Component int
+
+const (
+	ComponentNone   = Component(0)
+	ComponentAccess = Component(1 << iota)
+	ComponentAccessControl
+	ComponentASIO
+	ComponentBridge
+	ComponentCommand
+	ComponentConnPool
+	ComponentControl
+	ComponentDefault
+	ComponentExecutor
+	ComponentFTDC
+	ComponentGeo
+	ComponentHeartbeats
+	ComponentIndex
+	ComponentJournal
+	ComponentNetwork
+	ComponentQuery
+	ComponentRepl
+	ComponentReplication
+	ComponentReplHB
+	ComponentRollback
+	ComponentSharding
+	ComponentShardingRefr
+	ComponentStorage
+	ComponentTotal
+	ComponentTracking
+	ComponentWrite
+	ComponentUnknown
+)
+
+func NewComponent(s string) (Component, bool) {
+	switch s {
+	case "ACCESS": // 3.0, 3.2, 3.4, 3.6
+		return ComponentAccess, true
+	case "ACCESSCONTROL": // 3.0, 3.2, 3.4, 3.6
+		return ComponentAccessControl, true
+	case "ASIO": // 3.2, 3.4, 3.6
+		return ComponentASIO, true
+	case "BRIDGE": // 3.0, 3.2, 3.4, 3.6
+		return ComponentBridge, true
+	case "COMMAND": // 3.0, 3.2, 3.4, 3.6
+		return ComponentCommand, true
+	case "CONNPOOL": // 4.0
+		return ComponentConnPool, true
+	case "CONTROL": // 3.0, 3.2, 3.4, 3.6
+		return ComponentControl, true
+	case "DEFAULT": // 3.0, 3.2, 3.4, 3.6
+		return ComponentDefault, true
+	case "EXECUTOR": // 3.2, 3.4, 3.6
+		return ComponentExecutor, true
+	case "FTDC": // 3.2, 3.4, 3.6
+		return ComponentFTDC, true
+	case "GEO": // 3.0, 3.2, 3.4, 3.6
+		return ComponentGeo, true
+	case "HEARTBEATS": // 3.6
+		return ComponentHeartbeats, true
+	case "INDEX": // 3.0, 3.2, 3.4, 3.6
+		return ComponentIndex, true
+	case "JOURNAL": // 3.0, 3.2, 3.4, 3.6
+		return ComponentJournal, true
+	case "NETWORK": // 3.0, 3.2, 3.4, 3.6
+		return ComponentNetwork, true
+	case "QUERY": // 3.0, 3.2, 3.4, 3.6
+		return ComponentQuery, true
+	case "REPL": // 3.0, 3.2, 3.4, 3.6
+		return ComponentRepl, true
+	case "REPLICATION": // 3.0, 3.2, 3.4, 3.6
+		return ComponentReplication, true
+	case "REPL_HB": // 3.6
+		return ComponentReplHB, true
+	case "ROLLBACK": // 3.6
+		return ComponentRollback, true
+	case "SHARDING": // 3.0, 3.2, 3.4, 3.6
+		return ComponentSharding, true
+	case "SH_REFR": // 2.4
+		return ComponentShardingRefr, true
+	case "STORAGE": // 3.0, 3.2, 3.4, 3.6
+		return ComponentStorage, true
+	case "TOTAL": // 3.0, 3.2, 3.4, 3.6
+		return ComponentTotal, true
+	case "TRACKING": // 3.4, 3.6
+		return ComponentTracking, true
+	case "WRITE": // 3.0, 3.2, 3.4, 3.6
+		return ComponentWrite, true
+	case "-":
+		return ComponentUnknown, true
+	default:
+		return ComponentNone, false
+	}
+}
+
+func (c Component) String() string {
+	switch c {
+	case ComponentNone:
+		return ""
+	case ComponentAccess:
+		return "ACCESS"
+	case ComponentAccessControl:
+		return "ACCESSCONTROL"
+	case ComponentASIO:
+		return "ASIO"
+	case ComponentBridge:
+		return "BRIDGE"
+	case ComponentCommand:
+		return "COMMAND"
+	case ComponentConnPool:
+		return "CONNPOOL"
+	case ComponentControl:
+		return "CONTROL"
+	case ComponentDefault:
+		return "DEFAULT"
+	case ComponentExecutor:
+		return "EXECUTOR"
+	case ComponentFTDC:
+		return "FTDC"
+	case ComponentGeo:
+		return "GEO"
+	case ComponentHeartbeats:
+		return "HEARTBEATS"
+	case ComponentIndex:
+		return "INDEX"
+	case ComponentJournal:
+		return "JOURNAL"
+	case ComponentNetwork:
+		return "NETWORK"
+	case ComponentQuery:
+		return "QUERY"
+	case ComponentRepl:
+		return "REPL"
+	case ComponentReplication:
+		return "REPLICATION"
+	case ComponentReplHB:
+		return "REPL_HB"
+	case ComponentRollback:
+		return "ROLLBACK"
+	case ComponentSharding:
+		return "SHARDING"
+	case ComponentShardingRefr:
+		return "SH_REFR"
+	case ComponentStorage:
+		return "STORAGE"
+	case ComponentTotal:
+		return "TOTAL"
+	case ComponentTracking:
+		return "TRACKING"
+	case ComponentUnknown:
+		return "-"
+	case ComponentWrite:
+		return "WRITE"
+	default:
+		panic("unrecognized component")
+	}
+}
+
 type Severity int
 
 const (
-	SeverityNone = Severity(iota)
-	SeverityD    // Debug
-	SeverityD1   // Debug 1
-	SeverityD2   // Debug 2
-	SeverityD3   // Debug 3
-	SeverityD4   // Debug 4
-	SeverityD5   // Debug 5
-	SeverityE    // Error
-	SeverityF    // Severe/Fatal
-	SeverityI    // Information/Log
-	SeverityW    // Warning
+	SeverityNone = Severity(0)
+	SeverityD    = Severity(1 << iota) // Debug
+	SeverityD1                         // Debug 1
+	SeverityD2                         // Debug 2
+	SeverityD3                         // Debug 3
+	SeverityD4                         // Debug 4
+	SeverityD5                         // Debug 5
+	SeverityE                          // Error
+	SeverityF                          // Severe/Fatal
+	SeverityI                          // Information/Log
+	SeverityW                          // Warning
 )
 
 type Binary uint32
@@ -31,13 +188,13 @@ const (
 type Base struct {
 	*internal.RuneReader
 
-	CString      bool
-	LineNumber   uint
-	RawDate      string
-	RawComponent string
-	RawContext   string
-	RawMessage   string
-	Severity     Severity
+	Component  Component
+	CString    bool
+	LineNumber uint
+	RawDate    string
+	RawContext string
+	RawMessage string
+	Severity   Severity
 }
 
 func NewSeverity(s string) (Severity, bool) {

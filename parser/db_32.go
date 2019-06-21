@@ -53,8 +53,8 @@ func init() {
 func (v *Version32Parser) NewLogMessage(entry record.Entry) (message.Message, error) {
 	r := *internal.NewRuneReader(entry.RawMessage)
 
-	switch entry.RawComponent {
-	case "COMMAND":
+	switch entry.Component {
+	case record.ComponentCommand:
 		// query, getmore, insert, update = COMMAND
 		cmd, err := v.command(r)
 		if err != nil {
@@ -63,7 +63,7 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (message.Message, er
 
 		return CrudOrMessage(cmd, cmd.Command, cmd.Counters, cmd.Payload), nil
 
-	case "WRITE":
+	case record.ComponentWrite:
 		// insert, remove, update = WRITE
 		op, err := v.operation(r)
 		if err != nil {
@@ -72,10 +72,10 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (message.Message, er
 
 		return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
-	case "CONTROL":
+	case record.ComponentControl:
 		return D(entry).Control(r)
 
-	case "NETWORK":
+	case record.ComponentNetwork:
 		if entry.RawContext == "command" {
 			if msg, err := v.command(r); err != nil {
 				return msg, nil
@@ -83,7 +83,7 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (message.Message, er
 		}
 		return D(entry).Network(r)
 
-	case "STORAGE":
+	case record.ComponentStorage:
 		return D(entry).Storage(r)
 	}
 
@@ -93,7 +93,7 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (message.Message, er
 func (v *Version32Parser) Check(base record.Base) bool {
 	return v.versionFlag &&
 		base.Severity != record.SeverityNone &&
-		base.RawComponent != "" && v.expectedComponents(base.RawComponent)
+		base.Component != record.ComponentNone && v.expectedComponents(base.Component)
 }
 
 func (v Version32Parser) command(reader internal.RuneReader) (message.Command, error) {
@@ -135,29 +135,29 @@ func (v Version32Parser) command(reader internal.RuneReader) (message.Command, e
 	return cmd, nil
 }
 
-func (v *Version32Parser) expectedComponents(c string) bool {
+func (v *Version32Parser) expectedComponents(c record.Component) bool {
 	switch c {
-	case "ACCESS",
-		"ACCESSCONTROL",
-		"ASIO",
-		"BRIDGE",
-		"COMMAND",
-		"CONTROL",
-		"DEFAULT",
-		"EXECUTOR",
-		"FTDC",
-		"GEO",
-		"INDEX",
-		"JOURNAL",
-		"NETWORK",
-		"QUERY",
-		"REPL",
-		"REPLICATION",
-		"SHARDING",
-		"STORAGE",
-		"TOTAL",
-		"WRITE",
-		"-":
+	case record.ComponentAccess,
+		record.ComponentAccessControl,
+		record.ComponentASIO,
+		record.ComponentBridge,
+		record.ComponentCommand,
+		record.ComponentControl,
+		record.ComponentDefault,
+		record.ComponentExecutor,
+		record.ComponentFTDC,
+		record.ComponentGeo,
+		record.ComponentIndex,
+		record.ComponentJournal,
+		record.ComponentNetwork,
+		record.ComponentQuery,
+		record.ComponentRepl,
+		record.ComponentReplication,
+		record.ComponentSharding,
+		record.ComponentStorage,
+		record.ComponentTotal,
+		record.ComponentWrite,
+		record.ComponentUnknown:
 		return true
 	default:
 		return false

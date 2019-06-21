@@ -41,7 +41,7 @@ func (r *Entry) String() string {
 	buffer.WriteString(" ")
 	buffer.WriteString(r.Severity.String())
 	buffer.WriteString(" ")
-	buffer.WriteString(r.RawComponent)
+	buffer.WriteString(r.Component.String())
 	buffer.WriteString("  ")
 	buffer.WriteString(r.RawContext)
 	buffer.WriteString(" ")

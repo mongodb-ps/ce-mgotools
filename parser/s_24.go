@@ -17,19 +17,19 @@ func init() {
 
 var errorVersion24SUnmatched = internal.VersionUnmatched{"mongos 2.4"}
 
-func (v *Version24SParser) NewLogMessage(entry record.Entry) (message.Message, error) {
+func (v *Version24SParser) NewLogMessage(entry record.Entry) (msg message.Message, err error) {
 	r := internal.NewRuneReader(entry.RawMessage)
 
 	switch {
 	case entry.Context == "mongosMain":
-		if msg, err := S(entry).Control(*r); err == nil {
+		if msg, err = S(entry).Control(*r); err == nil {
 			return msg, nil
-		} else if msg, err := S(entry).Network(*r); err == nil {
+		} else if msg, err = S(entry).Network(*r); err == nil {
 			return msg, nil
 		}
 
 	default:
-		if msg, err := S(entry).Network(*r); err == nil {
+		if msg, err = S(entry).Network(*r); err == nil {
 			return msg, nil
 		}
 	}
@@ -38,8 +38,7 @@ func (v *Version24SParser) NewLogMessage(entry record.Entry) (message.Message, e
 
 func (v *Version24SParser) Check(base record.Base) bool {
 	return base.Severity == record.SeverityNone &&
-		base.RawComponent == "" &&
-		base.CString
+		base.Component == record.ComponentNone
 }
 
 func (v *Version24SParser) Version() version.Definition {

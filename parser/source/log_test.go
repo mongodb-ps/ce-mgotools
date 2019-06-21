@@ -17,8 +17,8 @@ func TestNewBase(tr *testing.T) {
 			t.Error("base.RawDate (2.4) is incorrect")
 		} else if b.RawContext != "[initandlisten]" {
 			t.Error("base.RawContext (2.4) is incorrect")
-		} else if b.RawComponent != "" {
-			t.Error("base.RawComponent (2.4) returned a component")
+		} else if b.Component != record.ComponentNone {
+			t.Error("base.Component (2.4) returned a component")
 		} else if b.Severity != record.SeverityNone {
 			t.Error("base.Severity (2.4) returned a severity")
 		} else if b.RawMessage != "db version v2.4.14" {
@@ -34,8 +34,8 @@ func TestNewBase(tr *testing.T) {
 			t.Error("base.RawDate (2.6) is incorrect")
 		} else if b.RawContext != "[initandlisten]" {
 			t.Error("base.RawContext (2.6) is incorrect")
-		} else if b.RawComponent != "" {
-			t.Error("base.RawComponent (2.6) returned a component")
+		} else if b.Component != record.ComponentNone {
+			t.Error("base.Component (2.6) returned a component")
 		} else if b.Severity != record.SeverityNone {
 			t.Error("base.Severity (2.6) returned a severity")
 		} else if b.RawMessage != "db version v2.6.12" {
@@ -51,8 +51,8 @@ func TestNewBase(tr *testing.T) {
 			t.Error("base.RawDate (3.x) is incorrect")
 		} else if b.RawContext != "[initandlisten]" {
 			t.Error("base.RawContext (3.x) is incorrect")
-		} else if b.RawComponent != "CONTROL" {
-			t.Error("base.RawComponent (3.x) returned a component")
+		} else if b.Component != record.ComponentControl {
+			t.Error("base.Component (3.x) returned a component")
 		} else if b.Severity != record.SeverityI {
 			t.Error("base.Severity (3.x) returned a severity")
 		} else if b.RawMessage != "db version v3.0.15" {
@@ -73,7 +73,7 @@ func TestNewBase(tr *testing.T) {
 			t.Error("base.RawMessage can be blank, but returned an error")
 		}
 		if _, err := f.NewBase("2018-01-16T15:00:41.759-0800 I INVALID  [initandlisten] ", 1); err == nil {
-			t.Error("base.RawComponent cannot be invalid, but returned without error")
+			t.Error("base.Component cannot be invalid, but returned without error")
 		}
 		if _, err := f.NewBase("2018-01-16T15:00:41.759-0800 ! CONTROL  [initandlisten] ", 1); err == nil {
 			t.Error("base.Severity cannot be invalid, but returned without error")

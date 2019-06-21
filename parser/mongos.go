@@ -13,8 +13,7 @@ func S(entry record.Entry) mongos {
 }
 
 func (entry mongos) Control(r internal.RuneReader) (message.Message, error) {
-	switch entry.Context {
-	case "mongosMain":
+	if entry.Context == "mongosMain" {
 		if r.ExpectString("MongoS version") {
 			versionString, ok := r.SkipWords(2).SlurpWord()
 			if !ok {
@@ -40,6 +39,7 @@ func (entry mongos) Control(r internal.RuneReader) (message.Message, error) {
 			return message.BuildInfo{BuildInfo: r.SkipWords(2).Remainder()}, nil
 		}
 	}
+
 	return nil, internal.ControlUnrecognized
 }
 

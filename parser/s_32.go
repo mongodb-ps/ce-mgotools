@@ -19,7 +19,7 @@ var errorVersion32SUnmatched = internal.VersionUnmatched{"mongos 3.2"}
 
 func (v *Version32SParser) Check(base record.Base) bool {
 	return base.Severity != record.SeverityNone &&
-		base.RawComponent != ""
+		base.Component != record.ComponentNone
 }
 
 func (v *Version32SParser) NewLogMessage(entry record.Entry) (message.Message, error) {

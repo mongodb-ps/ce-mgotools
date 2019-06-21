@@ -5,6 +5,11 @@ import "net"
 type Message interface {
 }
 
+type Authentication struct {
+	Principal string
+	IP        string
+}
+
 type BuildInfo struct {
 	BuildInfo string
 }

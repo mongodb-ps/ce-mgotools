@@ -73,6 +73,17 @@ func (entry mongod) Network(r internal.RuneReader) (message.Message, error) {
 						Meta: meta}, nil
 				}
 			}
+		} else if r.ExpectString("successfully authenticated as principal") {
+			// Ignore the first four words and retrieve principal user
+			r.SkipWords(4)
+			user, ok := r.SlurpWord()
+			if !ok {
+				return nil, internal.UnexpectedEOL
+			}
+
+			// SERVER-39820
+			ip, _ := r.SlurpWord()
+			return message.Authentication{Principal: user, IP: ip}, nil
 		}
 	}
 

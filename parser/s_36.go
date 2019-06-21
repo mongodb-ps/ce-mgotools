@@ -19,7 +19,7 @@ var errorVersion36SUnmatched = internal.VersionUnmatched{Message: "mongos 3.6"}
 
 func (v *Version36SParser) Check(base record.Base) bool {
 	return base.Severity != record.SeverityNone &&
-		base.RawComponent != ""
+		base.Component != record.ComponentNone
 }
 
 func (v *Version36SParser) NewLogMessage(entry record.Entry) (message.Message, error) {

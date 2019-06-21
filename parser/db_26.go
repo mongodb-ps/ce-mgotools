@@ -150,7 +150,7 @@ func (Version26Parser) currentOp(entry record.Entry) bool {
 
 func (Version26Parser) Check(base record.Base) bool {
 	return base.Severity == record.SeverityNone &&
-		base.RawComponent == ""
+		base.Component == record.ComponentNone
 }
 
 func (Version26Parser) operation(r *internal.RuneReader) (message.OperationLegacy, error) {
