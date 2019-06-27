@@ -1,5 +1,7 @@
 package parser
 
+// COMPONENT:RECOVERY
+
 import (
 	"mgotools/internal"
 	"mgotools/mongo"

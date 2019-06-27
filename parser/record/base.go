@@ -16,14 +16,17 @@ const (
 	ComponentConnPool
 	ComponentControl
 	ComponentDefault
+	ComponentElection
 	ComponentExecutor
 	ComponentFTDC
 	ComponentGeo
 	ComponentHeartbeats
 	ComponentIndex
+	ComponentInitialSync
 	ComponentJournal
 	ComponentNetwork
 	ComponentQuery
+	ComponentRecovery
 	ComponentRepl
 	ComponentReplication
 	ComponentReplHB
@@ -55,6 +58,8 @@ func NewComponent(s string) (Component, bool) {
 		return ComponentControl, true
 	case "DEFAULT": // 3.0, 3.2, 3.4, 3.6
 		return ComponentDefault, true
+	case "ELECTION": // 4.2
+		return ComponentElection, true
 	case "EXECUTOR": // 3.2, 3.4, 3.6
 		return ComponentExecutor, true
 	case "FTDC": // 3.2, 3.4, 3.6
@@ -65,12 +70,16 @@ func NewComponent(s string) (Component, bool) {
 		return ComponentHeartbeats, true
 	case "INDEX": // 3.0, 3.2, 3.4, 3.6
 		return ComponentIndex, true
+	case "INITSYNC": // 4.2
+		return ComponentInitialSync, true
 	case "JOURNAL": // 3.0, 3.2, 3.4, 3.6
 		return ComponentJournal, true
 	case "NETWORK": // 3.0, 3.2, 3.4, 3.6
 		return ComponentNetwork, true
 	case "QUERY": // 3.0, 3.2, 3.4, 3.6
 		return ComponentQuery, true
+	case "RECOVERY": // 4.0
+		return ComponentRecovery, true
 	case "REPL": // 3.0, 3.2, 3.4, 3.6
 		return ComponentRepl, true
 	case "REPLICATION": // 3.0, 3.2, 3.4, 3.6
@@ -118,6 +127,8 @@ func (c Component) String() string {
 		return "CONTROL"
 	case ComponentDefault:
 		return "DEFAULT"
+	case ComponentElection:
+		return "ELECTION"
 	case ComponentExecutor:
 		return "EXECUTOR"
 	case ComponentFTDC:
@@ -128,12 +139,16 @@ func (c Component) String() string {
 		return "HEARTBEATS"
 	case ComponentIndex:
 		return "INDEX"
+	case ComponentInitialSync:
+		return "INITSYNC"
 	case ComponentJournal:
 		return "JOURNAL"
 	case ComponentNetwork:
 		return "NETWORK"
 	case ComponentQuery:
 		return "QUERY"
+	case ComponentRecovery:
+		return "RECOVERY"
 	case ComponentRepl:
 		return "REPL"
 	case ComponentReplication:
