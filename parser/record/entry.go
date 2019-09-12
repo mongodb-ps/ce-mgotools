@@ -31,7 +31,7 @@ type Entry struct {
 }
 
 func (r *Entry) String() string {
-	var buffer bytes.Buffer
+	var buffer = bytes.NewBuffer(make([]byte, 512))
 	if r.Format != "" {
 		buffer.WriteString(string(r.Format))
 	} else {

@@ -7,8 +7,8 @@ import (
 type Component int
 
 const (
-	ComponentNone   = Component(0)
-	ComponentAccess = Component(1 << iota)
+	ComponentNone   Component = 0
+	ComponentAccess           = 1 << iota
 	ComponentAccessControl
 	ComponentASIO
 	ComponentBridge
@@ -179,23 +179,23 @@ func (c Component) String() string {
 type Severity int
 
 const (
-	SeverityNone = Severity(0)
-	SeverityD    = Severity(1 << iota) // Debug
-	SeverityD1                         // Debug 1
-	SeverityD2                         // Debug 2
-	SeverityD3                         // Debug 3
-	SeverityD4                         // Debug 4
-	SeverityD5                         // Debug 5
-	SeverityE                          // Error
-	SeverityF                          // Severe/Fatal
-	SeverityI                          // Information/Log
-	SeverityW                          // Warning
+	SeverityNone Severity = 0
+	SeverityD             = 1 << iota // Debug
+	SeverityD1                        // Debug 1
+	SeverityD2                        // Debug 2
+	SeverityD3                        // Debug 3
+	SeverityD4                        // Debug 4
+	SeverityD5                        // Debug 5
+	SeverityE                         // Error
+	SeverityF                         // Severe/Fatal
+	SeverityI                         // Information/Log
+	SeverityW                         // Warning
 )
 
 type Binary uint32
 
 const (
-	BinaryAny = Binary(iota)
+	BinaryAny Binary = iota
 	BinaryMongod
 	BinaryMongos
 )
