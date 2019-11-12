@@ -3,47 +3,28 @@ package parser
 import (
 	"mgotools/internal"
 	"mgotools/parser/message"
-	"mgotools/parser/record"
 )
 
-type mongos record.Entry
-
-func S(entry record.Entry) mongos {
-	return mongos(entry)
+func mongosParseStartupOptions(r *internal.RuneReader) (message.Message, error) {
+	return startupOptions(r.SkipWords(1).Remainder())
 }
 
-func (entry mongos) Control(r internal.RuneReader) (message.Message, error) {
-	if entry.Context == "mongosMain" {
-		if r.ExpectString("MongoS version") {
-			versionString, ok := r.SkipWords(2).SlurpWord()
-			if !ok {
-				return nil, internal.UnexpectedVersionFormat
-			}
-
-			version, err := makeVersion(versionString, "mongos")
-			if err != nil {
-				return nil, err
-			} else if err == nil && !r.ExpectString("starting:") {
-				return version, nil
-			} else if info, err := startupInfo(r.Remainder()); err != nil {
-				return nil, err
-			} else {
-				return message.StartupInfoLegacy{
-					Version:     version,
-					StartupInfo: info,
-				}, nil
-			}
-		} else if r.ExpectString("options:") {
-			return startupOptions(r.SkipWords(1).Remainder())
-		} else if r.ExpectString("build info") {
-			return message.BuildInfo{BuildInfo: r.SkipWords(2).Remainder()}, nil
-		}
+func mongosParseVersion(r *internal.RuneReader) (message.Message, error) {
+	versionString, ok := r.SkipWords(2).SlurpWord()
+	if !ok {
+		return nil, internal.UnexpectedVersionFormat
 	}
 
-	return nil, internal.ControlUnrecognized
-}
-
-func (entry mongos) Network(r internal.RuneReader) (message.Message, error) {
-	// Network messaging is the same for mongos as mongod.
-	return D(record.Entry(entry)).Network(r)
+	if version, err := makeVersion(versionString, "mongos"); err != nil {
+		return nil, err
+	} else if err == nil && !r.ExpectString("starting:") {
+		return version, nil
+	} else if info, err := startupInfo(r.Remainder()); err != nil {
+		return nil, err
+	} else {
+		return message.StartupInfoLegacy{
+			Version:     version,
+			StartupInfo: info,
+		}, nil
+	}
 }

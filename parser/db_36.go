@@ -3,6 +3,7 @@ package parser
 import (
 	"mgotools/internal"
 	"mgotools/mongo"
+	"mgotools/parser/executor"
 	"mgotools/parser/message"
 	"mgotools/parser/record"
 	"mgotools/parser/version"
@@ -10,12 +11,28 @@ import (
 
 type Version36Parser struct {
 	counters map[string]string
+	executor *executor.Executor
 }
 
 var errorVersion36Unmatched = internal.VersionUnmatched{Message: "version 3.6"}
 
 func init() {
 	version.Factory.Register(func() version.Parser {
+		ex := executor.New()
+
+		// CONTROL components
+		ex.RegisterForReader("dbexit", mongodParseShutdown)
+		ex.RegisterForReader("db version", mongodDbVersion)
+		ex.RegisterForReader("journal dir=", mongodJournal)
+		ex.RegisterForReader("options", mongodOptions)
+		ex.RegisterForReader("wiredtiger_open config", commonParseWiredtigerOpen)
+
+		// NETWORK components
+		ex.RegisterForReader("connection accepted", commonParseConnectionAccepted)
+		ex.RegisterForEntry("end connection", commonParseConnectionEnded)
+		ex.RegisterForReader("waiting for connection", commonParseWaitingForConnections)
+		ex.RegisterForReader("received client metadata from", commonParseClientMetadata)
+
 		return &Version36Parser{
 			counters: map[string]string{
 				"cursorid":         "cursorid",
@@ -42,6 +59,8 @@ func init() {
 				"numYields":        "numYields",
 				"reslen":           "reslen",
 			},
+
+			executor: ex,
 		}
 	})
 }
@@ -68,17 +87,9 @@ func (v *Version36Parser) NewLogMessage(entry record.Entry) (message.Message, er
 		}
 		return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
-	case record.ComponentControl:
-		return D(entry).Control(*r)
-
-	case record.ComponentNetwork:
-		return D(entry).Network(*r)
-
-	case record.ComponentStorage:
-		return D(entry).Storage(*r)
+	default:
+		return v.executor.Run(entry, r, errorVersion36Unmatched)
 	}
-
-	return nil, errorVersion36Unmatched
 }
 
 func (v *Version36Parser) command(reader internal.RuneReader) (message.Command, error) {

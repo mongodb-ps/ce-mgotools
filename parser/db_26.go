@@ -9,18 +9,57 @@ import (
 
 	"mgotools/internal"
 	"mgotools/mongo"
+	"mgotools/parser/executor"
 	"mgotools/parser/message"
 	"mgotools/parser/record"
 	"mgotools/parser/version"
 )
 
-type Version26Parser struct{}
+type Version26Parser struct {
+	crud     *executor.Executor
+	contexts *executor.Executor
+}
 
 var errorVersion26Unmatched = internal.VersionUnmatched{Message: "version 2.6"}
 
 func init() {
 	version.Factory.Register(func() version.Parser {
-		return &Version26Parser{}
+		v := &Version26Parser{
+			crud:     &executor.Executor{},
+			contexts: &executor.Executor{},
+		}
+
+		messages := v.crud
+		messages.RegisterForReader("command", v.commandCrud)
+
+		messages.RegisterForReader("query", v.operationCrud)
+		messages.RegisterForReader("getmore", v.operationCrud)
+		messages.RegisterForReader("geonear", v.operationCrud)
+		messages.RegisterForReader("insert", v.operationCrud)
+		messages.RegisterForReader("update", v.operationCrud)
+		messages.RegisterForReader("remove", v.operationCrud)
+
+		context := v.contexts
+
+		// initandlisten
+		context.RegisterForReader("build info", mongodBuildInfo)
+		context.RegisterForReader("db version", mongodDbVersion)
+		context.RegisterForReader("journal dir=", mongodJournal)
+		context.RegisterForReader("options", mongodOptions)
+
+		context.RegisterForEntry("MongoDB starting", mongodStartupInfo)
+
+		// signalProcessingThread
+		context.RegisterForReader("dbexit", mongodParseShutdown)
+
+		// connection related
+		context.RegisterForReader("connection accepted", commonParseConnectionAccepted)
+		context.RegisterForReader("waiting for connections", commonParseWaitingForConnections)
+		context.RegisterForReader("successfully authenticated as principal", commonParseAuthenticatedPrincipal)
+
+		context.RegisterForEntry("end connection", commonParseConnectionEnded)
+
+		return v
 	})
 }
 
@@ -31,59 +70,37 @@ func (v *Version26Parser) NewLogMessage(entry record.Entry) (message.Message, er
 	// modify it in the first place, right?
 	r := *internal.NewRuneReader(entry.RawMessage)
 	switch {
-	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
-		// Check for control messages, which is almost everything in 2.6 that is logged at startup.
-		if msg, err := D(entry).Control(r); err == nil {
-			// Most startup messages are part of control.
-			return msg, nil
-		} else if msg, err := D(entry).Network(r); err == nil {
-			// Alternatively, we care about basic network actions like new connections being established.
-			return msg, nil
+
+	case entry.Connection > 0:
+		msg, err := v.crud.Run(entry, &r, errorVersion26Unmatched)
+
+		if err != errorVersion26Unmatched {
+			return msg, err
 		}
 
-	case v.currentOp(entry):
-		switch {
-		case r.ExpectString("command"):
+		// Check for network status changes, which have a context that
+		// matches operations and commands.
+		fallthrough
 
-			c, err := v.command(&r)
-			if err != nil {
-				return c, err
-			}
+	default:
+		msg, err := v.contexts.Run(entry, &r, errorVersion26Unmatched)
 
-			return CrudOrMessage(c, c.Command, c.Counters, c.Payload), nil
-
-		case r.ExpectString("query"),
-			r.ExpectString("getmore"),
-			r.ExpectString("geonear"),
-			r.ExpectString("insert"),
-			r.ExpectString("update"),
-			r.ExpectString("remove"):
-
-			m, err := v.operation(&r)
-			if err != nil {
-				return m, err
-			}
-
-			if crud, ok := Crud(m.Operation, m.Counters, m.Payload); ok {
-				if m.Operation == "query" {
-					// Standardize operation with later versions.
-					m.Operation = "find"
-				}
-
-				crud.Message = m
-				return crud, nil
-			}
-
-			return m, nil
-
-		default:
-			// Check for network status changes.
-			if msg, err := D(entry).Network(r); err == nil {
-				return msg, err
-			}
+		if err != errorVersion26Unmatched {
+			return msg, err
+		} else {
+			return nil, errorVersion26Unmatched
 		}
+
 	}
-	return nil, errorVersion26Unmatched
+}
+
+func (v Version26Parser) commandCrud(r *internal.RuneReader) (message.Message, error) {
+	c, err := v.command(r)
+	if err != nil {
+		return c, err
+	}
+
+	return CrudOrMessage(c, c.Command, c.Counters, c.Payload), nil
 }
 
 func (Version26Parser) command(r *internal.RuneReader) (message.CommandLegacy, error) {
@@ -140,12 +157,6 @@ func (Version26Parser) command(r *internal.RuneReader) (message.CommandLegacy, e
 	}
 
 	return cmd, nil
-}
-
-func (Version26Parser) currentOp(entry record.Entry) bool {
-	// Current ops can be recorded by
-	return entry.Connection > 0 ||
-		entry.Context == "TTLMonitor"
 }
 
 func (Version26Parser) Check(base record.Base) bool {
@@ -217,6 +228,25 @@ func (Version26Parser) operation(r *internal.RuneReader) (message.OperationLegac
 	}
 
 	return op, internal.CommandStructure
+}
+
+func (v Version26Parser) operationCrud(r *internal.RuneReader) (message.Message, error) {
+	m, err := v.operation(r)
+	if err != nil {
+		return m, err
+	}
+
+	if crud, ok := Crud(m.Operation, m.Counters, m.Payload); ok {
+		if m.Operation == "query" {
+			// Standardize operation with later versions.
+			m.Operation = "find"
+		}
+
+		crud.Message = m
+		return crud, nil
+	}
+
+	return m, nil
 }
 
 func (Version26Parser) Version() version.Definition {

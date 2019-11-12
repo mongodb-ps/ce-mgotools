@@ -30,6 +30,8 @@ type ConnectionMeta struct {
 
 type Empty struct{}
 
+type Journal string
+
 type Listening struct{}
 
 type OpenSSL struct {

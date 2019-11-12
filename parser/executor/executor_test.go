@@ -49,18 +49,22 @@ func TestExecutor_Run(t *testing.T) {
 	})
 
 	if _, err := e.Run(record.Entry{}, internal.NewRuneReader("abc def ghi jkl"), unmatched); err == unmatched {
-		t.Errorf("failed to run 'abc def'")
+		t.Error("failed to run 'abc def'")
 	}
 
 	if _, err := e.Run(record.Entry{}, internal.NewRuneReader("def ghi jkl"), unmatched); err == unmatched {
-		t.Errorf("failed to run 'def ghi'")
+		t.Error("failed to run 'def ghi'")
 	}
 
 	if _, err := e.Run(record.Entry{}, internal.NewRuneReader("zyx abc"), unmatched); err == unmatched {
-		t.Errorf("failed to run 'z'")
+		t.Error("failed to run 'z'")
 	}
 
 	if _, err := e.Run(record.Entry{}, internal.NewRuneReader("ghi abc def"), unmatched); err != unmatched {
-		t.Errorf("incorrect result for 'ghi abc def'")
+		t.Error("incorrect result for 'ghi abc def'")
+	}
+
+	if _, err := e.Run(record.Entry{}, internal.NewRuneReader("abc"), unmatched); err != unmatched {
+		t.Error("incorrect result for 'abc'")
 	}
 }

@@ -2,38 +2,38 @@ package parser
 
 import (
 	"mgotools/internal"
+	"mgotools/parser/executor"
 	"mgotools/parser/message"
 	"mgotools/parser/record"
 	"mgotools/parser/version"
 )
 
-type Version24SParser struct{}
+type Version24SParser struct {
+	executor.Executor
+}
 
 func init() {
+	parser := Version24SParser{}
+
 	version.Factory.Register(func() version.Parser {
-		return &Version24SParser{}
+		return &parser
 	})
+
+	// Control (mongosMain)
+	parser.RegisterForReader("build info", commonParseBuildInfo)
+	parser.RegisterForReader("options:", mongosParseStartupOptions)
+	parser.RegisterForReader("MongoS version", mongosParseVersion)
+
+	// Network
+	parser.RegisterForReader("connection accepted", commonParseConnectionAccepted)
+	parser.RegisterForReader("waiting for connections", commonParseWaitingForConnections)
+	parser.RegisterForEntry("end connection", commonParseConnectionEnded)
 }
 
 var errorVersion24SUnmatched = internal.VersionUnmatched{"mongos 2.4"}
 
 func (v *Version24SParser) NewLogMessage(entry record.Entry) (msg message.Message, err error) {
-	r := internal.NewRuneReader(entry.RawMessage)
-
-	switch {
-	case entry.Context == "mongosMain":
-		if msg, err = S(entry).Control(*r); err == nil {
-			return msg, nil
-		} else if msg, err = S(entry).Network(*r); err == nil {
-			return msg, nil
-		}
-
-	default:
-		if msg, err = S(entry).Network(*r); err == nil {
-			return msg, nil
-		}
-	}
-	return nil, errorVersion24SUnmatched
+	return v.Run(entry, internal.NewRuneReader(entry.RawMessage), errorVersion24SUnmatched)
 }
 
 func (v *Version24SParser) Check(base record.Base) bool {

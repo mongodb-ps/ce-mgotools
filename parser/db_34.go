@@ -3,12 +3,14 @@ package parser
 import (
 	"mgotools/internal"
 	"mgotools/mongo"
+	"mgotools/parser/executor"
 	"mgotools/parser/message"
 	"mgotools/parser/record"
 	"mgotools/parser/version"
 )
 
 type Version34Parser struct {
+	executor    *executor.Executor
 	counters    map[string]string
 	versionFlag bool
 }
@@ -17,6 +19,22 @@ var errorVersion34Unmatched = internal.VersionUnmatched{Message: "version 3.2"}
 
 func init() {
 	version.Factory.Register(func() version.Parser {
+		ex := executor.New()
+
+		// CONTROL components
+		ex.RegisterForReader("build info", mongodBuildInfo)
+		ex.RegisterForReader("dbexit", mongodParseShutdown)
+		ex.RegisterForReader("db version", mongodDbVersion)
+		ex.RegisterForReader("journal dir=", mongodJournal)
+		ex.RegisterForReader("options", mongodOptions)
+		ex.RegisterForReader("wiredtiger_open config", commonParseWiredtigerOpen)
+
+		// NETWORK components
+		ex.RegisterForReader("connection accepted", commonParseConnectionAccepted)
+		ex.RegisterForEntry("end connection", commonParseConnectionEnded)
+		ex.RegisterForReader("waiting for connections", commonParseWaitingForConnections)
+		ex.RegisterForReader("received client metadata from", commonParseClientMetadata) // 3.4+
+
 		return &Version34Parser{
 			counters: map[string]string{
 				"cursorid":         "cursorid",
@@ -44,6 +62,7 @@ func init() {
 				"nreturned":        "nreturned",
 			},
 
+			executor:    ex,
 			versionFlag: true,
 		}
 	})
@@ -151,17 +170,9 @@ func (v *Version34Parser) NewLogMessage(entry record.Entry) (message.Message, er
 
 		return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
-	case record.ComponentControl:
-		return D(entry).Control(*r)
-
-	case record.ComponentNetwork:
-		return D(entry).Network(*r)
-
-	case record.ComponentStorage:
-		return D(entry).Storage(*r)
+	default:
+		return v.executor.Run(entry, r, errorVersion34Unmatched)
 	}
-
-	return nil, errorVersion34Unmatched
 }
 
 func (v *Version34Parser) operation(reader internal.RuneReader) (message.Operation, error) {

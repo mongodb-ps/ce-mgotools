@@ -377,6 +377,9 @@ func (f *filter) modify(entry record.Entry, options filterOptions) (record.Entry
 }
 
 func checkQueryPattern(query map[string]interface{}, check mongo.Pattern) bool {
+	if query == nil {
+		return false
+	}
 	return check.Equals(mongo.NewPattern(query))
 }
 

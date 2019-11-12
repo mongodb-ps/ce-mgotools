@@ -6,12 +6,14 @@ import (
 
 	"mgotools/internal"
 	"mgotools/mongo"
+	"mgotools/parser/executor"
 	"mgotools/parser/message"
 	"mgotools/parser/record"
 	"mgotools/parser/version"
 )
 
 type Version24Parser struct {
+	context  *executor.Executor
 	counters []string
 }
 
@@ -19,7 +21,28 @@ var errorVersion24Unmatched = internal.VersionUnmatched{Message: "version 2.4"}
 
 func init() {
 	version.Factory.Register(func() version.Parser {
+		context := executor.New()
+
+		// initandlisten
+		context.RegisterForReader("build info", mongodBuildInfo)
+		context.RegisterForReader("db version", mongodDbVersion)
+		context.RegisterForReader("journal dir=", mongodJournal)
+		context.RegisterForReader("options", mongodOptions)
+
+		context.RegisterForEntry("MongoDB starting", mongodStartupInfo)
+
+		// signalProcessingThread
+		context.RegisterForReader("dbexit", mongodParseShutdown)
+
+		// connection related
+		context.RegisterForReader("connection accepted", commonParseConnectionAccepted)
+		context.RegisterForReader("waiting for connections", commonParseWaitingForConnections)
+
+		context.RegisterForEntry("end connection", commonParseConnectionEnded)
+
 		return &Version24Parser{
+			context: context,
+
 			// A binary searchable (i.e. sorted) list of counters.
 			counters: []string{
 				"cursorid",
@@ -46,15 +69,6 @@ func init() {
 func (v *Version24Parser) NewLogMessage(entry record.Entry) (message.Message, error) {
 	r := internal.NewRuneReader(entry.RawMessage)
 	switch {
-	case entry.Context == "initandlisten", entry.Context == "signalProcessingThread":
-		// Check for control messages, which is almost everything in 2.4 that is logged at startup.
-		if msg, err := D(entry).Control(*r); err == nil {
-			// Most startup messages are part of control.
-			return msg, nil
-		} else if msg, err := D(entry).Network(*r); err == nil {
-			// Alternatively, we care about basic network actions like new connections being established.
-			return msg, nil
-		}
 
 	case entry.Connection > 0:
 		// Check for connection related messages, which is almost everything *not* related to startup messages.
@@ -108,14 +122,16 @@ func (v *Version24Parser) NewLogMessage(entry record.Entry) (message.Message, er
 
 			return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
-		default:
-			// Check for network connection changes.
-			if msg, err := D(entry).Network(*r); err == nil {
-				return msg, nil
-			}
 		}
+
+		// Cases that don't match a command or operation should be handled by
+		// standard matching code.
+		fallthrough
+
+	default:
+		// Check for other generic messages.
+		return v.context.Run(entry, r, errorVersion24Unmatched)
 	}
-	return nil, errorVersion24Unmatched
 }
 
 func (v *Version24Parser) Check(base record.Base) bool {

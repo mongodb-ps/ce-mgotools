@@ -146,7 +146,8 @@ func Crud(op string, counters map[string]int64, payload message.Payload) (messag
 		return geoNear(cursorId, filter, payload)
 
 	case "getmore":
-		return message.CRUD{CursorId: cursorId}, true
+		crud := getMore(cursorId, filter, payload)
+		return crud, true
 	}
 
 	return message.CRUD{}, false
@@ -204,6 +205,7 @@ func insert(comment string, counters map[string]int64) (message.CRUD, bool) {
 		Update:  nil,
 		Comment: comment,
 		N:       counters["ninserted"],
+		Filter:  nil,
 	}
 
 	return crud, true
@@ -292,6 +294,16 @@ func geoNear(cursorId int64, query map[string]interface{}, payload message.Paylo
 		CursorId: cursorId,
 		Filter:   query,
 	}, true
+}
+
+func getMore(cursorId int64, filter map[string]interface{}, payload message.Payload) message.CRUD {
+	crud := message.CRUD{CursorId: cursorId}
+	if originatingCommand, ok := payload["originatingCommand"].(map[string]interface{}); ok {
+		if filter, ok = originatingCommand["filter"].(map[string]interface{}); ok {
+			crud.Filter = filter
+		}
+	}
+	return crud
 }
 
 func Locks(r *internal.RuneReader) (map[string]interface{}, error) {

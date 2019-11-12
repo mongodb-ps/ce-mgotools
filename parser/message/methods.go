@@ -44,6 +44,8 @@ func BaseFromMessage(msg Message) (*BaseCommand, bool) {
 		return &t.BaseCommand, true
 	case OperationLegacy:
 		return &t.BaseCommand, true
+	case CRUD:
+		return BaseFromMessage(t.Message)
 	default:
 		return &BaseCommand{}, false
 	}

@@ -2,104 +2,37 @@ package parser
 
 import (
 	"mgotools/internal"
-	"mgotools/mongo"
 	"mgotools/parser/message"
 	"mgotools/parser/record"
 )
 
-type mongod record.Entry
-
-func D(entry record.Entry) mongod {
-	return mongod(entry)
+func mongodBuildInfo(r *internal.RuneReader) (message.Message, error) {
+	return message.BuildInfo{BuildInfo: r.SkipWords(2).Remainder()}, nil
 }
 
-func (entry mongod) Control(r internal.RuneReader) (message.Message, error) {
-	switch entry.Context {
-	case "initandlisten":
-		switch {
-		case r.ExpectString("build info"):
-			return message.BuildInfo{BuildInfo: r.SkipWords(2).Remainder()}, nil
-
-		case r.ExpectString("db version"):
-			return makeVersion(r.SkipWords(2).Remainder(), "mongod")
-
-		case r.ExpectString("MongoDB starting"):
-			return startupInfo(entry.RawMessage)
-
-		case r.ExpectString("options"):
-			r.SkipWords(1)
-			return startupOptions(r.Remainder())
-		}
-
-	case "signalProcessingThread":
-		if r.ExpectString("dbexit") {
-			return message.Shutdown{String: r.Remainder()}, nil
-		} else {
-			return message.Signal{String: r.Remainder()}, nil
-		}
-	}
-
-	return nil, internal.ControlUnrecognized
+func mongodDbVersion(r *internal.RuneReader) (message.Message, error) {
+	return makeVersion(r.SkipWords(2).Remainder(), "mongod")
 }
 
-func (entry mongod) Network(r internal.RuneReader) (message.Message, error) {
-	if entry.Connection == 0 {
-		if r.ExpectString("connection accepted") { // connection accepted from <IP>:<PORT> #<CONN>
-			if addr, port, conn, ok := connectionInit(r.SkipWords(3)); ok {
-				return message.Connection{Address: addr, Port: port, Conn: conn, Opened: true}, nil
-			}
-		} else if r.ExpectString("waiting for connections") {
-			return message.Listening{}, nil
-		} else if entry.Context == "signalProcessingThread" {
-			return message.Signal{String: entry.RawMessage}, nil
-		}
-	} else if entry.Connection > 0 {
-		if r.ExpectString("end connection") {
-			if addr, port, ok := connectionTerminate(r.SkipWords(2)); ok {
-				return message.Connection{Address: addr, Port: port, Conn: entry.Connection, Opened: false}, nil
-			}
-		} else if r.ExpectString("received client metadata from") {
-			// Skip "received client metadata" and grab connection information.
-			if addr, port, conn, ok := connectionInit(r.SkipWords(4)); !ok {
-				return nil, internal.MetadataUnmatched
-			} else {
-				if meta, err := mongo.ParseJsonRunes(&r, false); err == nil {
-					return message.ConnectionMeta{
-						Connection: message.Connection{
-							Address: addr,
-							Conn:    conn,
-							Port:    port,
-							Opened:  true},
-						Meta: meta}, nil
-				}
-			}
-		} else if r.ExpectString("successfully authenticated as principal") {
-			// Ignore the first four words and retrieve principal user
-			r.SkipWords(4)
-			user, ok := r.SlurpWord()
-			if !ok {
-				return nil, internal.UnexpectedEOL
-			}
-
-			// SERVER-39820
-			ip, _ := r.SlurpWord()
-			return message.Authentication{Principal: user, IP: ip}, nil
-		}
+func mongodJournal(r *internal.RuneReader) (message.Message, error) {
+	path := r.Skip(12).Remainder()
+	if path == "" {
+		return nil, internal.UnexpectedEOL
 	}
 
-	return nil, internal.NetworkUnrecognized
+	// journal dir=
+	return message.Journal(path), nil
 }
 
-func (entry mongod) Storage(r internal.RuneReader) (message.Message, error) {
-	switch entry.Context {
-	case "signalProcessingThread":
-		return message.Signal{entry.RawMessage}, nil
+func mongodOptions(r *internal.RuneReader) (message.Message, error) {
+	r.SkipWords(1)
+	return startupOptions(r.Remainder())
+}
 
-	case "initandlisten":
-		if r.ExpectString("wiredtiger_open config") {
-			return message.WiredTigerConfig{String: r.SkipWords(2).Remainder()}, nil
-		}
-	}
+func mongodParseShutdown(r *internal.RuneReader) (message.Message, error) {
+	return message.Shutdown{String: r.Remainder()}, nil
+}
 
-	return nil, internal.StorageUnmatched
+func mongodStartupInfo(entry record.Entry, r *internal.RuneReader) (message.Message, error) {
+	return startupInfo(entry.RawMessage)
 }

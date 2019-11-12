@@ -20,19 +20,22 @@ type V struct{}
 func NewPattern(s map[string]interface{}) Pattern {
 	return Pattern{createPattern(s, false), true}
 }
-func (p *Pattern) IsEmpty() bool {
+func (p Pattern) IsEmpty() bool {
 	return !p.initialized
 }
-func (p *Pattern) Equals(object Pattern) bool {
+func (p Pattern) Equals(object Pattern) bool {
+	if len(p.pattern) == 0 || len(object.pattern) == 0 {
+		return len(p.pattern) == len(object.pattern)
+	}
 	return deepEqual(p.pattern, object.pattern)
 }
-func (p *Pattern) Pattern() map[string]interface{} {
+func (p Pattern) Pattern() map[string]interface{} {
 	return p.pattern
 }
-func (p *Pattern) String() string {
+func (p Pattern) String() string {
 	return createString(p, false)
 }
-func (p *Pattern) StringCompact() string {
+func (p Pattern) StringCompact() string {
 	return createString(p, true)
 }
 
@@ -96,7 +99,7 @@ func createPattern(s map[string]interface{}, expr bool) map[string]interface{} {
 	return s
 }
 
-func createString(p *Pattern, compact bool) string {
+func createString(p Pattern, compact bool) string {
 	if !p.initialized {
 		return ""
 	}

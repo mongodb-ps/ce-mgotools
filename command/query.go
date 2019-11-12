@@ -41,6 +41,7 @@ type query struct {
 
 	group        []string
 	summaryTable *bytes.Buffer
+	system       bool
 	wrap         bool
 }
 
@@ -71,6 +72,7 @@ func init() {
 		Flags: []Argument{
 			{Name: "group", Type: String, Usage: "group by options (default: col,db,op,pattern)"},
 			{Name: "sort", ShortName: "s", Type: String, Usage: "sort by namespace, pattern, count, min, max, 95%, and/or sum (comma separated for multiple)"},
+			{Name: "system", Type: Bool, Usage: "show system collections in query summary"},
 			{Name: "wrap", Type: Bool, Usage: "line wrapping of query table"},
 		},
 	}
@@ -106,6 +108,7 @@ func (s *query) Prepare(name string, instance int, args ArgumentCollection) erro
 	}
 
 	s.wrap = args.Booleans["wrap"]
+	s.system = args.Booleans["system"]
 	s.group = []string{"col", "db", "op", "pattern"}
 
 	if group, ok := args.Strings["group"]; ok {
@@ -186,6 +189,13 @@ func (s *query) Run(instance int, out commandTarget, in commandSource, errs comm
 			if !ok {
 				// Ignore non-CRUD operations for query purposes.
 				continue
+			}
+
+			if !s.system {
+				if base, ok := message.BaseFromMessage(entry.Message); ok && strings.HasPrefix(base.Namespace, "system.") {
+					// Ignore system collections.
+					continue
+				}
 			}
 
 			pattern := mongo.NewPattern(crud.Filter)

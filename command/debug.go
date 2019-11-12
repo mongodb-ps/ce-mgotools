@@ -24,6 +24,9 @@ import (
 	"github.com/fatih/color"
 )
 
+// Defines a constant that commands may use for debug compiles.
+const DEBUG = true
+
 type debugLog struct {
 	highlight  string
 	json       bool

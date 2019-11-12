@@ -5,6 +5,7 @@ package parser
 import (
 	"mgotools/internal"
 	"mgotools/mongo"
+	"mgotools/parser/executor"
 	"mgotools/parser/message"
 	"mgotools/parser/record"
 	"mgotools/parser/version"
@@ -12,11 +13,27 @@ import (
 
 type Version40Parser struct {
 	counters map[string]string
+	executor *executor.Executor
 }
 
 var errorVersion40Unmatched = internal.VersionUnmatched{Message: "version 4.0"}
 
 func init() {
+	ex := executor.New()
+
+	// CONTROL components
+	ex.RegisterForReader("dbexit", mongodParseShutdown)
+	ex.RegisterForReader("db version", mongodDbVersion)
+	ex.RegisterForReader("journal dir=", mongodJournal)
+	ex.RegisterForReader("options", mongodOptions)
+	ex.RegisterForReader("wiredtiger_open config", commonParseWiredtigerOpen)
+
+	// NETWORK components
+	ex.RegisterForReader("connection accepted", commonParseConnectionAccepted)
+	ex.RegisterForEntry("end connection", commonParseConnectionEnded)
+	ex.RegisterForReader("waiting for connection", commonParseWaitingForConnections)
+	ex.RegisterForReader("received client metadata from", commonParseClientMetadata)
+
 	version.Factory.Register(func() version.Parser {
 		return &Version40Parser{
 			counters: map[string]string{
@@ -44,6 +61,8 @@ func init() {
 				"numYields":        "numYields",
 				"reslen":           "reslen",
 			},
+
+			executor: ex,
 		}
 	})
 }
@@ -70,17 +89,9 @@ func (v *Version40Parser) NewLogMessage(entry record.Entry) (message.Message, er
 		}
 		return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
-	case record.ComponentControl:
-		return D(entry).Control(*r)
-
-	case record.ComponentNetwork:
-		return D(entry).Network(*r)
-
-	case record.ComponentStorage:
-		return D(entry).Storage(*r)
+	default:
+		return v.executor.Run(entry, r, errorVersion40Unmatched)
 	}
-
-	return nil, errorVersion40Unmatched
 }
 
 func (v *Version40Parser) command(reader internal.RuneReader) (message.Command, error) {

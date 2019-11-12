@@ -2,12 +2,15 @@ package parser
 
 import (
 	"mgotools/internal"
+	"mgotools/parser/executor"
 	"mgotools/parser/message"
 	"mgotools/parser/record"
 	"mgotools/parser/version"
 )
 
 type Version30Parser struct {
+	executor *executor.Executor
+
 	counters    map[string]string
 	versionFlag bool
 }
@@ -16,7 +19,23 @@ var errorVersion30Unmatched = internal.VersionUnmatched{Message: "version 3.0"}
 
 func init() {
 	version.Factory.Register(func() version.Parser {
+		ex := executor.New()
+
+		// CONTROL component
+		ex.RegisterForEntry("MongoDB starting", mongodStartupInfo)
+		ex.RegisterForReader("db version", mongodDbVersion)
+		ex.RegisterForReader("build info", mongodBuildInfo)
+		ex.RegisterForReader("options", mongodOptions)
+		ex.RegisterForReader("journal dir=", mongodJournal)
+		ex.RegisterForReader("dbexit", mongodParseShutdown)
+
+		// NETWORK component
+		ex.RegisterForReader("waiting for connections", commonParseWaitingForConnections)
+		ex.RegisterForReader("connection accepted", commonParseConnectionAccepted)
+		ex.RegisterForEntry("end connection", commonParseConnectionEnded)
+
 		return &Version30Parser{
+			executor: ex,
 
 			counters: map[string]string{
 				"cursorid":        "cursorid",
@@ -48,7 +67,7 @@ func init() {
 }
 
 func (v *Version30Parser) NewLogMessage(entry record.Entry) (message.Message, error) {
-	r := *internal.NewRuneReader(entry.RawMessage)
+	r := internal.NewRuneReader(entry.RawMessage)
 
 	// MDB 3.0 outputs commands and operations in a format almost identical to
 	// MDB 2.6, which means we can use the legacy parser to handle the parsing.
@@ -58,15 +77,20 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (message.Message, er
 	case record.ComponentCommand:
 		c := r.PreviewWord(1)
 		if c == "query" || c == "getmore" {
-			return v.crud(false, &r)
+			return v.crud(false, r)
 		} else {
-			return v.crud(true, &r)
+			return v.crud(true, r)
 		}
 
 	case record.ComponentWrite:
-		return v.crud(false, &r)
+		return v.crud(false, r)
 
 	default:
+		msg, err := v.executor.Run(entry, r, errorVersion30Unmatched)
+		if err == nil {
+			return msg, err
+		}
+
 		return nil, errorVersion30Unmatched
 	}
 }
@@ -74,6 +98,7 @@ func (v *Version30Parser) NewLogMessage(entry record.Entry) (message.Message, er
 func (v *Version30Parser) Check(base record.Base) bool {
 	return v.versionFlag &&
 		base.Severity != record.SeverityNone &&
+		base.Severity >= record.SeverityD1 && base.Severity < record.SeverityD5 &&
 		v.expectedComponents(base.Component)
 }
 

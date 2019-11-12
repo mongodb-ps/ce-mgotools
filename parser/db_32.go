@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"mgotools/internal"
+	"mgotools/parser/executor"
 	"mgotools/parser/message"
 	"mgotools/parser/record"
 	"mgotools/parser/version"
@@ -11,6 +12,7 @@ import (
 
 type Version32Parser struct {
 	counters    map[string]string
+	executor    *executor.Executor
 	versionFlag bool
 }
 
@@ -18,6 +20,20 @@ var errorVersion32Unmatched = internal.VersionUnmatched{Message: "version 3.2"}
 
 func init() {
 	version.Factory.Register(func() version.Parser {
+		ex := executor.New()
+
+		// CONTROL components
+		ex.RegisterForReader("wiredtiger_open config", commonParseWiredtigerOpen) // 3.2+
+		ex.RegisterForReader("db version", mongodDbVersion)
+		ex.RegisterForReader("options", mongodOptions)
+		ex.RegisterForReader("journal dir=", mongodJournal)
+		ex.RegisterForReader("dbexit", mongodParseShutdown)
+
+		// NETWORK component
+		ex.RegisterForReader("waiting for connections", commonParseWaitingForConnections)
+		ex.RegisterForReader("connection accepted", commonParseConnectionAccepted)
+		ex.RegisterForEntry("end connection", commonParseConnectionEnded)
+
 		return &Version32Parser{
 			counters: map[string]string{
 				"cursorid":         "cursorid",
@@ -45,6 +61,7 @@ func init() {
 				"reslen":           "reslen",
 			},
 
+			executor:    ex,
 			versionFlag: true,
 		}
 	})
@@ -72,22 +89,18 @@ func (v *Version32Parser) NewLogMessage(entry record.Entry) (message.Message, er
 
 		return CrudOrMessage(op, op.Operation, op.Counters, op.Payload), nil
 
-	case record.ComponentControl:
-		return D(entry).Control(r)
-
 	case record.ComponentNetwork:
 		if entry.RawContext == "command" {
 			if msg, err := v.command(r); err != nil {
 				return msg, nil
 			}
 		}
-		return D(entry).Network(r)
 
-	case record.ComponentStorage:
-		return D(entry).Storage(r)
+		fallthrough
+
+	default:
+		return v.executor.Run(entry, &r, errorVersion32Unmatched)
 	}
-
-	return nil, errorVersion32Unmatched
 }
 
 func (v *Version32Parser) Check(base record.Base) bool {
